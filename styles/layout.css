@@ -1,0 +1,210 @@
+/* Khung trang: shell, sidebar, tiêu đề trang. Dùng chung cho cả hai mục. */
+/* ==================== shell ==================== */
+
+.shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  padding: 26px 34px 72px;
+  max-width: 1560px;
+}
+
+/* ==================== sidebar ==================== */
+
+.sidebar {
+  width: var(--sidebar-w);
+  flex: none;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 20px 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 4px 8px 0;
+  text-decoration: none;
+}
+
+.sidebar-brand .mark {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--brand), #f89142);
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  display: grid;
+  place-items: center;
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.brand-text b {
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+
+.brand-text small {
+  font-size: 11.5px;
+  color: var(--text-mute);
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  flex: 1;
+}
+
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.nav-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  padding: 0 10px 6px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  color: var(--text-dim);
+  transition: background 0.12s, color 0.12s;
+}
+
+.nav-item:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.nav-item[data-active='true'] {
+  background: var(--brand-soft);
+  color: var(--brand-hover);
+}
+
+.nav-icon {
+  width: 19px;
+  height: 19px;
+  flex: none;
+  margin-top: 2px;
+}
+
+.nav-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.nav-text {
+  display: flex;
+  flex-direction: column;
+  font-weight: 600;
+  font-size: 13.5px;
+  min-width: 0;
+}
+
+.nav-text small {
+  font-weight: 400;
+  font-size: 11.5px;
+  color: var(--text-mute);
+  line-height: 1.35;
+  margin-top: 1px;
+}
+
+.nav-item[data-active='true'] .nav-text small {
+  color: #b9764f;
+}
+
+.sidebar-foot {
+  font-size: 11.5px;
+  color: var(--text-mute);
+  line-height: 1.45;
+  padding: 12px 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+/* ==================== page header ==================== */
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.page-head h1 {
+  margin: 0 0 4px;
+  font-size: 21px;
+  letter-spacing: -0.015em;
+}
+
+.page-head p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  max-width: 70ch;
+}
+
+.health {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-mute);
+  flex: none;
+}
+.dot.ok { background: var(--good); }
+.dot.bad { background: var(--bad); }
+.dot.pending { background: var(--warn); }
+

@@ -1,0 +1,46 @@
+# ---------------------------------------------------------------------------
+# Phụ thuộc & kết quả build — luôn dựng lại được từ source, không bao giờ commit
+# ---------------------------------------------------------------------------
+node_modules/
+.next/
+out/
+build/
+next-env.d.ts
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# ---------------------------------------------------------------------------
+# Bí mật — .env.example mới là file được commit, .env.local là của riêng mỗi máy
+# ---------------------------------------------------------------------------
+.env
+.env.local
+.env.*.local
+
+# ---------------------------------------------------------------------------
+# Kho lưu các script thăm dò một lần và dữ liệu dump.
+# Giữ lại trên máy để tra khi một nền tảng đổi cấu trúc, nhưng không thuộc về repo:
+# chúng là ghi chép nghiên cứu, không phải phần mềm đang chạy. Kết luận rút ra từ
+# chúng đã được ghi thành comment ngay trong file của từng nguồn.
+# ---------------------------------------------------------------------------
+_archive/
+.probe/
+
+# ---------------------------------------------------------------------------
+# Sản phẩm phụ khi chạy
+# ---------------------------------------------------------------------------
+*.log
+npm-debug.log*
+screenshots/
+playwright-report/
+test-results/
+coverage/
+
+# ---------------------------------------------------------------------------
+# Rác của hệ điều hành và IDE
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json

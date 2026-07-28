@@ -1,0 +1,16 @@
+/**
+ * Điểm vào duy nhất của CSS.
+ *
+ * Style được tách theo đúng ranh giới của code: `ads.css` chỉ phục vụ mục Quảng cáo,
+ * `keywords.css` chỉ phục vụ mục Từ khoá. Nhờ vậy hai người sửa giao diện hai mục khác
+ * nhau sẽ không đụng cùng một file khi commit.
+ *
+ * Thứ tự import có ý nghĩa: `responsive.css` phải nằm cuối để ghi đè được các file trên.
+ */
+@import '../styles/base.css';
+@import '../styles/layout.css';
+@import '../styles/controls.css';
+@import '../styles/ads.css';
+@import '../styles/keywords.css';
+@import '../styles/guide.css';
+@import '../styles/responsive.css';

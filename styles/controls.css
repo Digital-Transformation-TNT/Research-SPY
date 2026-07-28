@@ -1,0 +1,219 @@
+/* Ô nhập, nút, chip, select, thông báo. Dùng chung cho cả hai mục. */
+/* ==================== panel + controls ==================== */
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 18px;
+  box-shadow: var(--shadow);
+}
+
+.search-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.search-row input[type='text'] {
+  flex: 1;
+  padding: 12px 15px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.search-row input[type='text']::placeholder { color: var(--text-mute); }
+
+.search-row input[type='text']:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(242, 101, 34, 0.13);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 22px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--brand);
+  background: var(--brand);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--brand-hover);
+  border-color: var(--brand-hover);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn.ghost {
+  background: var(--surface);
+  color: var(--text-dim);
+  border-color: var(--border-strong);
+  font-weight: 500;
+}
+
+.btn.ghost:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--text-mute);
+  color: var(--text);
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 26px;
+  align-items: flex-start;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.field > label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-mute);
+  font-weight: 700;
+}
+
+.chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12.5px;
+  transition: all 0.12s;
+}
+
+.chip:hover { border-color: var(--text-mute); color: var(--text); }
+
+.chip[data-on='true'] {
+  border-color: var(--brand);
+  color: var(--brand-hover);
+  background: var(--brand-soft);
+  font-weight: 600;
+}
+
+select,
+.field input[type='number'] {
+  padding: 8px 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  outline: none;
+}
+
+select:focus,
+.field input[type='number']:focus { border-color: var(--brand); }
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.check input { accent-color: var(--brand); width: 15px; height: 15px; }
+
+/* ==================== notices ==================== */
+
+.notices {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-bottom: 18px;
+}
+
+.notice {
+  padding: 11px 15px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 13px;
+  border-left-width: 3px;
+}
+
+.notice.warn { border-left-color: var(--warn); background: var(--warn-soft); border-color: #f0dfbe; }
+.notice.bad { border-left-color: var(--bad); background: var(--bad-soft); border-color: #f2cac7; }
+.notice.info { border-left-color: var(--info); background: var(--info-soft); border-color: var(--info-line); }
+
+/* Dùng chung: link dạng chữ trong thẻ và trong bảng từ khoá. */
+.link-row a,
+.linkish {
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.link-row a:hover,
+.linkish:hover { text-decoration: underline; }
+
+/* Dùng chung: danh sách lý do chấm điểm, có ở cả thẻ quảng cáo và bảng từ khoá. */
+.reasons {
+  margin: 0;
+  padding-left: 17px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Dùng chung: trạng thái rỗng và spinner. */
+.empty {
+  text-align: center;
+  padding: 64px 20px;
+  color: var(--text-dim);
+  background: var(--surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+}
+
+.spinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: -2px;
+}
+
+.btn.ghost .spinner,
+.muted .spinner { border-color: rgba(31, 35, 41, 0.18); }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

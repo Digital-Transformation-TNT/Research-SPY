@@ -1,0 +1,227 @@
+/* Riêng MỤC QUẢNG CÁO: lưới thẻ, media, điểm số. */
+/* ==================== results ==================== */
+
+.result-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 13px;
+  color: var(--text-dim);
+  font-size: 12.5px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 18px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow);
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-lift);
+  transform: translateY(-1px);
+}
+
+.card-media {
+  position: relative;
+  /* Media wells stay dark: creatives are portrait video and get letterboxed, and a light
+     well makes the padding read as part of the image. */
+  background: #14171a;
+  aspect-ratio: 4 / 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.card-media img,
+.card-media video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.play-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+  border: 0;
+  cursor: pointer;
+  color: #fff;
+  transition: background 0.15s;
+}
+
+.play-overlay:hover { background: rgba(0, 0, 0, 0.45); }
+
+.play-overlay span {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  padding-left: 4px;
+}
+
+.media-empty {
+  color: #9aa1ab;
+  font-size: 12.5px;
+  padding: 20px;
+  text-align: center;
+}
+
+.media-error {
+  position: absolute;
+  inset: auto 0 0 0;
+  background: rgba(211, 58, 52, 0.92);
+  color: #fff;
+  font-size: 11.5px;
+  padding: 6px 10px;
+}
+
+.card-tags {
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  right: 9px;
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  pointer-events: none;
+}
+
+.tag {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  backdrop-filter: blur(2px);
+}
+
+/* Màu viền nhãn theo nguồn. Nguồn mới chưa khai báo màu vẫn hiển thị bình thường với
+   viền mặc định — thêm một dòng ở đây là tuỳ chọn, không bắt buộc. */
+.tag.platform-facebook { border-color: #6ba7f5; }
+.tag.platform-tiktok { border-color: #ff7a95; }
+
+.card-body {
+  padding: 13px 15px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  flex: 1;
+}
+
+.advertiser {
+  font-weight: 600;
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metrics {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.metric {
+  font-size: 11.5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.metric b { color: var(--text); font-weight: 600; }
+
+.copy {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  line-clamp: 4;
+  cursor: pointer;
+}
+
+.copy.open {
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  display: block;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.link-row {
+  display: flex;
+  gap: 13px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+
+/* ==================== score ==================== */
+
+.score {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.score-num {
+  font-size: 17px;
+  font-weight: 700;
+  min-width: 30px;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-num.high { color: var(--good); }
+.score-num.mid { color: var(--warn); }
+.score-num.low { color: var(--text-mute); }
+
+.score-bar {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.score-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--brand);
+}
+
+
+.confidence {
+  font-size: 11px;
+  color: var(--text-mute);
+}

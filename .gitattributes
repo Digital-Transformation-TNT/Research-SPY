@@ -1,0 +1,15 @@
+# Chuẩn hoá xuống dòng. Cả team đang dùng Windows nhưng repo lưu LF, để diff không bị
+# nhiễu bởi CRLF/LF khi người khác mở trên máy khác.
+* text=auto eol=lf
+
+# File nhị phân: không đụng vào nội dung
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.mp4 binary
+*.ico binary
+
+# Không hiện package-lock.json trong diff của pull request — nó dài và không đọc bằng mắt
+package-lock.json linguist-generated=true -diff
