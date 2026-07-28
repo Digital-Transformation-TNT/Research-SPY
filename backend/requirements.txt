@@ -1,0 +1,12 @@
+# Tầng dữ liệu Research SPY. Cài thẳng vào Python của máy (không dùng venv):
+#   python -m pip install -r requirements.txt
+#   python -m playwright install chromium
+#
+# playwright ghim ở 1.56.0 vì bản đó kéo theo pyee==13.0.1 — đúng bản mà TikTokLive đang
+# cài sẵn trên máy cần. Hạ playwright xuống sẽ hạ luôn pyee và làm hỏng gói đó.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+httpx==0.28.1
+playwright==1.56.0
+pydantic==2.10.5
+python-dotenv==1.0.1

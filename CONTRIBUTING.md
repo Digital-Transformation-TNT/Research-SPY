@@ -8,8 +8,8 @@ mới* sao cho không phá vỡ ranh giới giữa hai mục lớn.
 ## Nguyên tắc chung
 
 1. **Đặc thù của một nguồn phải nằm gọn trong file của nguồn đó.** Nếu bạn thấy mình phải
-   viết `if (platform === 'facebook')` ở ngoài `lib/ads/platforms/facebook.ts`, tức là hợp
-   đồng đang thiếu một trường — hãy thêm trường đó vào `lib/ads/platform.ts` thay vì rẽ nhánh.
+   viết `if platform_id == "facebook"` ở ngoài `lib/ads/platforms/facebook.py`, tức là hợp
+   đồng đang thiếu một trường — hãy thêm trường đó vào `lib/ads/platform.py` thay vì rẽ nhánh.
 
 2. **Mục Quảng cáo và mục Từ khoá không import lẫn nhau**, kể cả kiểu dữ liệu. Thứ dùng chung
    thì đặt ở `lib/core/`.
@@ -21,7 +21,24 @@ mới* sao cho không phá vỡ ranh giới giữa hai mục lớn.
 
 4. **Không được để kết quả rỗng im lặng.** Đây là kiểu hỏng nguy hiểm nhất của công cụ này:
    một lưới trống đọc thành "sản phẩm không có nhu cầu". Nguồn nào trả về ít hơn hoặc khác
-   với điều người dùng yêu cầu thì phải kèm `notice`, và lỗi thì phải hiện ra `status.ok = false`.
+   với điều người dùng yêu cầu thì phải kèm `notice`, và lỗi thì phải hiện ra `status.ok = False`.
+
+5. **Tầng HTTP phải mỏng.** `app/api/*.py` chỉ đọc query string, gọi `lib/`, và trả JSON.
+   Không có logic nghiệp vụ nào ở đó — nhờ vậy thêm nguồn mới không đụng tới route.
+
+---
+
+## Trước khi sửa phần chấm điểm hay xếp hạng
+
+Đọc [`backend/lib/core/jscompat.py`](backend/lib/core/jscompat.py).
+
+Bản này được chuyển từ TypeScript, và bốn chỗ Python khác JavaScript đều im lặng cho ra kết
+quả khác nếu viết theo bản năng: `Math.round` làm tròn 0.5 lên còn `round()` của Python làm
+tròn về số chẵn; `toFixed` cũng vậy; `new Set` của JS giữ thứ tự chèn còn `set` của Python
+thì không (các câu giải thích điểm số đọc theo thứ tự đó); `localeCompare` sắp theo tiếng
+Việt còn `sorted()` sắp theo mã ký tự.
+
+Dùng `jround`, `to_fixed`, `unique`, `vi_sort_key` từ module đó thay vì hàm dựng sẵn.
 
 ---
 
@@ -29,61 +46,76 @@ mới* sao cho không phá vỡ ranh giới giữa hai mục lớn.
 
 Ví dụ thêm Shopee Ads.
 
-### Bước 1 — tạo `lib/ads/platforms/shopee.ts`
+### Bước 1 — tạo `backend/lib/ads/platforms/shopee.py`
 
-Dùng `facebook.ts` (nguồn cần trình duyệt để lấy chữ ký) hoặc `tiktok.ts` (nguồn có bộ lọc
+Dùng `facebook.py` (nguồn cần trình duyệt để lấy chữ ký) hoặc `tiktok.py` (nguồn có bộ lọc
 động) làm mẫu. Khung tối thiểu:
 
-```ts
-import type { AdPlatform, PlatformSearchInput, PlatformSearchOutcome } from '../platform'
-import type { Ad } from '../types'
+```python
+from dataclasses import dataclass
+from typing import Literal
 
-const PLATFORM_ID = 'shopee'
+from ..platform import (
+    AdPlatform,
+    HealthProbe,
+    MediaPolicy,
+    PlatformCapabilities,
+    PlatformChoice,
+    PlatformOption,
+    PlatformSearchInput,
+    PlatformSearchOutcome,
+)
+from ..types import Ad
 
-export type ShopeeOptions = { sortBy: 'newest' | 'popular' }
+PLATFORM_ID = "shopee"
 
-function parseOptions(raw: Record<string, string>): ShopeeOptions {
-  return { sortBy: raw.sortBy === 'popular' ? 'popular' : 'newest' }
-}
 
-async function search(input: PlatformSearchInput<ShopeeOptions>): Promise<PlatformSearchOutcome> {
-  // … gọi nguồn, ánh xạ về kiểu Ad …
-  return { ads }
-}
+@dataclass(frozen=True)
+class ShopeeOptions:
+    sort_by: Literal["newest", "popular"]
 
-export const shopee: AdPlatform<ShopeeOptions> = {
-  id: PLATFORM_ID,
-  label: 'Shopee Ads',
-  capabilities: { keywordSearch: true, startDate: false, remoteFilters: false },
-  options: [
-    {
-      key: 'sortBy',
-      label: 'Sắp xếp',
-      kind: 'choice',
-      defaultValue: 'newest',
-      choices: [
-        { value: 'newest', label: 'Mới nhất' },
-        { value: 'popular', label: 'Phổ biến' },
-      ],
-    },
-  ],
-  parseOptions,
-  search,
-  media: { hostSuffixes: ['shopeecdn.com'], referer: 'https://shopee.vn/' },
-  healthProbe: { keyword: 'kem', country: 'VN' },
-}
+
+class Shopee(AdPlatform):
+    id = PLATFORM_ID
+    label = "Shopee Ads"
+    capabilities = PlatformCapabilities(keyword_search=True, start_date=False, remote_filters=False)
+    options = [
+        PlatformOption(
+            key="sortBy",
+            label="Sắp xếp",
+            kind="choice",
+            default_value="newest",
+            choices=[
+                PlatformChoice(value="newest", label="Mới nhất"),
+                PlatformChoice(value="popular", label="Phổ biến"),
+            ],
+        )
+    ]
+    media = MediaPolicy(host_suffixes=["shopeecdn.com"], referer="https://shopee.vn/")
+    health_probe = HealthProbe(keyword="kem", country="VN")
+
+    def parse_options(self, raw: dict[str, str]) -> ShopeeOptions:
+        return ShopeeOptions(sort_by="popular" if raw.get("sortBy") == "popular" else "newest")
+
+    async def search(self, request: PlatformSearchInput) -> PlatformSearchOutcome:
+        ads: list[Ad] = []
+        # … gọi nguồn, ánh xạ về kiểu Ad …
+        return PlatformSearchOutcome(ads=ads)
+
+
+shopee = Shopee()
 ```
 
-### Bước 2 — đăng ký ở `lib/ads/platforms/index.ts`
+### Bước 2 — đăng ký ở `backend/lib/ads/platforms/__init__.py`
 
-```ts
-import { shopee } from './shopee'
+```python
+from .shopee import shopee
 
-export const AD_PLATFORMS = {
-  facebook,
-  tiktok,
-  shopee,        // ← chỉ một dòng này
-} satisfies Record<string, AdPlatform<any>>
+AD_PLATFORMS: dict[str, AdPlatform] = {
+    "facebook": facebook,
+    "tiktok": tiktok,
+    "shopee": shopee,        # ← chỉ một dòng này
+}
 ```
 
 ### Xong. Những thứ tự động hoạt động:
@@ -91,67 +123,94 @@ export const AD_PLATFORMS = {
 * chip chọn nguồn trên giao diện
 * các ô điều khiển riêng của nguồn (dựng từ `options`)
 * chấm trạng thái ở `/api/ads/health`
-* proxy media cho CDN của nguồn (từ `media.hostSuffixes`)
+* proxy media cho CDN của nguồn (từ `media.host_suffixes`)
 * cache key, gộp kết quả, xếp hạng luân phiên giữa các nguồn
-* kiểu `PlatformId` trong TypeScript
 
 **Không phải sửa:** route, component, CSS, `.env`, `lib/core/*`.
 
 ### Vài điểm cần chú ý
 
 * **Nếu nguồn cần chữ ký từ JS phía client**, đừng viết lại thuật toán ký — nó sẽ hỏng mỗi
-  lần nền tảng đổi. Khai báo một `SessionRecipe` (xem `lib/core/browser.ts`) để mở một trang
+  lần nền tảng đổi. Khai báo một `SessionRecipe` (xem `lib/core/browser.py`) để mở một trang
   thật, nhặt vật liệu từ request đã ký, rồi phát lại. Cả Facebook và TikTok đều làm vậy.
+* **Mọi request ra ngoài phải đi qua `schedule()`** của `lib/core/rate_limit.py`. Một nguồn bị
+  chặn tốn kém hơn nhiều so với một nguồn chạy chậm.
 * **`capabilities` phải khai báo trung thực.** Giao diện dựa vào nó để không hứa với người
-  dùng những thứ nguồn không có. Nguồn không công bố ngày bắt đầu chạy thì `startDate: false`
+  dùng những thứ nguồn không có. Nguồn không công bố ngày bắt đầu chạy thì `start_date=False`
   — phần chấm điểm sẽ tự hạ độ tin cậy thay vì bịa ra một con số.
 * **Giới hạn tần suất là của riêng nguồn**, đọc từ biến môi trường ngay trong file nguồn
-  (xem `MIN_INTERVAL_MS` trong `tiktok.ts`). Đừng thêm vào `lib/core/config.ts`.
-* Thêm biến môi trường mới thì **nhớ ghi vào `.env.example`** — đó là tài liệu duy nhất về chúng.
+  (xem `MIN_INTERVAL_MS` trong `tiktok.py`). Đừng thêm vào `lib/core/config.py`.
+* **Nguồn có bộ lọc động** thì đặt `supports_filters = True` và ghi đè `fetch_filters`.
+* Thêm biến môi trường mới thì **nhớ ghi vào `backend/.env.example`** — đó là tài liệu duy
+  nhất về chúng.
 
 ---
 
 ## Thêm một nguồn từ khoá mới
 
 Nhẹ hơn nhiều: nguồn chỉ phải nhận một cụm từ và trả về danh sách gợi ý. Phần mở rộng
-long-tail, giữ nhịp gọi và xử lý lỗi từng phần đã có sẵn ở `providers/expand.ts`.
+long-tail, giữ nhịp gọi và xử lý lỗi từng phần đã có sẵn ở `providers/expand.py`.
 
-`lib/keywords/providers/lazada.ts`:
+`backend/lib/keywords/providers/lazada.py`:
 
-```ts
-import { getJson } from '@/lib/core/http'
-import type { KeywordProvider } from '../provider'
+```python
+from urllib.parse import quote
 
-export const lazada: KeywordProvider = {
-  id: 'lazada',
-  label: 'Lazada',
-  hasNativeScore: false,
-  markets: ['VN', 'TH', 'PH'],   // bỏ trống nếu phục vụ mọi thị trường
-  fetchSuggestions: async (term, country) => {
-    const json = (await getJson(`https://…?q=${encodeURIComponent(term)}`)) as { items?: string[] }
-    return (json.items ?? []).map((keyword) => ({ keyword }))
-  },
-}
+from lib.core.http import get_json
+
+from ..provider import KeywordProvider, Suggestion
+
+
+class Lazada(KeywordProvider):
+    id = "lazada"
+    label = "Lazada"
+    has_native_score = False
+    markets = ["VN", "TH", "PH"]   # để None nếu phục vụ mọi thị trường
+
+    async def fetch_suggestions(self, term: str, country: str) -> list[Suggestion]:
+        payload = await get_json(f"https://…?q={quote(term, safe='')}")
+        return [Suggestion(keyword=k) for k in (payload.get("items") or [])]
+
+
+lazada = Lazada()
 ```
 
-Rồi thêm một dòng vào `lib/keywords/providers/index.ts`. Chip nguồn trên giao diện, cột "Có
-mặt trên", cache và xếp hạng đều tự nhận nguồn mới.
+Rồi thêm một dòng vào `backend/lib/keywords/providers/__init__.py`. Chip nguồn trên giao
+diện, cột "Có mặt trên", cache và xếp hạng đều tự nhận nguồn mới.
+
+---
+
+## Sửa kiểu dữ liệu trả về API
+
+Kiểu tồn tại ở hai nơi và **phải sửa cả hai**:
+
+| Sửa gì | Sửa ở đâu |
+|---|---|
+| Trường mới của quảng cáo | `backend/lib/ads/types.py` **và** `frontend/lib/ads/types.ts` |
+| Trường mới của từ khoá | `backend/lib/keywords/types.py` **và** `frontend/lib/keywords/types.ts` |
+
+Bên Python đặt tên `snake_case`; `lib/core/model.py` tự đổi sang `camelCase` khi ra JSON, nên
+bên TypeScript viết `camelCase`. Trường `None` bị bỏ hẳn khỏi JSON (giống `undefined` của JS)
+— giao diện phân biệt "vắng mặt" với "có và bằng 0", nên đừng đổi hành vi đó.
 
 ---
 
 ## Trước khi commit
 
 ```bash
-npm run typecheck      # bắt buộc
-npm run build          # bắt buộc nếu có động vào app/ hoặc components/
-npm run smoke:ads      # nếu có động vào lib/ads
-npm run smoke:keywords # nếu có động vào lib/keywords
-npm run smoke:ui       # nếu có động vào components/
+# frontend/
+npm run typecheck                        # bắt buộc
+npm run build                            # bắt buộc nếu có động vào app/ hoặc components/
+
+# backend/  (cần backend đang chạy ở cổng 8000)
+python scripts/smoke/ads.py              # nếu có động vào lib/ads
+python scripts/smoke/keywords.py         # nếu có động vào lib/keywords
+python scripts/smoke/ui.py               # nếu có động vào components/ (cần cả frontend đang chạy)
+python scripts/audit/keyword_sources.py  # nếu có động vào provider từ khoá
 ```
 
-Smoke test cần một dev server đang chạy (`npm run dev`) và gọi thật ra các nền tảng, nên hơi
-chậm và có thể trượt vì nguồn đang giới hạn tần suất — đọc thông báo lỗi trước khi kết luận
-là code sai.
+Smoke test gọi thật ra các nền tảng, nên hơi chậm và có thể trượt vì nguồn đang giới hạn tần
+suất — đọc thông báo lỗi trước khi kết luận là code sai.
 
 ---
 
@@ -165,6 +224,7 @@ ads(tiktok): sửa lỗi phân trang khi ngành hàng rỗng
 keywords: thêm nguồn gợi ý Lazada
 keywords(rank): hạ điểm từ khoá dạng câu hỏi
 core: tăng thời gian chờ làm nóng trình duyệt
+api: thêm tham số lọc cho /api/ads/search
 ui: gộp thanh trạng thái nguồn vào page header
 docs: cập nhật hướng dẫn thêm nguồn
 ```
@@ -175,12 +235,27 @@ Nhánh: `feat/<mô-tả-ngắn>`, `fix/<mô-tả-ngắn>`. Không commit thẳng
 
 ## Style code
 
-Dự án chưa cấu hình ESLint/Prettier riêng, đang theo mặc định của Next.js. Quy ước đang dùng
-xuyên suốt, hãy giữ cho nhất quán:
+### Python (backend)
+
+Chưa cấu hình formatter riêng. Quy ước đang dùng xuyên suốt:
+
+* `from __future__ import annotations` ở đầu mọi module
+* kiểu chú thích đầy đủ cho tham số và giá trị trả về công khai
+* chiều rộng dòng ~100 ký tự
+* docstring cho module và cho hàm công khai; comment nội bộ giải thích *vì sao*
+* dùng `RuntimeError` với câu tiếng Việt đọc được cho người vận hành — thông báo đó lên thẳng
+  giao diện
+
+### TypeScript (frontend)
+
+Đang theo mặc định của Next.js:
 
 * không dấu chấm phẩy cuối câu lệnh
 * nháy đơn cho chuỗi
 * chiều rộng dòng ~110 ký tự
 * dấu phẩy cuối trong danh sách nhiều dòng
-* comment và chuỗi hiển thị cho người dùng viết bằng **tiếng Việt**; tên biến, hàm, kiểu
-  viết bằng **tiếng Anh**
+
+### Cả hai
+
+Comment và chuỗi hiển thị cho người dùng viết bằng **tiếng Việt**; tên biến, hàm, kiểu viết
+bằng **tiếng Anh**.

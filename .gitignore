@@ -9,6 +9,15 @@ next-env.d.ts
 tsconfig.tsbuildinfo
 *.tsbuildinfo
 
+# Python tự sinh. `.venv/` liệt kê ở đây cho chắc, chứ dự án chạy thẳng trên Python của máy.
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
 # ---------------------------------------------------------------------------
 # Bí mật — .env.example mới là file được commit, .env.local là của riêng mỗi máy
 # ---------------------------------------------------------------------------

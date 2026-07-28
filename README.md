@@ -11,25 +11,69 @@ Ngoài ra có `/guide` — trang hướng dẫn đọc số liệu, **nên đọ
 
 ---
 
+## Hai tiến trình
+
+Dự án chia làm hai phần chạy song song:
+
+| Thư mục | Ngôn ngữ | Việc | Cổng |
+|---|---|---|---|
+| [backend/](backend/) | Python + FastAPI | Toàn bộ tầng dữ liệu: gọi nguồn, chấm điểm, cache, proxy media | 8000 |
+| [frontend/](frontend/) | TypeScript + Next.js | Chỉ giao diện. Không có logic nghiệp vụ nào | 3000 |
+
+Trình duyệt chỉ nói chuyện với cổng 3000. Mọi đường `/api/*` được Next chuyển tiếp sang
+backend (xem [frontend/next.config.mjs](frontend/next.config.mjs)), nên không có CORS và
+video vẫn phát được từ cùng một origin.
+
+---
+
 ## Chạy dự án
 
+Cài một lần:
+
 ```bash
-npm install          # tự cài luôn Chromium cho Playwright
-cp .env.example .env.local   # tuỳ chọn — chạy được mà không cần sửa gì
-npm run dev          # http://localhost:3000
+cd backend
+python -m pip install -r requirements.txt
+python -m playwright install chromium
+cp .env.example .env.local        # tuỳ chọn — chạy được mà không cần sửa gì
+
+cd ../frontend
+npm install
+```
+
+Chạy — **cần hai cửa sổ terminal**:
+
+```bash
+# cửa sổ 1
+cd backend
+python -m uvicorn app.main:app --port 8000
+
+# cửa sổ 2
+cd frontend
+npm run dev                       # http://localhost:3000
 ```
 
 Lệnh khác:
 
 ```bash
-npm run build          # build production
-npm run start          # chạy bản build, mở cổng 3000 cho cả LAN
-npm run typecheck      # tsc --noEmit
-npm run smoke:ads      # test đầu-cuối mục Quảng cáo (cần dev server đang chạy)
-npm run smoke:keywords # test đầu-cuối mục Từ khoá
-npm run smoke:ui       # mở trình duyệt thật, click hết các nút, bắt lỗi client
-npm run audit:keywords # đối chiếu độc lập: dữ liệu tool hiện có khớp nguồn gốc không
+# backend/
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000   # mở cổng cho cả LAN
+python scripts/smoke/ads.py             # test đầu-cuối mục Quảng cáo
+python scripts/smoke/keywords.py        # test đầu-cuối mục Từ khoá
+python scripts/smoke/ui.py              # mở trình duyệt thật, click hết các nút, bắt lỗi client
+python scripts/audit/keyword_sources.py # đối chiếu độc lập: dữ liệu tool có khớp nguồn gốc không
+
+# frontend/
+npm run build                           # build production
+npm run start                           # chạy bản build, mở cổng 3000 cho cả LAN
+npm run typecheck                       # tsc --noEmit
 ```
+
+Ba script đầu mặc định gọi backend ở cổng 8000; `ui.py` gọi giao diện ở cổng 3000. Đặt
+`BASE=http://localhost:3000` để chạy smoke qua đúng đường mà người dùng thật đi.
+
+> **Chỉ chạy một tiến trình backend.** Cache và kho phiên trình duyệt nằm trong bộ nhớ, nên
+> `--workers` sẽ nhân số request ra ngoài lên đúng bằng số worker — chính là thứ làm IP
+> chung bị chặn.
 
 ---
 
@@ -40,51 +84,57 @@ Nhìn đường dẫn của một file là biết ngay nó thuộc mục nào, n
 người làm hai mục khác nhau gần như không đụng file của nhau.
 
 ```
-lib/
-├── core/                    # HẠ TẦNG DÙNG CHUNG — không biết Facebook/TikTok là gì
-│   ├── config.ts            #   cấu hình chung (cache, timeout, user-agent)
-│   ├── cache.ts             #   cache TTL trong bộ nhớ
-│   ├── rate-limit.ts        #   hàng đợi giữ nhịp gọi ra ngoài
-│   ├── browser.ts           #   kho phiên trình duyệt, chạy theo "recipe" nguồn tự khai
-│   └── http.ts              #   fetch JSON cho nguồn không cần trình duyệt
+backend/
+├── app/                     # TẦNG HTTP — mỏng, không chứa logic nghiệp vụ
+│   ├── main.py              #   dựng FastAPI, đóng trình duyệt khi tắt
+│   └── api/
+│       ├── ads.py           #   /api/ads/{platforms,search,health,filters}
+│       ├── keywords.py      #   /api/keywords{,/sources,/trend}
+│       └── media.py         #   proxy phát video, có danh sách host cho phép
 │
-├── ads/                     # ===== MỤC QUẢNG CÁO =====
-│   ├── platform.ts          #   HỢP ĐỒNG một nguồn quảng cáo phải thoả  ← đọc file này trước
-│   ├── platforms/
-│   │   ├── index.ts         #   SỔ ĐĂNG KÝ — nơi duy nhất sửa khi thêm nguồn
-│   │   ├── facebook.ts      #   toàn bộ đặc thù Facebook nằm gọn ở đây
-│   │   └── tiktok.ts        #   toàn bộ đặc thù TikTok nằm gọn ở đây
-│   ├── types.ts             #   Ad, AdScore, tham số tìm kiếm
-│   ├── scoring.ts           #   chấm điểm ứng viên sản phẩm
-│   └── search.ts            #   điều phối: fan-out, gộp, lọc, xếp hạng
-│
-└── keywords/                # ===== MỤC TỪ KHOÁ =====
-    ├── provider.ts          #   HỢP ĐỒNG một nguồn từ khoá phải thoả
-    ├── providers/
-    │   ├── index.ts         #   SỔ ĐĂNG KÝ — nơi duy nhất sửa khi thêm nguồn
-    │   ├── expand.ts        #   bộ máy mở rộng long-tail, dùng chung mọi nguồn
-    │   ├── google.ts  shopee.ts  tiktok.ts
-    ├── types.ts  normalize.ts  rank.ts  trends.ts  search.ts
+└── lib/
+    ├── core/                # HẠ TẦNG DÙNG CHUNG — không biết Facebook/TikTok là gì
+    │   ├── config.py        #   cấu hình chung (cache, timeout, user-agent), nạp .env
+    │   ├── cache.py         #   cache TTL trong bộ nhớ
+    │   ├── rate_limit.py    #   hàng đợi giữ nhịp gọi ra ngoài
+    │   ├── browser.py       #   kho phiên trình duyệt, chạy theo "recipe" nguồn tự khai
+    │   ├── http.py          #   gọi JSON cho nguồn không cần trình duyệt
+    │   ├── model.py         #   nền chung cho kiểu đi ra API (đổi tên trường sang camelCase)
+    │   └── jscompat.py      #   những chỗ Python khác JavaScript  ← ĐỌC KHI SỬA ĐIỂM SỐ
+    │
+    ├── ads/                 # ===== MỤC QUẢNG CÁO =====
+    │   ├── platform.py      #   HỢP ĐỒNG một nguồn quảng cáo phải thoả  ← đọc file này trước
+    │   ├── platforms/
+    │   │   ├── __init__.py  #   SỔ ĐĂNG KÝ — nơi duy nhất sửa khi thêm nguồn
+    │   │   ├── facebook.py  #   toàn bộ đặc thù Facebook nằm gọn ở đây
+    │   │   └── tiktok.py    #   toàn bộ đặc thù TikTok nằm gọn ở đây
+    │   ├── types.py         #   Ad, AdScore, tham số tìm kiếm
+    │   ├── scoring.py       #   chấm điểm ứng viên sản phẩm
+    │   └── search.py        #   điều phối: fan-out, gộp, lọc, xếp hạng
+    │
+    └── keywords/            # ===== MỤC TỪ KHOÁ =====
+        ├── provider.py      #   HỢP ĐỒNG một nguồn từ khoá phải thoả
+        ├── providers/
+        │   ├── __init__.py  #   SỔ ĐĂNG KÝ — nơi duy nhất sửa khi thêm nguồn
+        │   ├── expand.py    #   bộ máy mở rộng long-tail, dùng chung mọi nguồn
+        │   └── google.py  shopee.py  tiktok.py
+        └── types.py  normalize.py  rank.py  trends.py  search.py
 
-app/
-├── ads/page.tsx             # trang Quảng cáo (server component, chỉ truyền dữ liệu xuống)
-├── keywords/page.tsx        # trang Từ khoá
-├── guide/page.tsx           # trang Hướng dẫn
-├── page.tsx                 # chuyển hướng về /ads
-└── api/
-    ├── ads/search  ads/health  ads/filters
-    ├── keywords    keywords/trend
-    └── media                 # proxy phát video, có danh sách host cho phép
-
-components/
-├── ads/                     # AdsResearch, AdCard, HealthBar, PlatformOptions
-├── keywords/                # KeywordResearch, KeywordTable, Sparkline, relevance
-└── layout/                  # Sidebar
-
-styles/                      # CSS tách theo đúng ranh giới trên: ads.css, keywords.css, …
-scripts/
-├── smoke/                   # test đầu-cuối: ads.ts, keywords.ts, ui.ts
-└── audit/                   # đối chiếu độc lập với nguồn gốc
+frontend/
+├── app/
+│   ├── ads/page.tsx         # trang Quảng cáo (server component, hỏi backend danh sách nguồn)
+│   ├── keywords/page.tsx    # trang Từ khoá
+│   ├── guide/page.tsx       # trang Hướng dẫn
+│   └── page.tsx             # chuyển hướng về /ads
+├── components/
+│   ├── ads/                 # AdsResearch, AdCard, HealthBar, PlatformOptions
+│   ├── keywords/            # KeywordResearch, KeywordTable, Sparkline, relevance
+│   └── layout/              # Sidebar, BackendDown
+├── lib/
+│   ├── api.ts               # địa chỉ backend cho server component
+│   ├── ads/                 # kiểu dữ liệu, gương của backend/lib/ads/types.py
+│   └── keywords/            # kiểu dữ liệu, gương của backend/lib/keywords/types.py
+└── styles/                  # CSS tách theo đúng ranh giới trên: ads.css, keywords.css, …
 ```
 
 ### Quy tắc phụ thuộc
@@ -95,12 +145,19 @@ lib/ads  ──┐
 lib/keywords ┘
 
 lib/ads  ✗  lib/keywords        (hai mục KHÔNG import lẫn nhau, kể cả kiểu dữ liệu)
+
+frontend  ──►  backend qua HTTP  (giao diện không chứa logic nghiệp vụ nào)
 ```
 
 Hai mục dùng chung đúng ba thứ: cache, hàng đợi rate-limit, và cấu hình chung. Không dùng
-chung kiểu dữ liệu nào. `lib/keywords/providers/tiktok.ts` và `lib/ads/platforms/tiktok.ts`
+chung kiểu dữ liệu nào. `lib/keywords/providers/tiktok.py` và `lib/ads/platforms/tiktok.py`
 trùng tên nhưng là hai file không liên quan — một cái đọc gợi ý tìm kiếm, một cái đọc thư
 viện quảng cáo.
+
+**Kiểu dữ liệu tồn tại ở hai nơi.** `frontend/lib/*/types.ts` là bản mô tả hình dạng JSON mà
+`backend/lib/*/types.py` phát ra. TypeScript không kiểm tra được qua ranh giới HTTP, nên hai
+file cố ý giữ đúng thứ tự trường: sửa bên Python thì sửa luôn bên TypeScript, và đối chiếu
+bằng mắt là ra ngay.
 
 ---
 
@@ -108,11 +165,14 @@ viện quảng cáo.
 
 Xem hướng dẫn đầy đủ kèm ví dụ ở **[CONTRIBUTING.md](CONTRIBUTING.md)**. Tóm tắt:
 
-* **Nguồn quảng cáo mới** (Shopee Ads, Google Ads, Lazada…): tạo `lib/ads/platforms/<tên>.ts`
-  theo hợp đồng ở `lib/ads/platform.ts`, rồi thêm một dòng vào `lib/ads/platforms/index.ts`.
-  Không phải sửa route, giao diện, proxy media hay file cấu hình nào.
-* **Nguồn từ khoá mới**: tạo `lib/keywords/providers/<tên>.ts` theo `lib/keywords/provider.ts`,
-  thêm một dòng vào `lib/keywords/providers/index.ts`.
+* **Nguồn quảng cáo mới** (Shopee Ads, Google Ads, Lazada…): tạo
+  `backend/lib/ads/platforms/<tên>.py` kế thừa lớp `AdPlatform` ở
+  [backend/lib/ads/platform.py](backend/lib/ads/platform.py), rồi thêm một dòng vào
+  `backend/lib/ads/platforms/__init__.py`. Không phải sửa route, giao diện, proxy media hay
+  file cấu hình nào.
+* **Nguồn từ khoá mới**: tạo `backend/lib/keywords/providers/<tên>.py` theo
+  `backend/lib/keywords/provider.py`, thêm một dòng vào
+  `backend/lib/keywords/providers/__init__.py`.
 
 ---
 
@@ -122,9 +182,10 @@ Xem hướng dẫn đầy đủ kèm ví dụ ở **[CONTRIBUTING.md](CONTRIBUTI
 
 | Đường dẫn | Vì sao không commit |
 |---|---|
-| `node_modules/` | Dựng lại được từ `package-lock.json`, hàng trăm MB |
-| `.next/` | Kết quả build, luôn dựng lại được |
+| `frontend/node_modules/` | Dựng lại được từ `package-lock.json`, hàng trăm MB |
+| `frontend/.next/` | Kết quả build, luôn dựng lại được |
 | `next-env.d.ts`, `*.tsbuildinfo` | Next.js và TypeScript tự sinh mỗi lần chạy |
+| `__pycache__/`, `*.pyc` | Python tự sinh |
 | `.env`, `.env.local` | **Chứa bí mật** (cookie Facebook). Chỉ commit `.env.example` |
 | `_archive/` | Kho script thăm dò một lần và dữ liệu dump — xem giải thích bên dưới |
 | `.probe/` | Ảnh chụp và JSON dump từ các lần thăm dò |
@@ -136,8 +197,9 @@ Xem hướng dẫn đầy đủ kèm ví dụ ở **[CONTRIBUTING.md](CONTRIBUTI
 không phải phần mềm đang chạy — mỗi file chỉ trả lời đúng một câu hỏi rồi hết việc, và
 **mọi kết luận rút ra từ chúng đã được ghi thành comment ngay trong file của nguồn tương
 ứng** (ví dụ vì sao TikTok chỉ nhận `period` là 7/30/180, vì sao Shopee phải dùng
-`search_hint` chứ không phải `search_suggestion`). Giữ lại trên máy để tra khi một nền tảng
-đổi cấu trúc, nhưng đưa lên GitHub thì chỉ làm repo khó đọc.
+`search_hint` chứ không phải `search_suggestion`). Chúng viết bằng TypeScript vì có từ trước
+khi dự án chuyển sang Python, nên không còn chạy được với repo hiện tại — giá trị nằm ở phần
+ghi chép, không ở phần code.
 
 Nếu muốn xoá hẳn cho gọn: `rm -rf _archive`.
 
@@ -178,4 +240,7 @@ người bản địa nước đó nhìn thấy. Khi nào cần so sánh thị t
 * **Không lưu video.** Media được phát xuyên qua `/api/media`, không ghi gì xuống đĩa. Link CDN
   có chữ ký và hết hạn sau vài giờ — mở lại hôm sau thì search lại để lấy link mới.
 * **Chấm đỏ ở thanh trạng thái** nghĩa là nguồn đó đang có vấn đề, có thể nền tảng đã đổi cấu
-  trúc. File cần sửa khi đó chính là `lib/ads/platforms/<tên nguồn>.ts` và không file nào khác.
+  trúc. File cần sửa khi đó chính là `backend/lib/ads/platforms/<tên nguồn>.py` và không file
+  nào khác.
+* **Trang báo "Chưa kết nối được tầng dữ liệu"** nghĩa là backend Python chưa chạy, không phải
+  công cụ hỏng. Bật lại `python -m uvicorn app.main:app` trong `backend/` rồi tải lại trang.
