@@ -47,15 +47,26 @@
     button.link:hover { background: color-mix(in srgb, var(--disc) 8%, transparent); }
     .hint { font-size: 11.5px; color: var(--muted); margin-top: 8px; }
 
-    /* Công tắc "So sánh nhiều sàn" — bật thì mục ① quay lại kiểu chọn-cộng-dồn cũ. */
-    .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12.5px; color: var(--muted); user-select: none; margin-left: auto; }
-    .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
-    .switchtrack { width: 34px; height: 20px; border-radius: 999px; background: var(--line); position: relative; flex: none; transition: background-color .16s var(--ease); }
-    .switchtrack::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--bg); box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .16s var(--ease); }
-    .switch input:checked + .switchtrack { background: var(--accent); }
-    .switch input:checked + .switchtrack::after { transform: translateX(14px); }
-    .switch input:focus-visible + .switchtrack { outline: 2px solid var(--accent); outline-offset: 2px; }
-    .switch:hover .switchlbl { color: var(--fg); }
+    /* ---- Bước có số, soi gương mục Image Search (`styles/imagesearch.css`) ----
+       Giữ hai bên giống nhau là có chủ đích: người dùng đi qua lại giữa hai mục suốt, nên
+       cùng một thao tác không được đòi học hai kiểu điều khiển khác nhau. */
+    .step + .step { padding-top: 18px; border-top: 1px solid var(--line-soft); margin-top: 18px; }
+    .step-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+    .step-head h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; font-weight: 700; }
+    .step-no { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; flex: none; }
+    .step-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+    /* Nút HAI NẤC. Rõ hơn công tắc gạt vì nó nói thẳng cả hai lựa chọn, thay vì bắt người
+       dùng đoán "bật" nghĩa là gì. */
+    .mode { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+    .mode button { padding: 5px 12px; border: 0; border-radius: 0; background: var(--bg); color: var(--muted); font-size: 12.5px; font-weight: 650; cursor: pointer; }
+    .mode button:hover { color: var(--fg); }
+    .mode button[data-on="true"] { background: var(--accent); color: #fff; }
+
+    button.ghost { background: transparent; border-color: var(--line); color: var(--muted); font-size: 12.5px; padding: 5px 11px; font-weight: 600; }
+    button.ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+    .picks { display: flex; flex-wrap: wrap; gap: 10px; }
 
     .status { padding: 13px 24px; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid var(--line-soft); }
     .status.err { color: var(--disc); font-weight: 600; }
@@ -100,30 +111,44 @@
 
     .row2 { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; margin-top: 12px; }
     .lbl { font-size: 12px; color: var(--muted); font-weight: 700; letter-spacing: .01em; }
+    /* Chip chọn sàn / chọn nước — cùng một dáng với `.img-source` của mục Image Search. */
     .rgchip {
-      font: inherit; font-size: 13px; padding: 6px 11px; border: 1px solid var(--line); border-radius: 999px;
-      background: var(--bg); color: var(--fg); cursor: pointer; display: inline-flex; gap: 5px; align-items: center;
-    }
-    .rgchip:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
-    .rgchip[data-on="1"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 700; box-shadow: var(--shadow-sm); }
-    .rgchip.dim { opacity: .48; cursor: default; }
-    .rgchip.dim:hover { border-color: var(--line); }
-    .rgchip .ok { color: var(--good); font-weight: 700; } .rgchip .no { color: var(--disc); font-weight: 700; }
-
-    /* Ô "+ Thêm nước" — dáng chip đứt nét để phân biệt với chip nước ĐÃ chọn cạnh nó. */
-    select.region-add {
-      font-size: 12.5px; padding: 6px 12px; border: 1.5px dashed var(--line); border-radius: 999px;
+      font: inherit; font-size: 13.5px; font-weight: 600; padding: 9px 16px;
+      border: 1.5px solid var(--line); border-radius: 999px;
       background: var(--bg); color: var(--muted); cursor: pointer;
+      display: inline-flex; gap: 8px; align-items: center;
+      transition: border-color .15s var(--ease), background-color .15s var(--ease), color .15s var(--ease);
     }
-    select.region-add:hover { border-color: var(--accent); color: var(--accent); }
+    .rgchip:hover { border-color: var(--accent); color: var(--accent); }
+    .rgchip[data-on="1"] { border-color: var(--accent); background: var(--accent); color: #fff; }
+    .rgchip[data-on="1"]:hover { color: #fff; }
+    .rgchip.dim { opacity: .45; cursor: default; }
+    .rgchip.dim:hover { border-color: var(--line); color: var(--muted); }
+
+    /* Ô tick GIỮ CHỖ SẴN kể cả khi chưa chọn — chép nguyên lập luận từ `.img-source-tick`:
+       không giữ chỗ thì chip nở ra vài pixel lúc bấm và cả hàng nhích sang phải, chuyển động
+       ấy đọc thành lỗi vẽ chứ không thành phản hồi. */
+    .tick {
+      display: inline-flex; align-items: center; justify-content: center; flex: none;
+      width: 16px; height: 16px; border-radius: 999px; border: 1.5px solid var(--line);
+      font-size: 10px; line-height: 1; color: transparent;
+    }
+    .rgchip[data-on="1"] .tick { border-color: #fff; background: #fff; color: var(--accent); }
+
+    /* Huy hiệu đăng nhập nằm SAU tên nước. Trên chip đang chọn (nền đặc) phải sáng lên, nếu
+       không thì ✓ xanh trên nền xanh coi như tàng hình. */
+    .rgchip .ok { color: var(--good); font-weight: 700; }
+    .rgchip .no { color: var(--disc); font-weight: 700; }
+    .rgchip[data-on="1"] .ok, .rgchip[data-on="1"] .no, .rgchip[data-on="1"] .sub { color: #fff; opacity: .9; }
 
     /* Region chọn theo TỪNG sàn → gom nhóm theo sàn trong một hộp, tránh lẫn lộn khi chọn
        nhiều sàn có bộ region khác nhau (Shopee 11 nước vs Amazon 8 nước…). */
-    #regionSection { align-items: flex-start; }
-    #regions { display: flex; flex-direction: column; gap: 9px; flex: 1; min-width: 0; border: 1px solid var(--line-soft); border-radius: var(--radius); padding: 11px 13px; background: var(--panel); }
-    .rgroup { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
-    .rgroup + .rgroup { border-top: 1px solid var(--line-soft); padding-top: 9px; }
-    .rglabel { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; min-width: 74px; }
+    #regions { display: flex; flex-direction: column; gap: 12px; }
+    .rgroup { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .rgroup + .rgroup { border-top: 1px solid var(--line-soft); padding-top: 12px; }
+    /* Nhãn sàn chỉ hiện khi có TỪ HAI sàn trở lên — một sàn thì nó chỉ lặp lại thông tin đã
+       thấy ở bước 1. `renderRegions` quyết định có gắn nhãn hay không. */
+    .rglabel { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; width: 100%; }
 
     .tabs { display: flex; gap: 6px; }
     .tab { font: inherit; padding: 9px 18px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--muted); cursor: pointer; font-weight: 650; }
@@ -190,30 +215,46 @@
   <!-- ===== TAB SẢN PHẨM ===== -->
   <div id="tabProduct">
     <div class="ctrls">
-      <div class="row2">
-        <span class="lbl">① Sàn</span>
-        <span id="platforms"></span>
-        <label class="switch" id="multiPfWrap" title="Bật để chọn nhiều sàn cùng lúc và so sánh">
-          <input type="checkbox" id="multiPf" />
-          <span class="switchtrack"></span>
-          <span class="switchlbl">So sánh nhiều sàn</span>
-        </label>
+      <div class="step">
+        <div class="step-head">
+          <h3><span class="step-no">1</span> Chọn sàn</h3>
+          <div class="mode" id="pfMode">
+            <button data-multi="0" data-on="true">Một sàn</button>
+            <button data-multi="1" data-on="false">Nhiều sàn</button>
+          </div>
+        </div>
+        <div id="platforms" class="picks"></div>
       </div>
-      <div class="row2" id="regionSection">
-        <span class="lbl">② Region <span class="sub" style="font-weight:400">(chọn từ danh sách)</span></span>
+
+      <div class="step" id="regionSection">
+        <div class="step-head">
+          <h3><span class="step-no">2</span> Chọn quốc gia</h3>
+          <div class="step-actions">
+            <div class="mode" id="rgMode">
+              <button data-multi="0" data-on="true">Một nước</button>
+              <button data-multi="1" data-on="false">Nhiều nước</button>
+            </div>
+            <button id="refreshLogin" class="ghost">⟳ Kiểm tra đăng nhập</button>
+          </div>
+        </div>
         <div id="regions"></div>
-        <button id="refreshLogin" class="link" style="border-color:var(--muted); color:var(--muted)">⟳ Kiểm tra đăng nhập</button>
       </div>
-      <div class="controls" style="margin-top:12px">
-        <span class="lbl">③</span>
-        <input id="kw" placeholder="Keyword" />
-        <select id="count" title="Số lượng crawl mỗi từ khoá / region">
-          <option value="20">20 SP</option>
-          <option value="40">40 SP</option>
-          <option value="60" selected>60 SP</option>
-          <option value="120">120 SP</option>
-        </select>
-        <button id="go" class="primary">Research</button>
+
+      <div class="step">
+        <div class="step-head">
+          <h3><span class="step-no">3</span> Từ khoá</h3>
+          <span class="sub">nhiều từ thì cách nhau bằng dấu phẩy</span>
+        </div>
+        <div class="controls">
+          <input id="kw" placeholder="Ví dụ: tai nghe bluetooth, máy sấy tóc" />
+          <select id="count" title="Số lượng crawl mỗi từ khoá / region">
+            <option value="20">20 SP</option>
+            <option value="40">40 SP</option>
+            <option value="60" selected>60 SP</option>
+            <option value="120">120 SP</option>
+          </select>
+          <button id="go" class="primary">Research</button>
+        </div>
       </div>
     </div>
 

@@ -225,13 +225,13 @@ function renderPlatforms() {
   box.innerHTML = '';
   for (const [id, cfg] of Object.entries(PLATFORMS)) {
     if (cfg.content) continue; // sàn content (FB) nằm ở tab Content, không hiện ở tab Sản phẩm
-    const rg = cfg.regions === 'any' ? 'mọi nước' : (cfg.regions.length ? `${cfg.regions.length} region` : 'nội địa/không region');
+    const rg = cfg.regions === 'any' ? 'mọi nước' : (cfg.regions.length ? `${cfg.regions.length} nước` : 'nội địa/không region');
     const chip = document.createElement('button');
     chip.className = 'rgchip' + (cfg.active ? '' : ' dim');
     chip.dataset.pf = id;
     chip.dataset.on = selectedPlatforms.has(id) ? '1' : '0';
-    chip.textContent = cfg.label;
-    chip.title = `${cfg.label} · ${rg}${cfg.active ? ' — bấm chọn/bỏ' : ' — chưa hỗ trợ'}`;
+    chip.innerHTML = `<span class="tick" aria-hidden>✓</span>${esc(cfg.label)}`;
+    chip.title = `${cfg.label} · ${rg}${cfg.active ? '' : ' — chưa hỗ trợ'}`;
     box.appendChild(chip);
   }
 }
@@ -241,7 +241,7 @@ function updateRegionSection() {
   const pfs = regionPlatforms();
   const section = document.getElementById('regionSection');
   if (!pfs.length) { if (section) section.style.display = 'none'; return; } // Taobao/1688/Etsy → ẩn region
-  if (section) section.style.display = 'flex';
+  if (section) section.style.display = ''; // trả về display của CSS (.step là block)
   // Bỏ region của sàn không còn được chọn.
   for (const key of [...selectedRegions]) if (!pfs.includes(key.split(':')[0])) selectedRegions.delete(key);
   // Mỗi sàn có region phải giữ tối thiểu 1 (mặc định nước đầu) để nó còn chạy được.
@@ -274,63 +274,48 @@ async function refreshLogin() {
   }
 }
 
-// Vẽ region theo NHÓM sàn: một Ô THẢ XUỐNG để THÊM nước, và chip cho từng nước ĐÃ CHỌN.
+// Vẽ nước theo NHÓM sàn, dùng đúng dáng chip của bước 1 — chọn nước và chọn sàn là cùng một
+// thao tác, nên không bắt người dùng học hai kiểu điều khiển.
 //
-// Trước đây hiện MỌI nước cùng lúc (Shopee một mình đã 11 chip) — nhìn rối, và không phải ai
-// cũng cần so 11 nước một lúc. Giờ mặc định chỉ thấy nước đang chọn; muốn thêm thì mở danh
-// sách. Logic bấm-chip-để-bỏ/mở-đăng-nhập giữ NGUYÊN — chỉ đổi nguồn hiện ra của các chip.
+// Từng thử ô thả xuống "+ Thêm nước" để đỡ rối khi Shopee có 11 nước. Bỏ, vì nó giấu mất thứ
+// đang có: nhìn vào không biết ngay còn chọn được nước nào, phải mở ra mới thấy. Chip hiện hết
+// thì tốn hai hàng, nhưng đọc một lượt là xong.
 function renderRegions() {
   const box = document.getElementById('regions');
   if (!box) return;
   box.innerHTML = '';
-  for (const pf of regionPlatforms()) {
+  const pfs = regionPlatforms();
+  for (const pf of pfs) {
     const cfg = PLATFORMS[pf];
     const group = document.createElement('div');
     group.className = 'rgroup';
-    const label = document.createElement('span');
-    label.className = 'rglabel';
-    label.textContent = cfg.label;
-    group.appendChild(label);
 
-    const nhanNuoc = (code) => {
-      const isLoginRegion = !!(LOGIN[pf] && LOGIN[pf].domain[code]);
-      const st = loginStatus[`${pf}:${code}`];
-      const badge = !isLoginRegion
-        ? '🌐'
-        : st === true ? '✓' : st === false ? '✕' : '…';
-      return { isLoginRegion, st, badge };
-    };
-
-    // Ô "+ Thêm nước": chỉ liệt kê nước CHƯA chọn của sàn này. Chọn xong danh sách nước cũng
-    // rút bớt lại — không có gì để thêm nữa thì cả ô này biến mất.
-    const chuaChon = cfg.regions.filter((c) => !selectedRegions.has(`${pf}:${c}`));
-    if (chuaChon.length) {
-      const add = document.createElement('select');
-      add.className = 'region-add';
-      add.dataset.pf = pf;
-      add.innerHTML =
-        `<option value="">+ Thêm nước…</option>` +
-        chuaChon
-          .map((c) => {
-            const { badge } = nhanNuoc(c);
-            return `<option value="${c}">${FLAG[c] || ''} ${COUNTRY[c] || c} (${c}) ${badge}</option>`;
-          })
-          .join('');
-      group.appendChild(add);
+    // Nhãn sàn chỉ cần khi có TỪ HAI sàn — một sàn thì nó lặp lại đúng thứ vừa đọc ở bước 1.
+    if (pfs.length > 1) {
+      const label = document.createElement('span');
+      label.className = 'rglabel';
+      label.textContent = cfg.label;
+      group.appendChild(label);
     }
 
     for (const code of cfg.regions) {
-      if (!selectedRegions.has(`${pf}:${code}`)) continue; // chỉ vẽ chip cho nước ĐÃ CHỌN
-      const { isLoginRegion, st, badge } = nhanNuoc(code);
+      const isLoginRegion = !!(LOGIN[pf] && LOGIN[pf].domain[code]); // Shopee/TikTok cần đăng nhập; Amazon công khai
+      const st = loginStatus[`${pf}:${code}`];
+      const on = selectedRegions.has(`${pf}:${code}`);
+      const badge = !isLoginRegion
+        ? '<span class="sub">🌐</span>'
+        : st === true ? '<span class="ok">✓</span>' : st === false ? '<span class="no">✕</span>' : '<span class="sub">…</span>';
       const chip = document.createElement('button');
       chip.className = 'rgchip';
       chip.dataset.pf = pf;
       chip.dataset.code = code;
-      chip.dataset.on = '1';
-      chip.innerHTML = `${FLAG[code] || ''} ${COUNTRY[code] || code} <span class="sub">${code}</span> <span class="${isLoginRegion ? (st ? 'ok' : 'no') : 'sub'}">${badge}</span>`;
+      chip.dataset.on = on ? '1' : '0';
+      chip.innerHTML = `<span class="tick" aria-hidden>✓</span>${FLAG[code] || ''} ${esc(COUNTRY[code] || code)} ${badge}`;
       chip.title = !isLoginRegion
-        ? `${cfg.label} · ${COUNTRY[code] || code} — công khai, không cần đăng nhập. Bấm để bỏ.`
-        : st === false ? `${cfg.label} · ${COUNTRY[code] || code}: chưa đăng nhập — bấm để mở đăng nhập` : `${cfg.label} · ${COUNTRY[code] || code} — bấm để bỏ`;
+        ? `${cfg.label} · ${COUNTRY[code] || code} (${code}) — công khai, không cần đăng nhập`
+        : st === false
+          ? `${cfg.label} · ${COUNTRY[code] || code} (${code}): chưa đăng nhập — bấm để mở trang đăng nhập`
+          : `${cfg.label} · ${COUNTRY[code] || code} (${code})`;
       group.appendChild(chip);
     }
     box.appendChild(group);
@@ -989,30 +974,68 @@ $('go').addEventListener('click', research);
 $('kw').addEventListener('keydown', (e) => { if (e.key === 'Enter') research(); });
 $('kwfilter').addEventListener('change', render);
 $('refreshLogin').addEventListener('click', refreshLogin);
-$('regions').addEventListener('change', (e) => {
-  const add = e.target.closest('select.region-add');
-  if (!add || !add.value) return;
-  selectedRegions.add(`${add.dataset.pf}:${add.value}`);
-  renderRegions();
-});
 $('regions').addEventListener('click', (e) => {
   const chip = e.target.closest('.rgchip');
   if (!chip) return;
   const pf = chip.dataset.pf, code = chip.dataset.code;
-  // Chưa đăng nhập (Shopee/TikTok) → mở tab đăng nhập đúng sàn+region đó.
+  // Chưa đăng nhập (Shopee/TikTok) → mở tab đăng nhập đúng sàn+nước đó, không đổi lựa chọn.
   const spec = LOGIN[pf];
   if (spec && spec.domain[code] && loginStatus[`${pf}:${code}`] === false) { chrome.tabs.create({ url: `https://${spec.domain[code]}/` }); return; }
   const key = `${pf}:${code}`;
-  if (selectedRegions.has(key)) {
-    // Không để một sàn trống hết region — muốn bỏ hẳn sàn thì bỏ chọn chip sàn ở mục ①.
-    if (PLATFORMS[pf].regions.some((c) => c !== code && selectedRegions.has(`${pf}:${c}`))) selectedRegions.delete(key);
-  } else selectedRegions.add(key);
+  if (multiRegion) {
+    if (selectedRegions.has(key)) {
+      // Không để một sàn trống hết nước — muốn bỏ hẳn sàn thì bỏ chọn nó ở bước 1.
+      if (PLATFORMS[pf].regions.some((c) => c !== code && selectedRegions.has(`${pf}:${c}`))) selectedRegions.delete(key);
+    } else selectedRegions.add(key);
+  } else {
+    // Chọn-một: thay thế nước đang chọn CỦA CHÍNH SÀN ĐÓ, không đụng tới sàn khác.
+    for (const c of PLATFORMS[pf].regions) selectedRegions.delete(`${pf}:${c}`);
+    selectedRegions.add(key);
+  }
   renderRegions();
 });
-// Mặc định CHỌN-MỘT: bấm sàn nào thì THAY THẾ hẳn sàn đang chọn, giống một nhóm nút radio.
-// Bật công tắc "So sánh nhiều sàn" thì quay lại kiểu CỘNG DỒN (toggle add/remove) như trước —
-// cần khi người dùng thật sự muốn xếp Shopee cạnh TikTok Shop để so giá.
+// Hai chế độ, cho cả SÀN lẫn NƯỚC. Mặc định chọn-một: bấm cái nào thì THAY THẾ hẳn cái đang
+// chọn, như một nhóm nút radio. Chuyển sang "Nhiều" thì quay lại kiểu cộng dồn — cần khi muốn
+// xếp Shopee cạnh TikTok Shop, hay so Việt Nam với Thái Lan trong cùng một bảng.
 let multiPlatform = false;
+let multiRegion = false;
+
+/** Gắn một nút hai nấc vào một biến chế độ. Trả về hàm để đọc lại trạng thái khi cần vẽ lại. */
+function bindMode(id, onChange) {
+  const box = $(id);
+  box.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-multi]');
+    if (!btn || btn.dataset.on === 'true') return;
+    for (const b of box.querySelectorAll('button[data-multi]')) b.dataset.on = String(b === btn);
+    onChange(btn.dataset.multi === '1');
+  });
+}
+
+bindMode('pfMode', (multi) => {
+  multiPlatform = multi;
+  if (!multi && selectedPlatforms.size > 1) {
+    // Về lại một sàn thì GIỮ cái đầu tiên. Bỏ hết rồi bắt chọn lại là phạt người dùng vì đã
+    // thử một chế độ — cùng lập luận với `switchMode` ở `ImageSearchWorkspace.tsx`.
+    const keep = [...selectedPlatforms][0];
+    selectedPlatforms.clear();
+    selectedPlatforms.add(keep);
+  }
+  renderPlatforms();
+  updateRegionSection();
+  refreshLogin();
+});
+
+bindMode('rgMode', (multi) => {
+  multiRegion = multi;
+  if (!multi) {
+    // Mỗi sàn giữ đúng MỘT nước — nước đầu tiên đang chọn của chính sàn đó.
+    for (const pf of regionPlatforms()) {
+      const dangChon = PLATFORMS[pf].regions.filter((c) => selectedRegions.has(`${pf}:${c}`));
+      for (const c of dangChon.slice(1)) selectedRegions.delete(`${pf}:${c}`);
+    }
+  }
+  renderRegions();
+});
 
 $('platforms').addEventListener('click', (e) => {
   const chip = e.target.closest('.rgchip');
@@ -1025,19 +1048,6 @@ $('platforms').addEventListener('click', (e) => {
   } else if (!(selectedPlatforms.size === 1 && selectedPlatforms.has(id))) {
     selectedPlatforms.clear();
     selectedPlatforms.add(id);
-  }
-  renderPlatforms();
-  updateRegionSection();
-  refreshLogin();
-});
-
-$('multiPf').addEventListener('change', (e) => {
-  multiPlatform = e.target.checked;
-  if (!multiPlatform && selectedPlatforms.size > 1) {
-    // Tắt so sánh → giữ lại đúng MỘT sàn (sàn đầu tiên trong tập đang chọn).
-    const keep = [...selectedPlatforms][0];
-    selectedPlatforms.clear();
-    selectedPlatforms.add(keep);
   }
   renderPlatforms();
   updateRegionSection();
