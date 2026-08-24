@@ -11,6 +11,8 @@ Công cụ nội bộ cho phòng test sản phẩm. Bốn mục lớn, độc l�
 
 Ngoài ra có `/guide` — trang hướng dẫn đọc số liệu, **nên đọc trước khi ra quyết định test sản phẩm**.
 
+> **Chỉ muốn chạy thử?** Đọc [QUICKSTART.md](QUICKSTART.md) — mười phút, không cần hiểu phần còn lại.
+
 **Một số nguồn chạy trong trình duyệt của bạn, không phải trên server.** Shopee và TikTok Shop
 trả 403 cho mọi lượt gọi ẩn danh từ server, nhưng trả dữ liệu bình thường cho chính phiên đăng
 nhập của bạn. Phần đó do [extension/](extension/) đảm nhiệm, và cookie không bao giờ rời trình
