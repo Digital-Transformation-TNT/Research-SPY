@@ -71,6 +71,14 @@ export type Ad = {
   countries: CountryCode[]
   platforms?: string[]
   score?: AdScore
+  /**
+   * Cụm từ khoá có xuất hiện trong phần chữ đọc được của quảng cáo không.
+   *
+   * `false` KHÔNG phải "quảng cáo rác": cụm từ có thể nằm trong ảnh, hoặc Facebook khớp nó ở
+   * trang đích mà ta không đọc được. Backend đã xếp những quảng cáo này xuống dưới; ở đây chỉ
+   * ghi chú để người dùng biết vì sao chúng có mặt. Xem `backend/lib/ads/relevance.py`.
+   */
+  phraseHit?: boolean
 }
 
 export type PlatformStatus = {

@@ -36,11 +36,17 @@ class Creative(CamelModel):
 
 class AdScore(CamelModel):
     """
-    Kết quả chấm điểm.
+    Kết quả chấm điểm. CHỈ dùng để xếp hạng, không còn hiện lên giao diện.
 
     `cvr_proxy` KHÔNG phải tỷ lệ chuyển đổi. Không nền tảng nào công bố CVR — đó là dữ liệu
     riêng của advertiser. Đây là chỉ số 0-100 suy ra từ độ dài đời quảng cáo, mức độ lặp
-    creative và tương tác; giao diện luôn phải ghi rõ đây là ước lượng.
+    creative và tương tác.
+
+    Thẻ quảng cáo từng hiện cả điểm tổng, `cvr_proxy`, `content_score` và `reasons`. Đã gỡ
+    hết theo yêu cầu người dùng: với người đi tìm sản phẩm để bán, một điểm số tổng hợp
+    không nói được gì mà con số gốc không nói rõ hơn. Điểm vẫn được tính vì thứ tự thẻ dựa
+    vào nó — muốn hiện lại thì thêm vào `components/ads/AdCard.tsx`, dữ liệu vẫn đang được
+    gửi xuống nguyên vẹn.
     """
 
     total: int
@@ -92,6 +98,13 @@ class Ad(CamelModel):
     platforms: list[str] | None = None
     #: Do `lib/ads/scoring.py` điền vào.
     score: AdScore | None = None
+    #: Cụm từ khoá có xuất hiện trong phần chữ ĐỌC ĐƯỢC của quảng cáo không (tiêu đề, nội dung,
+    #: CTA, tên nhà quảng cáo). Do `lib/ads/relevance.py` điền vào ở `search.py`.
+    #:
+    #: `False` KHÔNG có nghĩa là quảng cáo rác: cụm từ có thể nằm trong ảnh, hoặc Facebook khớp
+    #: nó ở trang đích mà ta không đọc được. Nó chỉ được dùng để XẾP quảng cáo ấy xuống dưới và
+    #: để giao diện ghi chú — không bao giờ để loại bỏ. Xem lập luận ở `relevance.py`.
+    phrase_hit: bool | None = None
 
 
 class AdSearchParams(CamelModel):

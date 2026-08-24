@@ -3,6 +3,9 @@
 # ---------------------------------------------------------------------------
 node_modules/
 .next/
+# Thư mục build phụ do `NEXT_DIST_DIR` sinh ra — xem `frontend/next.config.mjs`. Dùng khi cần
+# chạy song song một server thứ hai hoặc một lượt build mà không xoá chunk của server đang chạy.
+.next-*/
 out/
 build/
 next-env.d.ts
@@ -24,6 +27,20 @@ venv/
 .env
 .env.local
 .env.*.local
+
+# Trạng thái phiên đã đăng nhập do `scripts/auth/*` ghi ra. Tương đương một mật khẩu đang
+# mở — ai có file này là đăng nhập được vào tài khoản đó.
+backend/.auth/
+
+# Danh sách proxy tải từ nhà cung cấp. Mỗi dòng có dạng ip:port:user:pass, tức là mật khẩu
+# nằm thẳng trong file — commit lên là người khác dùng hết băng thông đã trả tiền của bạn.
+# Chỗ đúng của chúng là `TIKTOK_PROXY_*` trong `.env.local`.
+*proxies*.txt
+*proxy*.txt
+
+# Kho cache ghi xuống đĩa (`lib/core/store.py`). Dựng lại được bằng cách đi lấy lại
+# dữ liệu, nên không thuộc về repo — nhưng lấy lại thì tốn thật, xem docstring ở đó.
+backend/.cache/
 
 # ---------------------------------------------------------------------------
 # Kho lưu các script thăm dò một lần và dữ liệu dump.
@@ -53,3 +70,7 @@ desktop.ini
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Kho tạm dạng pickle do các script dò ghi ra (`backend/_hits.pkl`). Dựng lại được, và một
+# tệp nhị phân trong git thì mỗi lần đổi là một khối rác mới không diff được.
+*.pkl

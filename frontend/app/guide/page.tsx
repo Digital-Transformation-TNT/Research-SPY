@@ -29,13 +29,16 @@ export default function GuidePage() {
             <li>
               <div>
                 <strong>Bắt đầu từ tab Từ khoá.</strong> Nhập từ khoá gốc của ngành hàng (vd <em>quần jeans</em>), không
-                nhập cụm quá dài. Tool sẽ mở rộng ra các biến thể thật đang được tìm kiếm.
+                nhập cụm quá dài. Tool sẽ mở rộng ra các biến thể thật đang được tìm kiếm. Ba ô{' '}
+                <em>Quốc gia · Thời gian · Loại tìm kiếm</em> là ba ô của chính Google Trends và áp cho cả danh sách
+                lẫn đường lượng tìm — đổi chúng là đổi câu hỏi, không phải đổi cách hiển thị.
               </div>
             </li>
             <li>
               <div>
-                <strong>Chọn vài từ khoá điểm cao.</strong> Ưu tiên từ được nhiều nguồn cùng công nhận — nhãn nguồn hiện
-                ngay dưới mỗi từ khoá. Bấm <em>vì sao?</em> để xem lý do chấm điểm.
+                <strong>Đọc cột &ldquo;Lượng tìm 12 tháng&rdquo;.</strong> Đường vẽ hình dạng nhu cầu theo thời gian, kèm
+                tháng cao điểm — đó mới là thứ quyết định nên test lúc nào. Cột &ldquo;Bảng xếp hạng&rdquo; cho biết nền
+                tảng nào gợi ý từ khoá đó và ở vị trí mấy; từ được nhiều nguồn cùng công nhận thì đáng tin hơn.
               </div>
             </li>
             <li>

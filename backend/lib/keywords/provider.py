@@ -15,6 +15,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+from .types import SearchContext
+
 
 @dataclass
 class Suggestion:
@@ -22,6 +24,24 @@ class Suggestion:
 
     keyword: str
     score: float | None = None
+    #: Lượng tìm tương đối 0–100, chỉ có ở nguồn thật sự ĐO được nhu cầu.
+    #:
+    #: Khác hẳn `score`: `score` là điểm liên quan do sàn tự chấm, còn đây là khối lượng tìm
+    #: kiếm. Phân biệt hai thứ là quan trọng, vì chỉ cái sau mới trả lời được câu "có ai tìm
+    #: từ này không" — câu mà thứ tự gợi ý của autocomplete hoàn toàn không trả lời được.
+    demand: float | None = None
+    #: Từ khoá đang tăng nhanh. Đi kèm `demand` là phần trăm tăng chứ không phải khối lượng,
+    #: nên hai loại này không bao giờ được xếp chung một thang.
+    rising: bool = False
+    #: Phần trăm thay đổi so với kỳ trước, cho cụm ở bảng "truy vấn hàng đầu".
+    #:
+    #: Đây là cột "Thay đổi" của chính giao diện Trends, đi CẶP với `demand`: `demand` nói
+    #: cụm này to tới đâu so với cụm to nhất, còn nó nói cụm này đang lên hay xuống. Google
+    #: hiện hai con số cạnh nhau vì một mình con nào cũng không đủ — một cụm 100/100 đang
+    #: giảm 30% và một cụm 40/100 đang tăng 30% là hai cơ hội rất khác nhau.
+    #:
+    #: `None` với các cụm ở bảng "đang tăng": ở đó `demand` đã LÀ phần trăm tăng rồi.
+    change_percent: float | None = None
 
 
 class KeywordProvider(ABC):
@@ -30,12 +50,66 @@ class KeywordProvider(ABC):
     #: Tên hiển thị trên giao diện.
     label: str
     #: Nguồn có công bố điểm liên quan của riêng nó không.
-    #: Hiện chỉ Shopee có, và điểm đó tham gia vào công thức xếp hạng.
+    #: Shopee và TikTok có, và điểm đó tham gia vào công thức xếp hạng.
     has_native_score: bool = False
+    #: Câu giải thích điểm gốc, hiện trong phần lý do xếp hạng.
+    #:
+    #: Nằm trên provider chứ không nằm ở `rank.py` vì mỗi nguồn ĐO một thứ khác nhau: 0.52 của
+    #: Shopee là điểm liên quan do mô hình của sàn chấm, còn 8 của TikTok là số kênh đã gọi cụm
+    #: đó ra. Viết cứng một câu chung ở nơi xếp hạng sẽ mô tả sai một trong hai — và đã sai
+    #: thật: câu cũ viết thẳng chữ "Shopee", nên nguồn thứ hai vừa có điểm gốc là lời giải
+    #: thích lập tức nói tên nhầm nguồn.
+    #:
+    #: Nhận `{label}` (tên nguồn) và `{value}` (điểm đã định dạng).
+    native_score_note: str = "{label} chấm điểm liên quan {value}"
+    #: Nguồn chấm chính — nguồn ĐO được nhu cầu thật, không chỉ gợi ý.
+    #:
+    #: Đúng một nguồn được đặt cờ này, và nó quyết định hai thứ: rổ ứng viên của bảng xếp hạng
+    #: (xem `_primary_pool` ở `lib/keywords/rank.py`) và nguồn được tick sẵn khi mở trang. Đặt
+    #: thành cờ trên provider thay vì viết thẳng chuỗi "trends" ở nhiều nơi, để chỉ có một chỗ
+    #: duy nhất nói ra điều đó.
+    is_primary: bool = False
     #: Các thị trường nguồn này phục vụ. `None` nghĩa là mọi thị trường.
     #: Ví dụ Shopee chạy một tên miền riêng cho mỗi nước và không có mặt ở US.
     markets: list[str] | None = None
+    #: Chọn thị trường có thật sự đổi được KẾT QUẢ nguồn này trả về không.
+    #:
+    #: Khác `markets`, và hai cái không suy ra được nhau. `markets` nói nguồn có PHỤC VỤ nước
+    #: đó không; cờ này nói đổi nước thì kết quả có khác đi không.
+    #:
+    #: TikTok là nguồn duy nhất đặt `False`, và lịch sử của nó giải thích vì sao cần hai cờ
+    #: riêng. Endpoint preview không nhận tham số vùng nào — nó trả gợi ý theo IP máy chủ. Ban
+    #: đầu nguồn này để `markets = None` và chỉ dựa vào cờ này để giao diện ghi chú; đo
+    #: 2026-08-06 cho thấy như vậy là chưa đủ, vì một ghi chú không ngăn được người dùng chọn
+    #: Đài Loan rồi nhận về gợi ý tiếng Nhật. Nay `markets` bị thu về đúng thị trường máy chủ
+    #: đi ra, còn cờ này ở lại để mô tả đúng bản chất endpoint.
+    #:
+    #: Lưu ý ô Quốc gia trên giao diện vẫn có tác dụng với nguồn `False`: `expand_with_provider`
+    #: dùng `ctx.country` để chọn ngôn ngữ của các tiền tố mở rộng. Nên cờ này để giao diện
+    #: GIẢI THÍCH cho đúng, không phải để ẩn ô chọn đi.
+    geo_targeted: bool = True
+    #: Khoảng cách tối thiểu giữa hai lượt gọi của RIÊNG nguồn này, tính bằng mili giây.
+    #:
+    #: `None` nghĩa là dùng `CALL_DELAY_MS` chung. Nằm trên provider vì sức chịu đựng là thuộc
+    #: tính của từng nền tảng chứ không phải của bộ mở rộng: Shopee, TikTok và Amazon đều chạy
+    #: tốt ở 700ms, nhưng Taobao đo thấy `ConnectTimeout` ở nhịp đó và chỉ ổn định từ 1200ms.
+    #:
+    #: Nâng hằng số chung lên 1200 cho cả bốn sẽ khiến ba nguồn kia chậm thêm gần nửa phút mỗi
+    #: lượt "Thường" mà không đổi lại được gì.
+    call_delay_ms: int | None = None
+    #: Nguồn này có chịu được kiểu hỏi lặp "từ gốc + hậu tố" không.
+    #:
+    #: Các API gợi ý thì có — chúng hoàn thiện tiền tố, nên phải gieo nhiều tiền tố mới lộ
+    #: ra long-tail. Google Trends thì không: một lời gọi đã trả về trọn bảng truy vấn liên
+    #: quan, nên hỏi lại 19 lần chỉ tổ nhận đúng một kết quả đó 19 lần và lĩnh thêm 429.
+    expands_terms: bool = True
 
     @abstractmethod
-    async def fetch_suggestions(self, term: str, country: str) -> list[Suggestion]:
-        """Lấy gợi ý cho đúng một cụm từ. Ném lỗi nếu nguồn từ chối."""
+    async def fetch_suggestions(self, term: str, ctx: SearchContext) -> list[Suggestion]:
+        """
+        Lấy gợi ý cho đúng một cụm từ. Ném lỗi nếu nguồn từ chối.
+
+        `ctx` chở cả ba ô chọn của người dùng, nhưng phần lớn nguồn chỉ cần `ctx.country`:
+        `time_range` và `gprop` là khái niệm của riêng Google Trends. Lờ chúng đi là đúng, và
+        không có gì phải xin lỗi vì điều đó.
+        """

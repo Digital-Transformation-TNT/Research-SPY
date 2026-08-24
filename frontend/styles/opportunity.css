@@ -1,0 +1,344 @@
+/* Chỉ phục vụ MỤC CƠ HỘI.
+ *
+ * Cả file này chạy theo đúng một nguyên tắc: mọi dòng chữ ở màn hình này đều là phán đoán của
+ * một mô hình, nên nó không được trông như một bảng số liệu. Thứ được phép nổi lên là tên món
+ * hàng, nhãn nói sàn có bán thật không, và câu trả lời bằng lời. Còn lại nói khẽ. */
+
+/* Cả mục này là MỘT cột giữa màn hình — tiêu đề trang cũng nằm trong đó, xem `.opp-head`.
+   Trải tiêu đề ra hết bề ngang trong khi phần trò chuyện dừng ở 780px sẽ để hai mép phải
+   lệch nhau gần 300px, và mắt đọc chỗ lệch đó thành một lỗi dựng trang. */
+.chat,
+.opp-head {
+  max-width: 780px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ── Màn hình mở đầu ─────────────────────────────────────────────────────────────────── */
+
+/* Khi chưa hỏi gì, cả màn hình chỉ có một câu hỏi và một ô nhập, và chúng nằm giữa chiều
+   cao. Neo lên đỉnh trang sẽ để lại hai phần ba màn hình trống bên dưới — thứ đọc thành
+   "trang chưa tải xong" chứ không thành "mời bạn gõ". */
+.chat[data-empty='true'] {
+  min-height: calc(100vh - 190px);
+  justify-content: center;
+  gap: 22px;
+}
+
+.chat-open {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  text-align: center;
+}
+
+/* ── Luồng trò chuyện ────────────────────────────────────────────────────────────────── */
+
+.chat-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+/* Câu hỏi của người dùng: KHÔNG phải bong bóng chat. Bong bóng kéo màn hình này về phía một
+   app nhắn tin, trong khi thứ nằm dưới mỗi câu hỏi là một bảng làm việc. Một dòng chữ đậm có
+   vạch màu thương hiệu đủ để mắt biết chỗ nào là câu hỏi. */
+.chat-ask {
+  margin: 0;
+  padding-left: 14px;
+  border-left: 3px solid var(--brand);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+}
+
+.chat-wait {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* ── Một lượt trả lời ────────────────────────────────────────────────────────────────── */
+
+.ans {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ans-reply {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+/* Câu hiểu-bối-cảnh. Nhỏ và mờ có chủ ý: nó chỉ cần đọc đúng lúc mô hình hiểu sai ý. */
+.ans-situation {
+  margin: -10px 0 0;
+  color: var(--text-mute);
+  font-size: 12.5px;
+  line-height: 1.5;
+  font-style: italic;
+}
+
+.ans-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.ans-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ans-item + .ans-item { border-top: 1px solid var(--border); }
+
+.ans-item[data-status='wrong'] .ans-name { color: var(--text-dim); }
+
+/* Cột theo TỶ LỆ chứ không theo `auto`. Mỗi hàng là một lưới riêng, nên một cột `auto` co
+   giãn theo đúng hàng đó — và cột nhu cầu bên cạnh sẽ bắt đầu ở một chỗ khác nhau trên từng
+   dòng, đọc thành một danh sách bị lệch chứ không thành một danh sách có cột. */
+.ans-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) 12px;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+/* Không có bằng chứng từ sàn thì không có cụm nào để mang sang mục Keyword — dòng đó chỉ để
+   đọc, nên nó không sáng lên và không đổi con trỏ. */
+.ans-row[data-usable='false'] { cursor: default; }
+
+.ans-row[data-usable='true']:hover { background: var(--surface-2); }
+.ans-row[data-usable='true']:hover .ans-name { color: var(--brand); }
+.ans-row[data-usable='true']:hover .ans-arrow { opacity: 1; transform: none; }
+
+/* Tên món và nhãn nằm cùng một dòng, dòng nghĩa bị `flex-basis: 100%` đẩy xuống dòng riêng
+   ngay dưới tên. Đây là khối được đọc trước nhất trên mỗi hàng. */
+.ans-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 9px;
+  min-width: 0;
+}
+
+/* Tên món là thứ duy nhất trên hàng người dùng thật sự đi tìm — nó được cỡ chữ lớn nhất và
+   nét đậm nhất ở đây, và trên nền một hàng toàn chữ xám thì chừng đó đã đủ để nó nhảy ra. */
+.ans-name {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* Dòng nghĩa: nhỏ, mờ, không nghiêng. Nó chỉ để ĐỌC HIỂU tên món ở trên, không bao giờ để đi
+   tìm — `searchTerm` mang sang mục Keyword vẫn lấy từ bằng chứng của sàn. Cùng nguyên tắc
+   cứng với cột nghĩa ở `keywords/gloss.py`. */
+.ans-gloss {
+  flex-basis: 100%;
+  font-style: normal;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-mute);
+  overflow-wrap: anywhere;
+}
+
+/* Nhãn đối chiếu sàn. Đây là thứ DUY NHẤT trên mỗi dòng không phải phán đoán — nó tóm tắt
+   cách ô tìm kiếm của sàn phản ứng với đúng cụm đó — nên nó được một nhãn màu thật, không
+   phải một chấm. */
+.ans-status {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+  cursor: help;
+}
+
+.ans-item[data-status='real'] .ans-status {
+  background: var(--good-soft);
+  border-color: #bfe5d1;
+  color: var(--good);
+}
+
+.ans-item[data-status='niche'] .ans-status {
+  background: var(--warn-soft);
+  border-color: #f0dfbe;
+  color: var(--warn);
+}
+
+.ans-item[data-status='wrong'] .ans-status {
+  background: var(--bad-soft);
+  border-color: #f2cac7;
+  color: var(--bad);
+}
+
+/* `not_found` không có luật riêng ở đây vì nó KHÔNG dựng ra nhãn nào — xem ghi chú ở
+   `AnswerBlock.tsx`. Luật `.ans-status` chung phía trên chỉ còn phục vụ trường hợp một trạng
+   thái mới được thêm vào mà quên khai màu. */
+
+.ans-pain {
+  color: var(--text-dim);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+/* Mũi tên chỉ hiện rõ khi rê chuột. Nó không phải một thông tin — nó là lời nhắc rằng cả
+   dòng bấm được — nên lúc đọc bảng nó phải im lặng. */
+.ans-arrow {
+  color: var(--brand);
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0;
+  transform: translateX(-3px);
+  transition: opacity 0.12s, transform 0.12s;
+}
+
+.ans-row[data-usable='false'] .ans-arrow { display: none; }
+
+/* ── Xem thêm · hỏi tiếp ─────────────────────────────────────────────────────────────── */
+
+/* Nằm TRONG thẻ, ngay dưới dòng cuối: nó nói về danh sách bên trên, nên nó phải trông như
+   chân của chính danh sách đó chứ không như một nút rời cạnh nó. */
+.ans-more {
+  display: block;
+  width: 100%;
+  padding: 11px 16px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: none;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.ans-more:hover {
+  background: var(--surface-2);
+  color: var(--brand);
+}
+
+.ans-next {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ans-next button {
+  padding: 6px 13px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+
+.ans-next button:hover {
+  border-color: var(--brand-line);
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+/* ── Ô nhập ──────────────────────────────────────────────────────────────────────────── */
+
+.chat-compose {
+  position: sticky;
+  bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 6px 22px rgba(31, 35, 41, 0.07);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.chat-compose:focus-within {
+  border-color: var(--brand-line);
+  box-shadow: 0 6px 26px rgba(242, 101, 34, 0.11);
+}
+
+.chat-compose textarea {
+  display: block;
+  width: 100%;
+  max-height: 190px;
+  border: 0;
+  padding: 2px 2px 0;
+  background: none;
+  font-size: 14.5px;
+  line-height: 1.55;
+  resize: none;
+  /* `hidden` là mặc định, `auto` chỉ được bật khi nội dung thật sự tràn — xem hiệu ứng
+     tự-cao-theo-nội-dung ở `OpportunityWorkspace.tsx`. */
+  overflow-y: hidden;
+  outline: none;
+}
+
+.chat-compose textarea::placeholder { color: var(--text-mute); }
+
+/* Nước và nút xoá ở TRÁI, nút gửi ở PHẢI. Bên trái là những thứ đặt rồi quên, bên phải là
+   hành động của mỗi lượt — dồn chung một góc sẽ làm cái sau phải tranh chỗ với cái trước, và
+   dễ bấm nhầm xoá khi định bấm gửi. */
+.chat-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chat-tools .btn:last-child { margin-left: auto; }
+
+/* Bộ chọn dài hơn mức trông có vẻ cần, CÓ LÝ DO: `.btn.ghost` ở `controls.css` cũng là hai
+   lớp, và `.btn.ghost:hover` là ba — rút gọn xuống `.chat-reset` là để cả hai luật đó ăn đè
+   lên, và bước xác nhận màu đỏ bên dưới sẽ im lặng biến mất ngay khi chuột còn nằm trên nút,
+   tức là đúng lúc người dùng vừa bấm xong. Đã đo và đã dính đúng lỗi này một lần. */
+.chat-tools .chat-reset {
+  padding: 7px 13px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-mute);
+}
+
+.chat-tools .chat-reset:hover:not([data-confirm='true']) { color: var(--text); }
+
+.chat-tools .btn { border-radius: 999px; }
+
+/* Bước xác nhận của "Hội thoại mới" — xem `reset` ở `OpportunityWorkspace.tsx`. Đổi màu chứ
+   không chỉ đổi chữ: một cái nút y hệt cái vừa bấm sẽ đọc thành "chưa ăn, bấm lại đi". */
+.chat-tools .chat-reset[data-confirm='true'],
+.chat-tools .chat-reset[data-confirm='true']:hover {
+  border-color: #f2cac7;
+  background: var(--bad-soft);
+  color: var(--bad);
+}

@@ -17,10 +17,26 @@ const icons = {
       <path d="m20 20-3.5-3.5" />
     </svg>
   ),
+  image: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8" />
+      <path d="M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8" />
+      <path d="M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16" />
+      <path d="M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  ),
   guide: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z" />
       <path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z" />
+    </svg>
+  ),
+  idea: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 18h6" />
+      <path d="M10 21h4" />
+      <path d="M12 3a6 6 0 0 0-3.5 10.9c.4.3.5.7.5 1.1v1h6v-1c0-.4.1-.8.5-1.1A6 6 0 0 0 12 3z" />
     </svg>
   ),
 }
@@ -39,9 +55,21 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
       },
       {
         href: '/keywords',
-        label: 'Từ khoá',
-        hint: 'Mở rộng từ khoá từ Google + Shopee + TikTok',
+        label: 'Keyword',
+        hint: 'Khám phá và mở rộng từ khoá đa nguồn',
         icon: 'keyword',
+      },
+      {
+        href: '/opportunity',
+        label: 'Cơ hội',
+        hint: 'Khám phá món nên bán cùng trợ lý AI',
+        icon: 'idea',
+      },
+      {
+        href: '/image',
+        label: 'Image Search',
+        hint: 'Tìm tên sản phẩm và nơi đang bán từ ảnh',
+        icon: 'image',
       },
     ],
   },
@@ -90,10 +118,6 @@ export default function Sidebar() {
           </div>
         ))}
       </nav>
-
-      <div className="sidebar-foot">
-        Dữ liệu lấy trực tiếp từ nền tảng công khai, không lưu video vào máy chủ.
-      </div>
     </aside>
   )
 }

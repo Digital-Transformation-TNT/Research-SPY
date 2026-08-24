@@ -1,4 +1,4 @@
-/* Riêng MỤC TỪ KHOÁ: bảng, sparkline, cột độ liên quan và nguồn. */
+/* Riêng MỤC TỪ KHOÁ: bảng kết quả, bảng đề cử cách gọi bản địa, và cột bảng xếp hạng nguồn. */
 /* ==================== keyword table ==================== */
 
 .kwtable {
@@ -33,30 +33,181 @@
 
 .kwtable tr.info-row td { opacity: 0.7; }
 
-.kwtable tr.detail-row > td { background: var(--surface-2); padding-top: 6px; }
-.kwtable tr.detail-row:hover > td { background: var(--surface-2); }
-
 .kwtable .rank {
   color: var(--text-mute);
   font-variant-numeric: tabular-nums;
   width: 46px;
 }
 
-/* Từ khoá · Độ liên quan · Xu hướng & nhu cầu · Có mặt trên */
-.kwtable td:nth-child(2) { width: 26%; }
-.kwtable td:nth-child(3) { width: 14%; }
-.kwtable td:nth-child(4) { width: 25%; }
-.kwtable td:nth-child(5) { width: 21%; }
+/* Từ khoá · Lượng tìm 12 tháng · Bảng xếp hạng · hành động.
+   Cột cuối chỉ còn đúng một liên kết từ khi nút "vì sao?" bị gỡ, nên nó được ghim hẹp —
+   để `auto` thì nó nuốt phần thừa và đẩy ba cột dữ liệu dồn về bên trái. */
+.kwtable td:nth-child(2) { width: 34%; }
+.kwtable td:nth-child(3) { width: 22%; }
+.kwtable td:nth-child(4) { width: 28%; }
+.kwtable td:nth-child(5) { width: 84px; }
 
+/* Chỉ Shopee/TikTok: cột lượng tìm không tồn tại, vì hai sàn không đo được nhu cầu.
+   Xem `KeywordTable`.
+
+   Phải khai lại toàn bộ chứ không chỉ sửa một dòng: các quy tắc trên chốt theo VỊ TRÍ, nên
+   khi cột thứ ba biến mất thì cột "Bảng xếp hạng" trượt vào chỗ của nó và lĩnh 22% — hẹp
+   hơn cả bề rộng nó cần — còn cột hành động lĩnh 28% và phình ra gấp bốn lần cần thiết.
+
+   Ở đây CỘT TỪ KHOÁ là cột nuốt phần thừa, ngược với chế độ đủ cột. Bốn cột hẹp trên một
+   bảng rộng thì phần thừa phải rơi vào đâu đó, và chỗ duy nhất không để lại lỗ hổng là cột
+   ngoài cùng bên trái: cho cột "Bảng xếp hạng" nuốt thì chip Shopee dính bên trái nó còn
+   liên kết "tìm ads" trôi ra tận bên phải, hở một khoảng trắng ngay giữa bảng. Chữ ngắn hơn
+   ô của nó thì mắt không nhận ra; một lỗ hổng giữa hai cột có nội dung thì có. */
+.kwtable.no-trend td:nth-child(2) { width: auto; }
+.kwtable.no-trend td:nth-child(3) { width: 260px; }
+.kwtable.no-trend td:nth-child(4) { width: 84px; }
+
+/* Từ khoá là NHÂN VẬT CHÍNH của mỗi dòng — đây là chuỗi người ta thật sự gõ vào ô tìm kiếm,
+   thứ duy nhất trong ô này kiểm chứng được. Nó phải thắng dòng nghĩa bên dưới ở cả ba mặt:
+   cỡ chữ, độ đậm và độ tương phản. Trước đây chỉ hơn 2px và cùng độ đậm, nên hai dòng đọc
+   ra như hai câu ngang hàng và mắt phải tự đoán cái nào là dữ liệu. */
 .kw {
-  font-size: 14px;
-  margin-bottom: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.005em;
+  margin-bottom: 2px;
 }
 
-.kw-tags {
+/* Dòng nhắc ngay dưới ô nhập từ gốc: lệch thị trường, hoặc dấu vết đã bắc cầu.
+
+   CỐ Ý không dùng `.notice` như các thông báo khác. Những cái kia nói về KẾT QUẢ ở giữa
+   trang; cái này nói về Ô NHẬP ngay phía trên nó, và một khung viền đầy đủ ở đây sẽ đẩy
+   dãy bộ lọc xuống mỗi lần người dùng gõ một chữ có dấu. */
+.seed-hint {
+  /* Lề trên ÂM để kéo dòng này lên sát ô nhập mà nó đang nói về — `.search-row` mang sẵn
+     16px lề dưới, và để nguyên thì dòng nhắc đứng lơ lửng giữa ô nhập và dãy bộ lọc, gần
+     dãy bộ lọc hơn là gần thứ nó giải thích. Lề dưới giữ đủ 16px để dãy bộ lọc không bị
+     dòng nhắc đẩy dính vào. */
+  margin: -8px 2px 16px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+/* ==================== bảng đề cử cách gọi bản địa ==================== */
+
+.bridge {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.bridge-head {
   display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.bridge-close {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-mute);
+  padding: 0 4px;
+}
+.bridge-close:hover { color: var(--text-dim); }
+
+.bridge-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+/* Mỗi ứng viên là một NÚT, kể cả ứng viên không sàn nào biết tới. Người dùng có thể biết
+   điều mà một sàn Mỹ không biết — khoá dòng đó lại là để công cụ quyết thay họ. */
+.bridge-row {
+  display: grid;
+  grid-template-columns: minmax(0, 150px) 108px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--surface);
+  cursor: pointer;
+  font: inherit;
+}
+.bridge-row:hover { border-color: var(--border-strong); }
+
+/* Mờ đi, KHÔNG khoá — xem chú thích ở trên. Chỉ mờ những cụm đã được chứng minh là lệch ngành
+   hàng; `broader` và `brand` vẫn sáng vì chúng là hàng có thật, chỉ rộng hơn hoặc hẹp hơn. */
+.bridge-row[data-verdict='different'],
+.bridge-row[data-verdict='misspelling'] { opacity: 0.6; }
+
+.bridge-term { font-size: 14px; }
+.bridge-note { font-size: 11.5px; color: var(--text-mute); }
+
+/* Huy hiệu phán quyết. Chỉ `same` được tô màu — ba mức còn lại dùng viền xám, và loại lệch hẳn
+   thì tô đỏ nhạt. Tô màu cả sáu mức sẽ biến một bảng bốn dòng thành một cầu vồng, và người đọc
+   mất luôn thứ mà màu sắc vốn để làm: chỉ ra dòng nên bấm. */
+.bridge-verdict {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-align: center;
+  padding: 2px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-mute);
+  white-space: nowrap;
+}
+.bridge-row[data-verdict='same'] .bridge-verdict {
+  border-color: #a8d5b5;
+  color: #1c6b3a;
+  background: #eef8f1;
+}
+.bridge-row[data-verdict='different'] .bridge-verdict,
+.bridge-row[data-verdict='misspelling'] .bridge-verdict {
+  border-color: #edb4b4;
+  color: #a32626;
+  background: #fdeeee;
+}
+
+@media (max-width: 720px) {
+  /* Ba cột không sống nổi ở bề ngang này. Cột bỏ đi là `reason` chứ không phải huy hiệu: câu
+     lý do vẫn đọc được qua tooltip, còn huy hiệu là thứ quét mắt một lượt là thấy. */
+  .bridge-row { grid-template-columns: minmax(0, 1fr) 108px; }
+  .bridge-note { display: none; }
+}
+
+/* Nghĩa tiếng Việt: trợ đọc, không phải dữ liệu.
+
+   Nằm SÁT ngay dưới từ khoá (2px) để hai dòng đọc thành MỘT khối, rồi cách khối sau một
+   khoảng rộng hơn hẳn — nhờ vậy mắt gom chúng lại mà vẫn thấy ngay cái nào chính cái nào phụ.
+
+   Nhạt hơn và nhỏ hơn có chủ đích: đây là bản dịch máy. Cho nó ngang sức với từ khoá là mời
+   người đọc đem bản dịch đi làm truy vấn — thứ mà cả tầng dịch cố ý không làm (xem
+   `backend/lib/keywords/gloss.py`). */
+.kw-gloss {
+  font-size: 11.5px;
+  color: var(--text-mute);
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+
+.kw-gloss.loading {
+  font-style: italic;
+  opacity: 0.75;
+}
+
+/* Lời báo của phần dịch, đặt ngay dưới bảng. Nó nói về một cột phụ trợ, không phải về số
+   liệu — nên không được mang màu cảnh báo của `.notice.bad`. */
+.gloss-note {
+  margin-top: 10px;
 }
 
 .src {
@@ -71,8 +222,9 @@
 .src.google { border-color: #a8c7f0; color: #0b4ea2; background: #eef4fd; }
 .src.shopee { border-color: #f7c0a5; color: #c2521f; background: #fdf2ec; }
 .src.tiktok { border-color: #f3aabb; color: #b52444; background: #fdeef2; }
-.src.season { border-color: #e6c98a; color: #8a5a08; background: #fdf7ea; }
-.src.info { border-color: var(--border-strong); background: var(--surface-2); }
+/* Amazon thay chỗ Shopee ở các thị trường ngoài Đông Nam Á — hai chip không bao giờ cùng
+   xuất hiện, nên chúng cố ý không lẫn màu với nhau: cam đất so với cam đỏ. */
+.src.amazon { border-color: #e8c48a; color: #8a5a08; background: #fdf6e9; }
 
 .actions {
   display: flex;
@@ -92,71 +244,59 @@
 .muted { color: var(--text-dim); }
 .small { font-size: 11.5px; margin-top: 4px; color: var(--text-mute); }
 
-/* ==================== trend sparkline ==================== */
+/* ==================== cột lượng tìm: thanh + % thay đổi ==================== */
 
-/* Sits inside a table cell now, so no card chrome — the row is the container. */
-.trend {
+/* Bản sao hai con số của bảng "Cụm từ tìm kiếm hàng đầu" trên Google Trends. Thay cho một
+   sparkline mỗi dòng — xem `DemandCell` để biết vì sao. */
+.demand {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.trend.rising { color: var(--good); }
-.trend.falling { color: var(--bad); }
-.trend.flat { color: var(--text-mute); }
-
-.spark { display: block; flex: none; }
-
-.trend-meta {
-  font-size: 11.5px;
-  color: var(--text-mute);
-  line-height: 1.45;
-}
-
-.trend-meta b { font-size: 13px; color: currentColor; }
-
-/* The one figure on this row that reflects real demand rather than ordering. */
-.demand {
-  color: var(--text-dim);
-  font-weight: 600;
-}
-
-/* ==================== keyword axes ==================== */
-
-.axis {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.axis b.high { color: var(--good); }
-.axis b.mid { color: var(--warn); }
-.axis b.low { color: var(--text-mute); }
-
-.axis-num {
-  font-size: 11px;
-  color: var(--text-mute);
-  font-variant-numeric: tabular-nums;
-  margin-left: auto;
-}
-
-.dots {
-  display: inline-flex;
-  gap: 3px;
+.demand-bar {
+  display: block;
+  /* Bề ngang CỐ ĐỊNH, không co theo nội dung: các thanh chỉ so sánh được với nhau khi chúng
+     dùng chung một vạch 100%. Để `flex: 1` thì thanh của dòng có từ khoá dài sẽ hẹp hơn, và
+     hai dòng cùng 60/100 hiện ra hai độ dài khác nhau. */
+  width: 118px;
   flex: none;
-}
-
-.dots i {
-  width: 7px;
   height: 7px;
-  border-radius: 50%;
-  background: var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
 }
 
-.dots i[data-on='true'] { background: currentColor; }
-.dots.high { color: var(--good); }
-.dots.mid { color: var(--warn); }
-.dots.low { color: var(--text-mute); }
+.demand-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--brand);
+  /* `min-width` để một cụm 1/100 vẫn thấy được vệt màu. Không có nó thì mọi dòng đuôi bảng
+     nhìn hệt như thanh rỗng, tức là hệt như "không có dữ liệu" — hai chuyện khác hẳn nhau. */
+  min-width: 2px;
+}
+
+.delta {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.delta.up { color: var(--good); }
+.delta.down { color: var(--bad); }
+.delta.flat { color: var(--text-mute); }
+
+/* Cụm chỉ có ở bảng "đang tăng": phần trăm tăng trưởng, KHÔNG cùng thang với thanh ở trên,
+   nên nó cố ý không có thanh nào để không mời gọi so sánh trực tiếp. */
+.surge {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--good);
+  white-space: nowrap;
+  cursor: help;
+}
 
 .presence {
   display: flex;
@@ -184,52 +324,4 @@
   color: var(--text-mute);
   opacity: 0.6;
 }
-
-.result-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  flex-wrap: wrap;
-  margin: 4px 0 12px;
-  font-size: 12.5px;
-}
-
-.bar-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.sort {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12.5px;
-  color: var(--text-dim);
-}
-
-.sort select {
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  padding: 6px 9px;
-  font-size: 12.5px;
-}
-
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 20px;
-  padding: 10px 15px;
-  margin-bottom: 10px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-size: 11.5px;
-  color: var(--text-dim);
-}
-
-.legend b { color: var(--text); font-weight: 600; }
 

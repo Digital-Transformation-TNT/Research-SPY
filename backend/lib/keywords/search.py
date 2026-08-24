@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import re
 import time
 from dataclasses import dataclass
 from typing import Mapping
@@ -19,9 +20,11 @@ from typing import Mapping
 from lib.core.cache import cache_get, cache_set
 from lib.core.jscompat import or_default, to_number
 
+from .market import seed_looks_out_of_market
 from .providers import KEYWORD_PROVIDERS, KEYWORD_SOURCE_IDS, expand_with_provider, is_keyword_source
 from .rank import rank_keywords
 from .types import (
+    DEFAULT_TIME_RANGE,
     KeywordCandidate,
     KeywordResult,
     KeywordSearchParams,
@@ -29,8 +32,48 @@ from .types import (
     SourceHit,
 )
 
-DEFAULT_LIMIT = 60
+#: Các kho dữ liệu Google Trends nhận ở tham số `gprop`. Rỗng = Tìm kiếm trên web.
+#:
+#: Chốt danh sách chứ không cho đi thẳng: một `gprop` lạ không làm Trends báo lỗi mà im lặng
+#: rơi về web search, nên gõ sai sẽ cho ra một bảng trông hợp lệ nhưng không phải thứ đã hỏi.
+TRENDS_PROPERTIES = ("", "images", "news", "froogle", "youtube")
+
+#: Số dòng hiển thị. Cố định 30 cho mọi trường hợp — một nền tảng hay cả ba — và giao diện
+#: không có nút chỉnh. Danh sách dài không giúp gì khi phần đầu đã được xếp theo nhu cầu đo
+#: được: từ dòng thứ ba mươi trở đi thì lượng tìm đã nhỏ tới mức không còn để ra quyết định.
+DEFAULT_LIMIT = 30
 MAX_LIMIT = 300
+
+
+#: Các cửa sổ dựng sẵn của /explore, đúng chuỗi mà trang đó dùng.
+TRENDS_PRESET_RANGES = (
+    "now 1-H",
+    "now 4-H",
+    "now 1-d",
+    "now 7-d",
+    "today 1-m",
+    "today 3-m",
+    "today 12-m",
+    "today 5-y",
+    "all",
+)
+
+#: Khoảng tuỳ chỉnh: hai ngày ISO cách nhau một dấu cách, ví dụ `2025-01-01 2025-12-31`.
+_CUSTOM_RANGE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{4}-\d{2}-\d{2}$")
+
+
+def clean_time_range(raw: str | None) -> str:
+    """
+    Chỉ cho qua những cửa sổ Trends thật sự hiểu, còn lại rơi về mặc định.
+
+    Cùng lý do với `TRENDS_PROPERTIES`: một chuỗi `date` lạ không làm Trends báo lỗi mà im
+    lặng rơi về cửa sổ mặc định của nó, nên gõ sai sẽ cho ra một bảng trông hợp lệ nhưng
+    không phải khoảng thời gian người dùng đã chọn.
+    """
+    value = (raw or "").strip()
+    if value in TRENDS_PRESET_RANGES or _CUSTOM_RANGE.match(value):
+        return value
+    return DEFAULT_TIME_RANGE
 
 
 def parse_keyword_search_params(query: Mapping[str, list[str]]) -> KeywordSearchParams:
@@ -43,6 +86,8 @@ def parse_keyword_search_params(query: Mapping[str, list[str]]) -> KeywordSearch
     depth_param = first("depth")
     depth = depth_param if depth_param in ("quick", "deep") else "normal"
 
+    gprop = (first("gprop") or "").strip().lower()
+
     return KeywordSearchParams(
         seed=(first("seed") or "").strip(),
         sources=requested or list(KEYWORD_SOURCE_IDS),
@@ -50,6 +95,8 @@ def parse_keyword_search_params(query: Mapping[str, list[str]]) -> KeywordSearch
         depth=depth,  # type: ignore[arg-type]
         include_informational=first("includeInformational") == "true",
         limit=int(min(MAX_LIMIT, or_default(to_number(first("limit")), DEFAULT_LIMIT))),
+        time_range=clean_time_range(first("date")),
+        gprop=gprop if gprop in TRENDS_PROPERTIES else "",
     )
 
 
@@ -65,9 +112,21 @@ def _cache_key(params: KeywordSearchParams) -> str:
     """
     Chỉ những gì làm thay đổi thứ ta *đi lấy về* mới thuộc về cache key. Lọc và xếp hạng rẻ
     và được chạy lại mỗi request, nên bật/tắt một bộ lọc không bao giờ nhận về tập cache lệch.
+
+    Cửa sổ thời gian và kho dữ liệu THÌ thuộc về: chúng đổi hẳn tập từ khoá Trends trả về, nên
+    thiếu chúng thì đổi sang "24 giờ qua" hay "Google Mua sắm" sẽ nhận nguyên bảng của lần
+    trước — im lặng, và trông hoàn toàn hợp lý.
     """
     return json.dumps(
-        ["kw", params.seed.lower(), sorted(params.sources), params.depth, params.country],
+        [
+            "kw",
+            params.seed.lower(),
+            sorted(params.sources),
+            params.depth,
+            params.country,
+            params.time_range,
+            params.gprop,
+        ],
         ensure_ascii=False,
         separators=(",", ":"),
     )
@@ -97,6 +156,26 @@ def _apply_limit(
     return commercial[: max(0, limit - reserved)] + informational[:reserved]
 
 
+def _assign_display_ranks(shown: list[KeywordCandidate]) -> None:
+    """
+    Đánh số lại 1..N cho ĐÚNG những dòng sẽ hiện ra, cho từng nguồn.
+
+    Chạy SAU khi đã xếp và đã cắt, và cố ý không đụng tới `source_ranks` — thứ hạng thật vẫn
+    được dùng để chấm điểm và vẫn hiện trong tooltip kèm mẫu số.
+
+    Giữ nguyên THỨ TỰ của thứ hạng thật chứ không đánh theo thứ tự dòng: với một nguồn duy
+    nhất thì hai cách cho cùng kết quả, nhưng khi bật nhiều nguồn thì bảng được xếp theo điểm
+    gộp, và lúc đó "dòng Google ưu tiên thứ 5" là một thông tin thật — còn đánh theo thứ tự
+    dòng chỉ chép lại cột số thứ tự bên trái.
+    """
+    sources = {source for candidate in shown for source in candidate.source_ranks}
+    for source in sources:
+        members = [c for c in shown if source in c.source_ranks]
+        members.sort(key=lambda c: c.source_ranks[source])
+        for position, candidate in enumerate(members, start=1):
+            candidate.display_ranks[source] = position
+
+
 async def _run_source(
     source: str, params: KeywordSearchParams
 ) -> tuple[KeywordSourceStatus, list[SourceHit]]:
@@ -104,7 +183,7 @@ async def _run_source(
     started_at = time.monotonic()
     try:
         outcome = await expand_with_provider(
-            KEYWORD_PROVIDERS[source], params.seed, params.country, params.depth
+            KEYWORD_PROVIDERS[source], params.seed, params.context, params.depth
         )
         if outcome.error:
             message = f"dừng sau {outcome.calls} lượt gọi: {outcome.error}"
@@ -156,12 +235,38 @@ async def run_keyword_search(params: KeywordSearchParams, skip_cache: bool = Fal
         seed=params.seed,
         active_sources=params.sources,
         include_informational=params.include_informational,
+        country=params.country,
     )
+
+    shown = _apply_limit(ranked.items, params.limit, params.include_informational)
+    _assign_display_ranks(shown)
 
     return KeywordResult(
         seed=params.seed,
-        keywords=_apply_limit(ranked, params.limit, params.include_informational),
-        total_found=len(ranked),
+        keywords=shown,
+        total_found=len(ranked.items),
+        source_totals=ranked.source_totals,
         statuses=expansion.statuses,
+        seed_notice=_seed_notice(params),
         cached=from_cache,
+    )
+
+
+def _seed_notice(params: KeywordSearchParams) -> str | None:
+    """
+    Nhắc khi chính từ gốc không thuộc về thị trường đang chọn.
+
+    Tính LUÔN LUÔN, kể cả khi lượt tìm có kết quả: gõ từ gốc tiếng Việt vào thị trường nước
+    ngoài mà vẫn ra vài dòng thì còn dễ nhầm hơn là ra bảng rỗng — mấy dòng đó đến từ các sàn
+    khớp chuỗi lỏng, không phải từ nhu cầu có thật ở nước đó.
+    """
+    if not seed_looks_out_of_market(params.seed, params.country):
+        return None
+    # Nói theo THỊ TRƯỜNG, không khẳng định từ gốc thuộc ngôn ngữ nào. Phép kiểm chỉ biết
+    # "không phải ASCII thuần"; suy tiếp ra "đây là tiếng Việt" là bịa thêm một kết luận mà
+    # nó không có căn cứ — và đã bịa sai thật: một cụm tiếng Thái từng bị báo là tiếng Việt.
+    return (
+        f'Từ gốc "{params.seed}" không viết bằng thứ chữ mà người ở {params.country} dùng để '
+        "tìm kiếm, nên bảng này gần như chắc chắn rỗng hoặc sai. "
+        'Bấm "Tìm cách gọi bản địa" để lấy cụm mà người bản địa thật sự gõ.'
     )

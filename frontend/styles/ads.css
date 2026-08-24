@@ -185,43 +185,17 @@
   padding-top: 4px;
 }
 
+/* Điểm số vẫn được tính ở backend để xếp hạng, nhưng không còn hiện lên thẻ — nên các quy
+   tắc `.score`, `.score-bar`, `.confidence` đã bị gỡ khỏi đây. Xem `lib/ads/scoring.py`. */
 
-/* ==================== score ==================== */
-
-.score {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.score-num {
-  font-size: 17px;
-  font-weight: 700;
-  min-width: 30px;
-  font-variant-numeric: tabular-nums;
-}
-
-.score-num.high { color: var(--good); }
-.score-num.mid { color: var(--warn); }
-.score-num.low { color: var(--text-mute); }
-
-.score-bar {
-  flex: 1;
-  height: 5px;
-  border-radius: 3px;
-  background: var(--surface-2);
-  overflow: hidden;
-}
-
-.score-bar i {
-  display: block;
-  height: 100%;
-  border-radius: 3px;
-  background: var(--brand);
-}
-
-
-.confidence {
-  font-size: 11px;
+/* Nhãn "không chứa từ khoá" trên thẻ quảng cáo.
+ *
+ * NHẠT hơn các chỉ số khác, và KHÔNG dùng màu cảnh báo. Đây không phải lỗi và cũng không phải
+ * quảng cáo rác: nền tảng đã khớp từ khoá ở đâu đó (tên trang, trang đích, hoặc chữ nằm trong
+ * ảnh mà ta không đọc được). Tô đỏ nó là nói với người dùng rằng công cụ tìm sai, trong khi
+ * điều đang xảy ra là công cụ đang thành thật về chỗ nó không kiểm chứng được. */
+.metric.off-phrase {
   color: var(--text-mute);
+  border-style: dashed;
+  opacity: 0.85;
 }

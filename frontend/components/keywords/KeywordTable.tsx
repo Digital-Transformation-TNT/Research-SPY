@@ -1,109 +1,166 @@
 'use client'
 
-import { useState } from 'react'
-import Sparkline from './Sparkline'
-import { FALLBACK_RELEVANCE, type Relevance } from './relevance'
-import type { KeywordCandidate, KeywordSource, TrendSeries } from '@/lib/keywords/types'
+import type { KeywordCandidate, KeywordGloss, KeywordSource } from '@/lib/keywords/types'
 
-export type TrendState = {
-  loading: boolean
-  series: Record<string, TrendSeries>
-  /** True sau khi một lần đo đã chạy xong, để "không có trong series" đọc được thành
-   * "Trends không có dữ liệu" thay vì "chưa đo". */
-  ran: boolean
-  message?: string
+/** `markets` là `null` khi nguồn chạy ở mọi thị trường — xem `KeywordProvider.markets`. */
+export type SourceInfo = {
+  id: KeywordSource
+  label: string
+  markets: string[] | null
+  /** Nguồn chấm chính; do backend công bố, xem `KeywordProvider.is_primary`. */
+  primary: boolean
+  /** Chọn thị trường có đổi được kết quả nguồn này không — xem `KeywordProvider.geo_targeted`. */
+  geoTargeted: boolean
 }
 
-export type SourceInfo = { id: KeywordSource; label: string }
+/**
+ * Lượng tìm của một cụm — thanh 0–100 cộng phần trăm thay đổi.
+ *
+ * Đây là bản sao đúng hai con số mà bảng "Cụm từ tìm kiếm hàng đầu" của chính Google Trends
+ * hiện ra, và cả hai đến từ cùng một hàng trong RPC đó (`RelatedQuery.value` và
+ * `.change_percent`). Đo 2026-07-30 trên "bút bi": 100/+20%, 95/+7%, 90/−4% — khớp từng số
+ * với giao diện Trends.
+ *
+ * ĐÃ TỪNG LÀ MỘT SPARKLINE MỖI DÒNG, và bị thay có lý do đo được:
+ *   - Nửa số dòng không vẽ được gì. Trends từ chối đo các cụm long-tail lượng tìm thấp —
+ *     đúng nhóm mà công cụ này sinh ra để tìm — nên bảng đầy chữ "không có dữ liệu".
+ *   - Ba mươi dòng tốn tám lượt điều hướng /explore ≈ 70 giây, mỗi lượt một cơ hội để
+ *     Playwright gãy, cho một cột mà các đường trông gần như giống hệt nhau.
+ *   - Chính Google cũng không làm thế: họ vẽ MỘT biểu đồ cho từ gốc, còn bảng liên quan thì
+ *     mỗi hàng chỉ có thanh và phần trăm. Cái biểu đồ từ gốc ấy cũng đã bị gỡ khỏi công cụ:
+ *     nó tốn thêm một lần mở trình duyệt (~7–10 giây) và một lượt vào hạn mức Trends cho một
+ *     hình không quyết định được gì.
+ * Hai con số này thì đi kèm ngay trong lần gọi `/api/keywords` duy nhất, không thêm giây nào.
+ *
+ * Vẫn là thang TƯƠNG ĐỐI, và giao diện phải nói vậy. Lượng tìm tuyệt đối chỉ có ở Google Ads
+ * Keyword Planner với tài khoản đang tiêu tiền, hoặc mua lại qua API trả phí — không nguồn
+ * miễn phí nào cấp được.
+ */
+function DemandCell({ item }: { item: KeywordCandidate }) {
+  const { demand, changePercent } = item.score
 
-/** "2025-10" → "T10/2025". Trends trả khoá tháng dạng ISO; người dùng đọc theo tháng. */
-function formatMonth(month?: string): string | undefined {
-  if (!month) return undefined
-  const [year, m] = month.split('-')
-  return m ? `T${Number(m)}/${year}` : month
-}
-
-function Dots({ level, tone }: { level: number; tone: string }) {
-  return (
-    <span className={`dots ${tone}`} aria-hidden>
-      {[1, 2, 3].map((i) => (
-        <i key={i} data-on={i <= level} />
-      ))}
-    </span>
-  )
-}
-
-function TrendCell({ item, state }: { item: KeywordCandidate; state: TrendState }) {
-  if (state.loading)
-    return (
-      <span className="muted small">
-        <span className="spinner" /> đang đo…
-      </span>
-    )
-  if (!state.ran) return <span className="muted small">chưa đo</span>
-
-  const series = state.series[item.display]
-  if (!series) return <span className="muted small">Trends không có dữ liệu</span>
-
-  if (series.belowMeasurement) {
+  if (demand === undefined || demand === null) {
+    // Cụm chỉ có mặt ở bảng "đang tăng" thì không có thứ hạng lượng tìm, nhưng "đang tăng"
+    // tự nó là tín hiệu — mất nó đi thì dòng này trông y hệt dòng Trends chưa từng nhắc tới.
+    const surge = item.hits.find((h) => h.rising && h.demand !== undefined)
+    if (surge) {
+      // Trends dùng 5000 làm mã cho nhãn "Đột biến" chứ không phải một phần trăm thật.
+      const label = (surge.demand ?? 0) >= 5000 ? 'đột biến' : `+${Math.round(surge.demand ?? 0)}%`
+      return (
+        <span
+          className="surge"
+          title="Google Trends xếp cụm này vào bảng “Cụm từ tìm kiếm tăng”. Đó là phần trăm tăng trưởng, không phải khối lượng — nên không xếp chung thang với thanh của các dòng khác."
+        >
+          ↑ đang tăng {label}
+        </span>
+      )
+    }
     return (
       <span
         className="muted small"
-        title="Trends đo được từ khoá này nhưng lượng tìm quá nhỏ so với từ khoá gốc để hiện thành số"
+        title="Google Trends không xếp cụm này vào bảng truy vấn liên quan. KHÔNG có nghĩa là không ai tìm — bảng đó chỉ chứa khoảng một trăm cụm, nên phần lớn long-tail nằm ngoài tầm nó."
       >
-        quá thấp để đo
+        —
       </span>
     )
   }
 
-  const arrow = series.direction === 'rising' ? '▲' : series.direction === 'falling' ? '▼' : '▬'
-  const peak = formatMonth(series.peakMonth)
+  const dir = changePercent == null ? 'flat' : changePercent > 0 ? 'up' : changePercent < 0 ? 'down' : 'flat'
 
   return (
-    <div className={`trend ${series.direction}`}>
-      <Sparkline series={series} />
-      <div className="trend-meta">
-        <b>
-          {arrow} {series.changePercent > 0 ? '+' : ''}
-          {series.changePercent}%
-        </b>
-        {typeof series.relativeToSeed === 'number' && (
-          <div className="demand" title="Lượng tìm kiếm trung bình so với từ khoá gốc bạn đã nhập">
-            ≈ {series.relativeToSeed}% lượng tìm của từ gốc
-          </div>
-        )}
-        {peak && <div className="muted">cao điểm {peak}</div>}
-      </div>
+    <div className="demand">
+      <span
+        className="demand-bar"
+        role="img"
+        aria-label={`Lượng tìm ${demand} trên 100`}
+        title={`${demand}/100 so với cụm được tìm nhiều nhất trong nhóm truy vấn liên quan`}
+      >
+        <i style={{ width: `${demand}%` }} />
+      </span>
+      {changePercent != null && (
+        <span className={`delta ${dir}`} title={DELTA_HINT[dir]}>
+          {dir === 'up' ? '↑' : dir === 'down' ? '↓' : '→'} {changePercent > 0 ? '+' : ''}
+          {changePercent}%
+        </span>
+      )}
     </div>
   )
 }
 
-/** Vị trí cao nhất (số nhỏ nhất) mà từ khoá này đạt được ở mỗi nguồn. */
-function bestPositions(item: KeywordCandidate): Partial<Record<KeywordSource, number>> {
-  const out: Partial<Record<KeywordSource, number>> = {}
-  for (const hit of item.hits) {
-    const current = out[hit.source]
-    if (current === undefined || hit.position < current) out[hit.source] = hit.position
-  }
-  return out
+/** Phần trăm này là của Google, không phải của ta — câu giải thích phải nói rõ điều đó. */
+const DELTA_HINT: Record<string, string> = {
+  up: 'Google Trends công bố cụm này tăng so với kỳ trước — đúng cột “Thay đổi” trên trang Trends',
+  down: 'Google Trends công bố cụm này giảm so với kỳ trước. Phần lớn là mùa vụ — so với cùng kỳ năm ngoái trước khi kết luận',
+  flat: 'Google Trends không ghi nhận thay đổi đáng kể so với kỳ trước',
+}
+
+/**
+ * Câu giải thích cho chip thứ hạng, khác nhau theo loại bằng chứng mà nguồn đó có.
+ *
+ * `hasPrimary` đổi hẳn ý nghĩa của hai sàn chứ không chỉ đổi chữ. Khi nguồn chấm chính đang
+ * bật, chúng đúng là "nguồn đối chiếu" — trọng số 0,2 so với 0,5, và rổ ứng viên do Trends
+ * quyết định (`_primary_pool` ở `lib/keywords/rank.py`). Khi tắt nó đi thì rổ là toàn bộ ứng
+ * viên và hai sàn là bằng chứng DUY NHẤT, nên gọi chúng là "đối chiếu" thành nói dối về chỗ
+ * thứ hạng ấy từ đâu ra.
+ */
+function rankHint(source: SourceInfo, rank: number, total: number | undefined, hasPrimary: boolean): string {
+  const scope = total ? `trong ${total} từ khoá ${source.label} trả về` : `ở ${source.label}`
+  // `source.primary` chứ không phải `source.id === 'trends'`: nguồn nào là chính do backend
+  // công bố, và ở đây không có lý do gì để viết cứng lại chuỗi đó lần nữa.
+  if (source.primary)
+    return `Xếp thứ ${rank} ${scope}, theo lượng tìm kiếm đo được — đây là nền tảng chấm chính`
+
+  // Các sàn KHÔNG hiện thứ hạng, và đây là một quyết định về sự trung thực chứ không phải về
+  // chỗ trống trên màn hình. Chúng là API gợi ý gõ: thứ chúng trả về là danh sách hoàn thiện
+  // cho một tiền tố mà CHÍNH TA bịa ra, không phải một bảng xếp hạng nhu cầu. Hiện "Shopee #7
+  // / 94" là gán cho Shopee một phán quyết mà nó chưa bao giờ đưa ra, kèm hai chữ số chính xác
+  // giả — mẫu số 94 chỉ là số cụm mà mấy lượt mở rộng của ta tình cờ nhặt được.
+  //
+  // Ranh giới ở đây trùng đúng ranh giới `MEASURED_FLOOR` của `lib/keywords/rank.py`: đo được
+  // nhu cầu thì được con số, còn lại chỉ được xác nhận có mặt.
+  const role = hasPrimary
+    ? 'dùng để đối chiếu chéo, không phải để xếp hạng'
+    : 'chưa có nguồn nào đo được lượng tìm cho lượt này'
+  return `${source.label} có gợi ý từ khoá này (${role})`
 }
 
 /**
  * Nền tảng nào gợi ý từ khoá này, và ở vị trí bao nhiêu.
  *
- * Cố ý KHÔNG còn gọi là "độ phổ biến". Đo ngày 2026-07-28: endpoint tìm sản phẩm của Shopee
- * trả 403 với người gọi ẩn danh kể cả từ trang trình duyệt đã làm nóng, và search organic
- * của TikTok trả body rỗng — nên cả số lượt bán lẫn lượt xem đều ngoài tầm với nếu không
- * có tài khoản đăng nhập. Thứ công cụ thật sự biết là từ khoá có được gợi ý không và ở vị
- * trí nào, và cột này nói đúng như vậy chứ không ngụ ý có dữ liệu doanh số.
+ * Con số ở đây là thứ hạng TRONG TOÀN BỘ danh sách nguồn đó trả về, khác hẳn cột `#` bên trái
+ * là thứ tự trong ba mươi dòng đang xem. Hai thứ đó không phải một, và không cần bằng nhau —
+ * "Shopee #21" ở dòng 21 nghĩa là Shopee cũng xếp nó thứ 21, còn "Google #26" ở dòng 14 nghĩa
+ * là bảng này đã đẩy nó lên nhờ các nguồn khác. Tooltip nói ra mẫu số để so được.
+ *
+ * Cột này cố ý KHÔNG gọi là "độ phổ biến". Đo 2026-07-30: endpoint tìm sản phẩm của Shopee trả
+ * 403 với người gọi ẩn danh, và search organic của TikTok trả body rỗng — nên cả lượt bán lẫn
+ * lượt xem đều ngoài tầm. Thứ công cụ thật sự biết là từ khoá có được gợi ý không và ở vị trí
+ * nào, và cột này nói đúng chừng ấy chứ không ngụ ý có dữ liệu doanh số.
  */
-function PresenceCell({ item, sources }: { item: KeywordCandidate; sources: SourceInfo[] }) {
-  const positions = bestPositions(item)
+function PresenceCell({
+  item,
+  sources,
+  sourceTotals,
+}: {
+  item: KeywordCandidate
+  sources: SourceInfo[]
+  sourceTotals: Partial<Record<KeywordSource, number>>
+}) {
+  // `sources` ở đây đã là các nguồn ĐANG BẬT, nên đây đúng là câu hỏi "lượt tìm này có nguồn
+  // chấm chính không" — không cần truyền thêm một prop nói lại điều đã có trong danh sách.
+  const hasPrimary = sources.some((s) => s.primary)
   return (
     <div className="presence">
       {sources.map((source) => {
-        const position = positions[source.id]
-        const on = position !== undefined
+        const rank = item.sourceRanks?.[source.id]
+        const on = rank !== undefined
+        // Số HIỆN RA là số đã đánh lại 1..N trong đúng những dòng đang xem, nên dãy chip không
+        // có lỗ. Số THẬT của nguồn ở lại trong tooltip cùng mẫu số — xem `display_ranks` ở
+        // `backend/lib/keywords/types.py`.
+        //
+        // Rơi về `rank` khi backend chưa có trường mới: một bản cũ vẫn hiện đúng như trước,
+        // chỉ là dãy số lại có lỗ.
+        const shown = item.displayRanks?.[source.id] ?? rank
         return (
           <span
             key={source.id}
@@ -111,12 +168,15 @@ function PresenceCell({ item, sources }: { item: KeywordCandidate; sources: Sour
             data-off={!on}
             title={
               on
-                ? `${source.label} gợi ý từ khoá này, cao nhất ở vị trí ${position! + 1}`
+                ? rankHint(source, rank!, sourceTotals[source.id], hasPrimary)
                 : `${source.label} không gợi ý từ khoá này`
             }
           >
             {source.label}
-            {on && <b>#{position! + 1}</b>}
+            {/* Chỉ nguồn chấm chính mới hiện số. Xem lý do đầy đủ ở `rankHint`: các sàn là
+                API gợi ý gõ, thứ hạng của chúng là sản phẩm phụ của những tiền tố ta tự gieo
+                chứ không phải phán quyết của sàn. */}
+            {on && source.primary && <b>#{shown}</b>}
           </span>
         )
       })}
@@ -127,89 +187,108 @@ function PresenceCell({ item, sources }: { item: KeywordCandidate; sources: Sour
 function Row({
   item,
   rank,
-  state,
-  relevance,
   sources,
+  sourceTotals,
+  showDemand,
+  gloss,
+  glossLoading,
 }: {
   item: KeywordCandidate
   rank: number
-  state: TrendState
-  relevance: Relevance
   sources: SourceInfo[]
+  sourceTotals: Partial<Record<KeywordSource, number>>
+  showDemand: boolean
+  gloss?: KeywordGloss
+  glossLoading: boolean
 }) {
-  const [open, setOpen] = useState(false)
-
   return (
-    <>
-      <tr className={item.intent === 'informational' ? 'info-row' : undefined}>
-        <td className="rank">{rank}</td>
+    <tr className={item.intent === 'informational' ? 'info-row' : undefined}>
+      <td className="rank">{rank}</td>
+      <td>
+        <div className="kw">{item.display}</div>
+        {/* Nghĩa nằm ngay dưới từ khoá chứ không thành một cột riêng: đọc một dòng ngoại ngữ
+            rồi liếc sang cột thứ tư để biết nó nghĩa gì là bắt mắt nhảy qua cả bảng, ba mươi
+            lần. Ở đây mắt chỉ đi xuống một dòng.
+
+            Chuỗi rỗng KHÔNG hiện gì cả. Backend cho phép Gemini để trống khi nó không chắc,
+            và một phỏng đoán về tiếng Tagalog trông y hệt một bản dịch chắc chắn — người đọc
+            không có cách nào phân biệt, nên chỗ trống là câu trả lời trung thực hơn. */}
+        {gloss?.meaning && <div className="kw-gloss">{gloss.meaning}</div>}
+        {!gloss && glossLoading && <div className="kw-gloss loading">đang dịch…</div>}
+        {/* Đã gỡ theo yêu cầu: nhãn mùa vụ, chip "câu hỏi" của `intent`, và chip nhãn của
+            Gemini (mua / tìm hiểu / thương hiệu / lạc chủ đề).
+
+            Cả hai trường vẫn về đủ trong dữ liệu và vẫn LÀM VIỆC ở chỗ khác — `intent` quyết
+            định thứ tự sắp xếp và làm mờ cả dòng qua `.info-row`, còn `gloss.label` thì chưa
+            có nơi dùng. Ở đây chỉ thôi vẽ chúng ra. */}
+      </td>
+      {showDemand && (
         <td>
-          <div className="kw">{item.display}</div>
-          <div className="kw-tags">
-            {item.seasonal && <span className="src season">{item.seasonal}</span>}
-            {item.intent === 'informational' && <span className="src info">câu hỏi</span>}
-          </div>
+          <DemandCell item={item} />
         </td>
-        <td>
-          <div className="axis" title={relevance.hint}>
-            <Dots level={relevance.level} tone={relevance.tone} />
-            <b className={relevance.tone}>{relevance.label}</b>
-            <span className="axis-num" title="Điểm chi tiết, dùng để xếp hạng">
-              {item.score.total}
-            </span>
-          </div>
-        </td>
-        <td>
-          <TrendCell item={item} state={state} />
-        </td>
-        <td>
-          <PresenceCell item={item} sources={sources} />
-        </td>
-        <td className="actions">
-          <button className="linkish" onClick={() => setOpen((v) => !v)}>
-            {open ? 'ẩn' : 'vì sao?'}
-          </button>
-          <a href={`/ads?keyword=${encodeURIComponent(item.display)}`} title="Mở tab Quảng cáo với từ khoá này">
-            tìm ads ↗
-          </a>
-        </td>
-      </tr>
-      {open && (
-        <tr className="detail-row">
-          <td />
-          <td colSpan={5}>
-            <ul className="reasons">
-              {item.score.reasons.map((r, i) => (
-                <li key={i}>{r}</li>
-              ))}
-            </ul>
-          </td>
-        </tr>
       )}
-    </>
+      <td>
+        <PresenceCell item={item} sources={sources} sourceTotals={sourceTotals} />
+      </td>
+      <td className="actions">
+        <a href={`/ads?keyword=${encodeURIComponent(item.display)}`} title="Mở tab Quảng cáo với từ khoá này">
+          tìm ads ↗
+        </a>
+      </td>
+    </tr>
   )
 }
 
+/**
+ * Bảng kết quả. Có hai hình dạng, quyết định bởi `showDemand`.
+ *
+ * Cột lượng tìm BIẾN MẤT chứ không hiện rỗng khi nguồn chấm chính bị tắt, và đó là điểm mấu
+ * chốt: Google Trends là nguồn duy nhất đo được nhu cầu (đo lại 2026-07-30 — Shopee
+ * `search_items` trả 403 `is_login:false`, TikTok `search/general/full` trả body rỗng). Giữ
+ * cột lại rồi lấp bằng số của Google sẽ dựng nên một thanh lượng tìm CỦA GOOGLE nằm ngay cạnh
+ * chip "Shopee", và người đọc hiểu thành lượng tìm trên Shopee. Để trống cả cột thì mọi dòng
+ * đọc thành "không ai tìm". Bỏ hẳn là cách duy nhất không nói sai.
+ */
 export default function KeywordTable({
   rows,
-  relevance,
-  trend,
+  timeLabel,
   sources,
+  sourceTotals = {},
+  showDemand,
+  gloss = {},
+  glossLoading = false,
 }: {
   rows: KeywordCandidate[]
-  relevance: Map<string, Relevance>
-  trend: TrendState
+  /** Nhãn cửa sổ đang xem ("Năm qua", "3 tháng qua"…), để tiêu đề cột không nói sai khoảng. */
+  timeLabel: string
   sources: SourceInfo[]
+  /** Mỗi nguồn trả về bao nhiêu từ khoá — mẫu số cho các chip thứ hạng. */
+  sourceTotals?: Partial<Record<KeywordSource, number>>
+  /** Bật khi nguồn chấm chính đang được chọn — chỉ khi đó cột lượng tìm mới có gì để nói. */
+  showDemand: boolean
+  /**
+   * Nghĩa tiếng Việt theo `KeywordCandidate.keyword`. Rỗng ở thị trường Việt Nam và khi chưa
+   * cấu hình khoá Gemini — cả hai đều là trạng thái bình thường, bảng không đổi hình dạng.
+   */
+  gloss?: Record<string, KeywordGloss>
+  glossLoading?: boolean
 }) {
   return (
-    <table className="kwtable">
+    // Bề rộng các cột được ghim theo vị trí trong `keywords.css`, nên bỏ một cột đi phải báo
+    // cho CSS biết — nếu không thì cột xếp hạng lĩnh bề rộng của cột lượng tìm vừa biến mất.
+    <table className={showDemand ? 'kwtable' : 'kwtable no-trend'}>
       <thead>
         <tr>
           <th>#</th>
           <th>Từ khoá</th>
-          <th>Độ liên quan</th>
-          <th>Xu hướng &amp; nhu cầu</th>
-          <th>Có mặt trên</th>
+          {showDemand && (
+            <th title="Thang 0–100 so với cụm được tìm nhiều nhất trong nhóm truy vấn liên quan — KHÔNG phải số lượt tìm tuyệt đối. Kèm phần trăm thay đổi so với kỳ trước. Cả hai đúng như Google Trends công bố.">
+              Lượng tìm — {timeLabel}
+            </th>
+          )}
+          <th title="Thứ hạng của từ khoá trong TOÀN BỘ danh sách mà nguồn đó trả về — không phải thứ tự ở cột # bên trái. Đưa chuột vào từng chip để xem mẫu số và cách nguồn đó xếp.">
+            Bảng xếp hạng
+          </th>
           <th />
         </tr>
       </thead>
@@ -219,9 +298,11 @@ export default function KeywordTable({
             key={item.keyword}
             item={item}
             rank={i + 1}
-            state={trend}
-            relevance={relevance.get(item.keyword) ?? FALLBACK_RELEVANCE}
             sources={sources}
+            sourceTotals={sourceTotals}
+            showDemand={showDemand}
+            gloss={gloss[item.keyword]}
+            glossLoading={glossLoading}
           />
         ))}
       </tbody>

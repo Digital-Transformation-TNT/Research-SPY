@@ -92,6 +92,17 @@
   font-weight: 700;
 }
 
+/* Vế đính chính gắn sau nhãn khi ô chọn không làm đúng thứ tên nó gợi ra — hiện dùng ở ô
+   Quốc gia lúc chỉ bật TikTok. Nhạt hơn và không in đậm, để nó đọc như một chú thích chứ
+   không tranh chỗ với chính cái nhãn. */
+.field > label .hint {
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.8;
+  cursor: help;
+}
+
 .chips {
   display: flex;
   gap: 6px;
@@ -116,6 +127,125 @@
   color: var(--brand-hover);
   background: var(--brand-soft);
   font-weight: 600;
+}
+
+/* CỐ Ý không có kiểu riêng cho "nguồn không phục vụ thị trường đang chọn".
+   Từng có: nút bị khoá, rồi làm mờ, rồi viền đứt. Cả ba đều sai vì cùng một lý do — chúng
+   báo một trạng thái KHÔNG TỒN TẠI. Mọi chip đều bấm được; bấm vào nguồn ngoài thị trường
+   thì ô Quốc gia tự chuyển theo (xem `pick`).
+   Và từ khi có năm nguồn với thị trường gần như không chồng lấn (Shopee Đông Nam Á, Amazon
+   phương Tây, TikTok Việt Nam, Taobao Trung Quốc), ở BẤT KỲ nước nào cũng có 2–4 ô bị đánh
+   dấu. Cả dãy khi ấy đọc thành "phần lớn đang hỏng", và đổi nước một cái là toàn bộ viền
+   nhấp nháy theo.
+   Việc giải thích thuộc về câu nhắc khi rê chuột, nơi nói được nguyên câu thay vì bắt người
+   dùng học ý nghĩa của một kiểu viền. */
+
+/* "Tổng hợp" là một lựa chọn sẵn, không phải một nền tảng. Đường kẻ tách nó ra khỏi ba ô kia
+   để dãy chip đọc được thành "chọn một nền tảng, hoặc gộp hết" thay vì bốn nền tảng ngang
+   hàng — trong đó có một cái tên không phải nền tảng nào. */
+.chip.preset {
+  margin-left: 9px;
+  position: relative;
+}
+
+.chip.preset::before {
+  content: '';
+  position: absolute;
+  left: -9px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+}
+
+/* ==================== ô chọn một-trong-nhiều ==================== */
+
+.dropdown { position: relative; }
+
+.dd-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 168px;
+  padding: 8px 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.dd-button:hover { border-color: var(--text-mute); }
+.dd-button[aria-expanded='true'] { border-color: var(--brand); }
+.dd-button:disabled { opacity: 0.5; cursor: not-allowed; }
+.dd-button i { font-style: normal; color: var(--text-mute); font-size: 10px; }
+
+.dd-panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 5px);
+  left: 0;
+  min-width: 100%;
+  width: max-content;
+  max-width: 320px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+
+.dd-search {
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 12.5px;
+  outline: none;
+}
+
+.dd-search:focus { border-color: var(--brand); }
+
+.dd-list {
+  max-height: 264px;
+  overflow-y: auto;
+}
+
+.dd-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dd-option[data-active='true'] { background: var(--surface-2); color: var(--text); }
+
+.dd-option[data-on='true'] {
+  color: var(--brand-hover);
+  background: var(--brand-soft);
+  font-weight: 600;
+}
+
+.dd-tick { font-size: 11px; }
+
+.dd-empty {
+  padding: 10px 9px;
+  font-size: 12px;
+  color: var(--text-mute);
 }
 
 select,
@@ -162,6 +292,20 @@ select:focus,
 .notice.warn { border-left-color: var(--warn); background: var(--warn-soft); border-color: #f0dfbe; }
 .notice.bad { border-left-color: var(--bad); background: var(--bad-soft); border-color: #f2cac7; }
 .notice.info { border-left-color: var(--info); background: var(--info-soft); border-color: var(--info-line); }
+
+/* Nút trông như liên kết, dùng khi một câu văn cần dẫn tới một hành động.
+   Là `<button>` chứ không phải `<a>`: nó không đi đâu cả, nó chạy một việc — và bàn phím
+   cùng trình đọc màn hình cần biết đúng điều đó. */
+.linklike {
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--brand);
+  cursor: pointer;
+  text-decoration: underline;
+}
 
 /* Dùng chung: link dạng chữ trong thẻ và trong bảng từ khoá. */
 .link-row a,
@@ -211,7 +355,10 @@ select:focus,
   vertical-align: -2px;
 }
 
+/* Vòng trắng ở trên là để đặt trên nút cam. Ở mọi chỗ nền sáng, nó tàng hình và chỉ còn
+   một cung nhỏ quay — trông như lỗi hiển thị chứ không như đang chờ. */
 .btn.ghost .spinner,
+.empty .spinner,
 .muted .spinner { border-color: rgba(31, 35, 41, 0.18); }
 
 @keyframes spin {

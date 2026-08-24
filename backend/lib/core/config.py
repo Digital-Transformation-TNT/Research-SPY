@@ -43,6 +43,23 @@ def env_string(name: str, fallback: str = "") -> str:
     return (os.environ.get(name) or "").strip() or fallback
 
 
+def env_map(prefix: str) -> dict[str, str]:
+    """
+    Gom các biến cùng tiền tố thành một bản đồ: `TIKTOK_PROXY_TH=...` → `{"TH": "..."}`.
+
+    Một biến cho mỗi khoá, thay vì một biến chứa danh sách ngăn bằng dấu phẩy. Giá trị ở đây
+    là URL proxy có nhúng mật khẩu, mà mật khẩu do nhà cung cấp sinh ra thì hoàn toàn có thể
+    chứa dấu phẩy — lúc đó bản một-biến-nhiều-mục sẽ tách sai và hỏng theo kiểu rất khó truy.
+
+    Bỏ qua biến để trống, nên comment-out một dòng trong `.env` là đủ để tắt một thị trường.
+    """
+    return {
+        name[len(prefix) :].strip().upper(): value.strip()
+        for name, value in os.environ.items()
+        if name.startswith(prefix) and (value or "").strip()
+    }
+
+
 @dataclass(frozen=True)
 class Config:
     """Cache kết quả tìm kiếm. Dùng chung cả team — đây là lý do chính chỉ chạy một server."""

@@ -7,7 +7,10 @@ dữ liệu nào, chỉ dùng chung hạ tầng ở `lib/core`.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Literal
+
+from pydantic import Field
 
 from lib.core.model import CamelModel
 
@@ -34,6 +37,13 @@ class SourceHit(CamelModel):
     raw: str
     #: Shopee có công bố điểm liên quan; hai nguồn còn lại thì không.
     native_score: float | None = None
+    #: Lượng tìm tương đối 0–100 do nguồn đo được. Hiện chỉ Google Trends có.
+    demand: float | None = None
+    #: Từ khoá nằm ở bảng "đang tăng" của Trends. Khi đó `demand` là phần trăm tăng, không
+    #: phải khối lượng — nên hai loại không được xếp chung thang.
+    rising: bool = False
+    #: Cột "Thay đổi" của Trends, đi cặp với `demand`. `None` với cụm ở bảng "đang tăng".
+    change_percent: float | None = None
 
 
 class KeywordScore(CamelModel):
@@ -49,6 +59,26 @@ class KeywordScore(CamelModel):
     prominence: int
     #: Điểm liên quan Shopee công bố, khi có.
     marketplace: int
+    #: Lượng tìm tương đối 0–100 đo bởi Google Trends, `None` khi Trends không nhắc tới từ này.
+    #:
+    #: `None` KHÔNG có nghĩa là không ai tìm — Trends chỉ trả về khoảng năm mươi truy vấn liên
+    #: quan cho mỗi từ gốc, nên phần lớn long-tail nằm ngoài tầm nó. Giao diện phải nói "chưa
+    #: đo" chứ không hiện số 0.
+    demand: int | None = None
+    #: Cột "Thay đổi" của Trends cho cụm này — đi CẶP với `demand`, và chỉ có khi `demand` có.
+    #:
+    #: Hai con số cùng đến từ một hàng trong bảng "Cụm từ tìm kiếm hàng đầu", và giao diện
+    #: hiện chúng cạnh nhau đúng như Trends làm. Tách riêng khỏi `TrendSeries.change_percent`:
+    #: cái kia do ta tự tính từ chuỗi thời gian đo được (quý cuối so quý đầu), còn cái này là
+    #: con số CHÍNH GOOGLE công bố. Hai cách tính khác nhau nên không được lẫn.
+    change_percent: int | None = None
+    #: Hạng trung bình có trọng số trên các nguồn — thứ quyết định thứ tự hiển thị.
+    #:
+    #: NHỎ HƠN LÀ TỐT HƠN, khác mọi trường điểm còn lại trong model này. Cố ý dùng thứ hạng
+    #: thô thay vì quy về thang 0–100: điểm gộp tạo cảm giác chính xác không có thật, còn
+    #: "Google #4, Shopee #17, TikTok #1" là thứ người dùng kiểm chứng được. Nguồn nào không
+    #: trả về từ khoá này thì tính bằng `RANK_CAP`. Xem `lib/keywords/rank.py`.
+    mean_rank: float = 20.0
     reasons: list[str]
 
 
@@ -65,41 +95,63 @@ class KeywordCandidate(CamelModel):
     intent: Intent
     #: Từ chỉ mùa mà team quan tâm, ví dụ "mùa hè".
     seasonal: str | None = None
+    #: Thứ hạng của từ khoá này TRONG TẬP KẾT QUẢ CỦA TỪNG NGUỒN, đánh số từ 1.
+    #:
+    #: Không phải `SourceHit.position`. `position` là chỗ đứng trong một lần gọi gợi ý của
+    #: một tiền tố cụ thể, mà mỗi lần gọi chỉ trả về khoảng mười mục còn ta hỏi tới hai mươi lăm
+    #: tiền tố — nên gần như từ khoá nào cũng từng đứng thứ nhất hoặc thứ hai ở đâu đó, và
+    #: cột hiển thị biến thành "#1" ở mọi dòng, không phân biệt được gì.
+    #:
+    #: Ở đây là thứ hạng thật: sắp toàn bộ từ khoá mà nguồn đó đóng góp theo chính bằng chứng
+    #: của nguồn đó, rồi đánh số. "Google #7" nghĩa là đứng thứ bảy trong số các từ khoá
+    #: Google trả về cho lần tìm này.
+    source_ranks: dict[str, int] = Field(default_factory=dict)
+    #: Thứ hạng ĐỂ HIỂN THỊ: đánh số lại 1..N chỉ trong những dòng thật sự hiện ra.
+    #:
+    #: Tách hẳn khỏi `source_ranks` vì hai con số trả lời hai câu hỏi khác nhau, và gộp chúng
+    #: là mất một câu:
+    #:
+    #:     source_ranks    "Google xếp nó thứ 26 trong 160 cụm Google trả về"  — kiểm được
+    #:     display_ranks   "trong 30 dòng bạn đang xem, đây là dòng Google ưu tiên thứ 5"
+    #:
+    #: Cột hiển thị dùng số thứ hai vì số thứ nhất có LỖ: thứ hạng được gán trên toàn bộ ứng
+    #: viên TRƯỚC khi lọc, nên các cụm bị bước lọc câu hỏi gạt ra vẫn giữ chỗ trong dãy số và
+    #: bảng đọc thành "#5, #7, #8" — trông y như công cụ đánh rơi mất một dòng.
+    #:
+    #: Con số kiểm chứng được KHÔNG mất đi: nó chuyển vào tooltip, cùng với mẫu số.
+    display_ranks: dict[str, int] = Field(default_factory=dict)
     score: KeywordScore
 
 
-class TrendPoint(CamelModel):
-    date: str
-    value: float
+#: Cửa sổ thời gian mặc định. Cùng chuỗi mà /explore dùng cho "Năm qua".
+DEFAULT_TIME_RANGE = "today 12-m"
+
+#: `country` cho phạm vi "Toàn thế giới".
+#:
+#: Trends thể hiện toàn cầu bằng cách BỎ HẲN tham số `geo` chứ không bằng một mã riêng. Ở đây
+#: nó vẫn cần một tên: chuỗi rỗng đi qua bốn tầng thì có tầng đọc ra thành "chưa chọn", và
+#: `expand_with_provider` cần một giá trị nói được rằng Shopee không phục vụ phạm vi này.
+WORLDWIDE = "WORLD"
 
 
-class TrendSeries(CamelModel):
-    """Chuỗi quan tâm theo thời gian của Google Trends cho một cụm từ."""
+@dataclass(frozen=True)
+class SearchContext:
+    """
+    Ba ô chọn của giao diện Google Trends: tìm Ở ĐÂU, TRONG BAO LÂU, trên KHO DỮ LIỆU NÀO.
 
-    keyword: str
-    geo: str
-    points: list[TrendPoint]
-    #: Phần trăm thay đổi, quý cuối của cửa sổ so với quý đầu.
-    change_percent: int
-    direction: Literal["rising", "falling", "flat"]
-    #: Tháng có mức quan tâm trung bình cao nhất — gợi ý tính mùa vụ.
-    peak_month: str | None = None
-    #: Mức quan tâm trung bình tính theo phần trăm so với từ gốc, đo trong cùng một nhóm so
-    #: sánh của Trends.
-    #:
-    #: Đây là tín hiệu nhu cầu thật duy nhất công cụ này có. Đo ngày 2026-07-28: endpoint tìm
-    #: sản phẩm của Shopee trả 403 với người gọi ẩn danh kể cả từ trang đã làm nóng, và search
-    #: organic của TikTok trả body rỗng — nên không nền tảng nào cấp được số lượt bán hay lượt
-    #: xem. Trends chuẩn hoá mỗi nhóm so sánh theo cực đại của chính nhóm đó, nên các con số
-    #: chỉ so sánh được giữa các nhóm khi mọi nhóm cùng chứa một mỏ neo — đó là lý do từ gốc
-    #: luôn có mặt. Không có giá trị khi chỉ đo một từ đơn lẻ, vì khi đó không có mỏ neo.
-    relative_to_seed: int | None = None
-    #: Trends trả về chuỗi toàn số 0 cho từ này khi đặt cạnh từ gốc.
-    #:
-    #: Khác với "không có dữ liệu": từ này *đã* được đo, nhưng khối lượng làm tròn về 0 so với
-    #: mỏ neo. Giao diện phải nói đúng như vậy chứ không hiện số 0, vì số 0 đọc thành "không
-    #: ai tìm từ này" trong khi sự thật là "quá nhỏ để đo ở thang này".
-    below_measurement: bool | None = None
+    Gói thành một vật thay vì ba tham số rời vì chúng luôn đi cùng nhau qua bốn tầng, và vì
+    chỉ hai trong ba có nghĩa với mọi nguồn: Shopee và TikTok chỉ đọc `country`, còn
+    `time_range` và `gprop` là khái niệm riêng của Trends. Một vật có tài liệu nói rõ điều đó
+    thì tốt hơn ba tham số mà hai cái luôn bị lờ đi ở hai nguồn trên ba.
+    """
+
+    country: str = "VN"
+    #: Chuỗi cửa sổ của Trends: `now 1-H`, `now 7-d`, `today 12-m`, `all`, hoặc một khoảng
+    #: tuỳ chỉnh dạng `2025-01-01 2025-12-31`.
+    time_range: str = DEFAULT_TIME_RANGE
+    #: Kho dữ liệu của Trends: rỗng = Tìm kiếm trên web, `images`, `news`, `froogle`
+    #: (Google Mua sắm), `youtube`.
+    gprop: str = ""
 
 
 class KeywordSearchParams(CamelModel):
@@ -110,6 +162,12 @@ class KeywordSearchParams(CamelModel):
     depth: Literal["quick", "normal", "deep"]
     include_informational: bool
     limit: int
+    time_range: str = DEFAULT_TIME_RANGE
+    gprop: str = ""
+
+    @property
+    def context(self) -> SearchContext:
+        return SearchContext(country=self.country, time_range=self.time_range, gprop=self.gprop)
 
 
 class KeywordSourceStatus(CamelModel):
@@ -128,8 +186,17 @@ class KeywordResult(CamelModel):
     #: Thiếu con số này thì giao diện báo "300 từ khoá" bất kể tìm được 300 hay 500, và người
     #: dùng không có cách nào biết kết quả đã bị cắt.
     total_found: int
+    #: Mỗi nguồn đóng góp bao nhiêu từ khoá — mẫu số của `KeywordCandidate.source_ranks`.
+    #: Nhờ nó giao diện nói được "thứ 7 trong 160" thay vì một con số treo lơ lửng.
+    source_totals: dict[str, int] = Field(default_factory=dict)
     statuses: list[KeywordSourceStatus]
-    #: Đường xu hướng của từ gốc. Vắng mặt khi Google Trends từ chối trong hạn thời gian.
-    seed_trend: TrendSeries | None = None
-    trend_notice: str | None = None
+    #: Lời nhắc khi chính TỪ GỐC là thứ sai, không phải nguồn nào hỏng.
+    #:
+    #: Tách hẳn khỏi `KeywordSourceStatus.message`: những dòng kia nói "nguồn này gặp chuyện
+    #: gì", còn dòng này nói "câu hỏi bạn vừa đặt không có câu trả lời". Đo 2026-08-04, từ gốc
+    #: "áo khoác" ở thị trường Philippines: Google trả về bảng rỗng — và đó là câu trả lời
+    #: ĐÚNG, vì người Philippines không gõ tiếng Việt. Cùng lúc đó "jacket" ở chính thị trường
+    #: ấy cho 49 cụm. Không có dòng này thì bảng rỗng đọc thành "công cụ hỏng", và người dùng
+    #: đi sửa thứ không hỏng.
+    seed_notice: str | None = None
     cached: bool

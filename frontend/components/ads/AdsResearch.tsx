@@ -262,8 +262,8 @@ export default function AdsResearch({ platforms }: { platforms: PlatformDescript
 
       {!result && !loading && !error && (
         <div className="empty">
-          Nhập từ khoá sản phẩm để bắt đầu. Kết quả được xếp hạng theo tổ hợp: thời gian ads sống, số biến thể
-          creative, mức tương tác và chất lượng content.
+          Nhập từ khoá sản phẩm để bắt đầu. Quảng cáo sống càng lâu thì càng lên trên — không ai trả tiền
+          tiếp cho quảng cáo đang lỗ.
         </div>
       )}
     </>

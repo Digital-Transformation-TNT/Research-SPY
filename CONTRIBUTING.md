@@ -159,6 +159,7 @@ from urllib.parse import quote
 from lib.core.http import get_json
 
 from ..provider import KeywordProvider, Suggestion
+from ..types import SearchContext
 
 
 class Lazada(KeywordProvider):
@@ -167,8 +168,8 @@ class Lazada(KeywordProvider):
     has_native_score = False
     markets = ["VN", "TH", "PH"]   # để None nếu phục vụ mọi thị trường
 
-    async def fetch_suggestions(self, term: str, country: str) -> list[Suggestion]:
-        payload = await get_json(f"https://…?q={quote(term, safe='')}")
+    async def fetch_suggestions(self, term: str, ctx: SearchContext) -> list[Suggestion]:
+        payload = await get_json(f"https://…?q={quote(term, safe='')}&loc={ctx.country}")
         return [Suggestion(keyword=k) for k in (payload.get("items") or [])]
 
 
@@ -176,7 +177,14 @@ lazada = Lazada()
 ```
 
 Rồi thêm một dòng vào `backend/lib/keywords/providers/__init__.py`. Chip nguồn trên giao
-diện, cột "Có mặt trên", cache và xếp hạng đều tự nhận nguồn mới.
+diện, cột "Bảng xếp hạng", cache và xếp hạng đều tự nhận nguồn mới. Chip cũng tự tắt ở
+những thị trường không có trong `markets`.
+
+`ctx` chở cả ba ô chọn của người dùng, nhưng phần lớn nguồn chỉ cần `ctx.country`:
+`ctx.time_range` và `ctx.gprop` là khái niệm riêng của Google Trends. Lờ chúng đi là đúng.
+Nếu nguồn của bạn CÓ đọc chúng thì nhớ đưa cả ba vào khoá cache của nguồn — xem
+`providers/trends_related.py`, nơi thiếu chúng sẽ khiến "24 giờ qua" nhận nguyên bảng
+của "Năm qua".
 
 ---
 

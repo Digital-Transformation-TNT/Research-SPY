@@ -1,0 +1,9 @@
+# Phiên đăng nhập Google — TƯƠNG ĐƯƠNG MẬT KHẨU ĐANG MỞ.
+#
+# Tệp .gitignore này nằm TRONG gói chứ không ở gốc dự án, cố ý: gói được copy sang dự án khác,
+# và ở đó sẽ không có ai nhớ thêm dòng loại trừ. Để nó đi kèm thì bảo vệ tự động theo.
+.auth/
+
+__pycache__/
+*.pyc
+.env

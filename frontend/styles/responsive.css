@@ -21,15 +21,18 @@
   .nav-group { flex-direction: row; gap: 6px; align-items: center; }
   .nav-label { display: none; }
   .nav-text small { display: none; }
-  .sidebar-foot { display: none; }
   .brand-text small { display: none; }
 
   .main { padding: 18px 16px 56px; }
+  /* Biến thể `.no-trend` phải được kể tên riêng dù trông như đã nằm trong `.kwtable`:
+     `.kwtable.no-trend td:nth-child(2)` có độ ưu tiên cao hơn `.kwtable td:nth-child(2)`,
+     nên chỉ nới quy tắc một class thì bảng chế độ chỉ-sàn vẫn giữ nguyên bề rộng phần trăm
+     của desktop và tràn ngang trên điện thoại. */
   .kwtable td:nth-child(2),
   .kwtable td:nth-child(3),
   .kwtable td:nth-child(4),
-  .kwtable td:nth-child(5) { width: auto; }
-
-  .result-bar { align-items: flex-start; flex-direction: column; }
-  .legend { flex-direction: column; gap: 5px; }
+  .kwtable td:nth-child(5),
+  .kwtable.no-trend td:nth-child(2),
+  .kwtable.no-trend td:nth-child(3),
+  .kwtable.no-trend td:nth-child(4) { width: auto; }
 }

@@ -16,6 +16,7 @@ Phiên được đánh key theo recipe + quốc gia, vì mỗi thị trường c
 from __future__ import annotations
 
 import asyncio
+import sys
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -29,22 +30,152 @@ from .config import config
 _playwright: Playwright | None = None
 _playwright_lock = asyncio.Lock()
 
+#: Driver này do người khác start và giao lại — ta không được phép stop nó.
+_playwright_borrowed = False
+
+
+def adopt_playwright(pw: Playwright) -> None:
+    """
+    Dùng lại một `Playwright` đã start sẵn thay vì tự start driver thứ hai.
+
+    Dành cho script tự quản `async_playwright()` rồi mới gọi vào code server — ví dụ
+    `scripts/auth/google_login.py`, nơi bước kiểm chứng cố ý đi qua đúng hàm mà server dùng.
+    Không gọi hàm này thì tiến trình đó nuôi HAI node driver cùng lúc, và đó là một tình huống
+    mong manh có thật: đo 2026-07-30, một lần chạy như vậy treo vô hạn ở `chromium.launch()`
+    của driver thứ hai — driver đã start, nhưng trình duyệt thì không bao giờ mở.
+
+    Đánh dấu là "đi vay" nên `close_all_sessions` sẽ không stop nó; việc đó thuộc về nơi đã
+    start, tức là khối `async with async_playwright()` của script.
+    """
+    global _playwright, _playwright_borrowed
+    _playwright = pw
+    _playwright_borrowed = True
+
+
+#: Câu giải thích cho lỗi khó đoán nhất của cả hệ thống trên Windows.
+#:
+#: Playwright phải sinh một tiến trình con cho driver của nó. `SelectorEventLoop` không làm
+#: được việc đó và ném `NotImplementedError` KHÔNG kèm mô tả — nên `str(e)` rỗng, mọi lớp xử
+#: lý lỗi phía trên đọc ra là "không có lỗi", và người dùng nhận được một thông báo nói sai
+#: hoàn toàn về nguyên nhân.
+#:
+#: Nguồn cơn: `uvicorn/loops/asyncio.py` đặt `WindowsSelectorEventLoopPolicy` khi và chỉ khi
+#: `use_subprocess` bật — tức là khi chạy kèm `--reload` hoặc `--workers`. Vì vậy công cụ
+#: chạy tốt bằng lệnh thường nhưng mọi thứ cần trình duyệt sẽ chết ngay khi thêm `--reload`.
+WINDOWS_LOOP_ERROR = (
+    "Trình duyệt không khởi động được vì server đang chạy trên SelectorEventLoop. "
+    "Trên Windows, uvicorn chuyển sang loop này khi có cờ --reload (hoặc --workers), mà "
+    "Playwright thì cần ProactorEventLoop để mở tiến trình con. Chạy lại không kèm --reload: "
+    "`python -m uvicorn app.main:app --port 8000`."
+)
+
+
+def describe_browser_error(error: BaseException) -> str:
+    """
+    Đổi một ngoại lệ của Playwright thành câu người vận hành làm được gì đó.
+
+    Luôn trả về chuỗi khác rỗng: một thông báo lỗi rỗng còn tệ hơn không bắt lỗi, vì nó lặng
+    lẽ biến thành "không có lỗi" ở lớp trên.
+    """
+    if isinstance(error, NotImplementedError) and sys.platform == "win32":
+        return WINDOWS_LOOP_ERROR
+    return str(error) or f"{type(error).__name__} (không kèm mô tả)"
+
 
 async def get_playwright() -> Playwright:
     global _playwright
     async with _playwright_lock:
         if _playwright is None:
-            _playwright = await async_playwright().start()
+            try:
+                _playwright = await async_playwright().start()
+            except NotImplementedError as error:
+                raise RuntimeError(describe_browser_error(error)) from error
         return _playwright
 
 
-async def launch_browser() -> Browser:
-    """Mở một Chromium theo đúng cấu hình chung. Nơi gọi tự chịu trách nhiệm đóng lại."""
-    pw = await get_playwright()
-    return await pw.chromium.launch(
-        headless=config.headless,
-        args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
-    )
+#: Dấu hiệu tiến trình driver của Playwright đã chết, chứ không phải một lần mở trình duyệt hỏng.
+#:
+#: Phân biệt được điều này là bắt buộc, vì hai loại hỏng cần hai cách xử lý ngược nhau. Một
+#: lần mở hỏng thì thử lại cũng vậy. Còn driver chết thì đối tượng `Playwright` đang cache
+#: hỏng VĨNH VIỄN: mọi lần mở sau đó đều ném đúng lỗi này, nên server phải khởi động lại mới
+#: dùng được trình duyệt — đo được đúng như vậy 2026-07-29, sau một loạt dài các lần mở.
+_DEAD_DRIVER_MARKERS = (
+    "connection closed while reading from the driver",
+    "playwright._impl._api_types.error: connection closed",
+    "target closed",
+)
+
+
+def _driver_is_dead(error: BaseException) -> bool:
+    return any(marker in str(error).lower() for marker in _DEAD_DRIVER_MARKERS)
+
+
+async def _reset_playwright() -> None:
+    """Vứt driver đang cache đi để lần gọi sau dựng lại từ đầu."""
+    global _playwright, _playwright_borrowed
+    async with _playwright_lock:
+        stale, _playwright = _playwright, None
+        borrowed, _playwright_borrowed = _playwright_borrowed, False
+    if stale is not None and not borrowed:
+        try:
+            await stale.stop()
+        except Exception:
+            pass  # nó đã chết rồi; đây chỉ là dọn cho sạch
+
+
+async def launch_browser(headless: bool | None = None) -> Browser:
+    """
+    Mở CHROME THẬT CỦA MÁY theo đúng cấu hình chung. Nơi gọi tự chịu trách nhiệm đóng lại.
+
+    `headless=None` nghĩa là theo cấu hình chung, và đó là điều gần như mọi nơi gọi đều muốn.
+    Tham số này tồn tại cho đúng một trường hợp đã ĐO ĐƯỢC là khác: Google Lens. Đo 2026-08-17,
+    cùng proxy, cùng mã, đổi mỗi biến này — có cửa sổ thì bóc được 16 thẻ, chạy ẩn thì vào tới
+    trang kết quả nhưng bóc được 0. Xem `lib/imagesearch/lens.py`.
+
+    `channel="chrome"` KHÔNG phải chi tiết vụn vặt — nó là khác biệt giữa có dữ liệu và không.
+    Đo 2026-08-04 trên `trends.google.com.vn/explore`, cùng phiên đăng nhập, cùng máy, cùng
+    IP, cùng `storage_state`, chỉ khác bản trình duyệt:
+
+        Chrome thật, chạy ẩn      → 100 truy vấn liên quan
+        Chrome thật, có cửa sổ    → 100 truy vấn liên quan
+        Chromium đi kèm Playwright → payload rỗng
+
+    Tức là Google phân biệt được hai bản và trả về rỗng cho bản đi kèm — im lặng, HTTP 200,
+    không lỗi. Đó cũng là kiểu chặn đã ngốn trọn một ngày đi tìm nguyên nhân ở phiên đăng
+    nhập, ở tài khoản và ở giới hạn tần suất.
+
+    `scripts/auth/google_login.py` VỐN ĐÃ ưu tiên Chrome thật kèm đúng ghi chú này, nhưng chỉ
+    cho bước đăng nhập. Đường lấy dữ liệu — chỗ thật sự cần — thì vẫn dùng bản đi kèm.
+
+    Rơi về Chromium đi kèm khi máy không có Chrome: mục Quảng cáo dùng chung hàm này và không
+    dính chuyện Google phân biệt, nên với chúng bản nào cũng chạy. Thà chạy được một phần còn
+    hơn không mở nổi trình duyệt.
+
+    Dựng lại driver và thử LẠI MỘT LẦN khi driver chết. Không phải chuyện hiếm: mục Từ khoá
+    mở trình duyệt gần một chục lần cho mỗi lượt tìm, và chỉ cần một lần driver gãy là mọi
+    thứ cần trình duyệt hỏng cho tới khi restart server — tức là cả mục Quảng cáo cũng chết
+    theo, vì cả hai dùng chung một driver.
+
+    Cố ý CHỈ thử lại đúng một lần: nếu driver mới cũng chết ngay thì nguyên nhân nằm ở máy
+    (hết bộ nhớ, thiếu bản Chromium), và thử lại vòng nữa chỉ làm chậm thông báo lỗi.
+    """
+    options = {
+        "headless": config.headless if headless is None else headless,
+        "args": ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+    }
+    for attempt in (1, 2):
+        pw = await get_playwright()
+        try:
+            return await pw.chromium.launch(channel="chrome", **options)
+        except Exception as error:
+            if _driver_is_dead(error) and attempt == 1:
+                await _reset_playwright()
+                continue
+            # Không phải driver chết ⇒ nhiều khả năng máy không cài Chrome. Nói ra một lần
+            # rồi chạy tiếp bằng bản đi kèm, thay vì làm hỏng cả server vì một tuỳ chọn.
+            print(f"  (không mở được Chrome của máy — dùng Chromium đi kèm: {error})")
+            return await pw.chromium.launch(**options)
+    raise RuntimeError("Không mở được trình duyệt")  # không tới được; giữ cho kiểu trả về kín
 
 
 @dataclass
@@ -270,13 +401,15 @@ async def fetch_in_page(
 
 async def close_all_sessions() -> None:
     """Đóng toàn bộ trình duyệt đang mở. Dùng khi tắt server và trong script test."""
-    global _playwright
+    global _playwright, _playwright_borrowed
     tasks = list(_pool.values())
     _pool.clear()
     await asyncio.gather(*(_dispose(task) for task in tasks), return_exceptions=True)
-    if _playwright is not None:
+    # Driver đi vay thì để nơi start tự dọn — xem `adopt_playwright`.
+    if _playwright is not None and not _playwright_borrowed:
         try:
             await _playwright.stop()
         except Exception:
             pass
-        _playwright = None
+    _playwright = None
+    _playwright_borrowed = False

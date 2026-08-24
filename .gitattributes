@@ -2,6 +2,11 @@
 # nhiễu bởi CRLF/LF khi người khác mở trên máy khác.
 * text=auto eol=lf
 
+# Ngoại lệ: cmd.exe đọc file .bat theo từng dòng và cần CRLF. Với LF thì các khối
+# `if ... ( ... )` nhiều dòng bị hiểu sai, nên `start.bat` chết ngay dòng đầu.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
 # File nhị phân: không đụng vào nội dung
 *.png binary
 *.jpg binary

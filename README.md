@@ -40,7 +40,9 @@ cd ../frontend
 npm install
 ```
 
-Chạy — **cần hai cửa sổ terminal**:
+Chạy hằng ngày: **nhấp đúp `start.bat`** ở thư mục gốc. Nó bật cả hai tiến trình trong hai
+cửa sổ riêng rồi mở trình duyệt. Muốn chạy bằng tay — hoặc cần đọc log của một bên — thì
+**dùng hai cửa sổ terminal**:
 
 ```bash
 # cửa sổ 1
@@ -51,6 +53,11 @@ python -m uvicorn app.main:app --port 8000
 cd frontend
 npm run dev                       # http://localhost:3000
 ```
+
+> **Đừng thêm `--reload` cho backend trên Windows.** Cờ đó khiến uvicorn chuyển sang
+> `WindowsSelectorEventLoopPolicy`, loop không sinh được tiến trình con, nên Playwright chết
+> ngay khi khởi động — mất cả Google Trends lẫn toàn bộ mục Quảng cáo. Sửa backend thì tắt
+> rồi bật lại bằng tay. (`--workers` dính đúng lỗi này.)
 
 Lệnh khác:
 
@@ -117,8 +124,12 @@ backend/
         ├── providers/
         │   ├── __init__.py  #   SỔ ĐĂNG KÝ — nơi duy nhất sửa khi thêm nguồn
         │   ├── expand.py    #   bộ máy mở rộng long-tail, dùng chung mọi nguồn
-        │   └── google.py  shopee.py  tiktok.py
-        └── types.py  normalize.py  rank.py  trends.py  search.py
+        │   └── trends_related.py  shopee.py  amazon.py  tiktok.py
+        ├── market.py        #   thị trường nào nói ngôn ngữ nào (một bản duy nhất)
+        ├── normalize.py     #   vốn từ + quy tắc văn bản THEO THỊ TRƯỜNG
+        ├── gloss.py         #   dịch nghĩa về tiếng Việt để ĐỌC (Gemini) — không chạm xếp hạng
+        ├── bridge.py        #   bắc cầu từ gốc: Gemini đề cử cách gọi, Trends chấm điểm
+        └── types.py  rank.py  trends.py  search.py
 
 frontend/
 ├── app/
@@ -128,7 +139,7 @@ frontend/
 │   └── page.tsx             # chuyển hướng về /ads
 ├── components/
 │   ├── ads/                 # AdsResearch, AdCard, HealthBar, PlatformOptions
-│   ├── keywords/            # KeywordResearch, KeywordTable, Sparkline, relevance
+│   ├── keywords/            # KeywordResearch, KeywordTable, SeedTrend, TrendChart, Dropdown
 │   └── layout/              # Sidebar, BackendDown
 ├── lib/
 │   ├── api.ts               # địa chỉ backend cho server component
@@ -220,12 +231,20 @@ Ba điều này ảnh hưởng trực tiếp tới việc đọc số liệu —
    CTR và **luôn kèm thông báo nói rõ**. Thấy thông báo đó thì đừng kết luận về nhu cầu sản
    phẩm, hãy nhìn phần Facebook.
 
-3. **Điểm ở mục Từ khoá là độ phù hợp, không phải lượng search.** Không nguồn miễn phí nào
-   cho volume thật. Cột "Có mặt trên" nói nguồn nào *gợi ý* từ khoá đó và ở vị trí mấy — không
-   phải doanh số. (Đo ngày 2026-07-28: endpoint tìm sản phẩm của Shopee trả 403 với người gọi
-   ẩn danh, search organic của TikTok trả body rỗng, nên số lượt bán và lượt xem đều ngoài
-   tầm với.) Nút "Đo xu hướng" dùng Google Trends để cho con số **tương đối so với từ gốc** —
-   đó là tín hiệu nhu cầu thật duy nhất công cụ có.
+3. **Không có lượng search tuyệt đối.** Con số đó chỉ nằm trong Google Ads Keyword Planner và
+   cần tài khoản quảng cáo đang tiêu tiền. Cột "Lượng tìm" vẽ **hình dạng** nhu cầu theo thời
+   gian lấy từ Google Trends, kèm tháng cao điểm — dùng để chọn thời điểm test và so tính mùa
+   vụ giữa các từ khoá, không dùng thay số liệu khi tính ngân sách. Cột "Bảng xếp hạng" nói
+   nguồn nào *gợi ý* từ khoá đó và ở vị trí mấy — không phải doanh số. (Đo ngày 2026-07-28:
+   endpoint tìm sản phẩm của Shopee trả 403 với người gọi ẩn danh, search organic của TikTok
+   trả body rỗng, nên số lượt bán và lượt xem đều ngoài tầm với.)
+
+4. **Ba ô chọn Quốc gia / Thời gian / Loại tìm kiếm áp cho CẢ hai việc** — tìm ra từ khoá, và
+   vẽ đường lượng tìm. Đó là ba ô của chính trang Google Trends, nên đổi chúng là đổi câu hỏi
+   chứ không phải đổi cách hiển thị: bảng truy vấn liên quan của "24 giờ qua" là một tập từ
+   khoá khác hẳn của "Năm qua", và "Google Mua sắm" lại là tập thứ ba. Mặc định là
+   **Việt Nam · Năm qua · Tìm kiếm trên web**. Chọn thị trường Shopee không có mặt thì chip
+   Shopee tự tắt — nó chỉ chạy ở VN, TH, PH, MY, ID, SG.
 
 **Chưa dùng proxy.** Tìm kiếm đa quốc gia chạy qua bộ lọc quốc gia của chính nền tảng, nghĩa
 là bạn thấy những gì một người ở Việt Nam nhìn thấy khi lọc theo nước đó, không phải những gì

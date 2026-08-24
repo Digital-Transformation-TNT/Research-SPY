@@ -19,8 +19,25 @@ from urllib.parse import quote
 from lib.core.http import get_json
 
 from ..provider import KeywordProvider, Suggestion
+from ..types import SearchContext
 
 #: Shopee chạy một tên miền riêng cho mỗi thị trường.
+#:
+#: Danh sách này là kết quả ĐO ngày 2026-08-06, không phải chép từ trang tin nào — và phần
+#: bị loại ra mới là phần đáng ghi lại, vì cả ba nhóm đều trả về HTTP 200:
+#:
+#:   `shopee.jp`, `shopee.cn` — cổng tuyển NGƯỜI BÁN bán sang Đông Nam Á, không phải sàn cho
+#:     người mua. `search_hint` ở đó trả 404; không ai tìm kiếm trên hai tên miền này.
+#:   `shopee.com.mx`, `shopee.com.ar`, `shopee.cl` — nguy hiểm nhất: chúng trả về đủ 12 gợi ý
+#:     trông hoàn toàn hợp lệ, nhưng MX và CL cho kết quả GIỐNG NHAU TỪNG DÒNG và cả ba nhả
+#:     tiếng Bồ Đào Nha ("tênis feminino", "tapete sala"). Đó là index của Brazil. Thêm chúng
+#:     vào đây nghĩa là người dùng chọn Mexico và nhận dữ liệu Brazil, không một dấu hiệu nào
+#:     báo sai.
+#:   `shopee.in`, `shopee.fr`, `shopee.es`, `shopee.com` — redirect thẳng về shopee.vn.
+#:   `shopee.pl` — chỉ còn trang trợ giúp. `shopee.co.kr` — không phân giải.
+#:
+#: Nói cách khác: tên miền sống KHÔNG chứng minh thị trường sống. Phép kiểm đáng tin là hỏi
+#: `search_hint` bằng chính tiếng bản địa rồi xem ngôn ngữ trả về có khớp không.
 DOMAIN: dict[str, str] = {
     "VN": "shopee.vn",
     "TH": "shopee.co.th",
@@ -28,6 +45,8 @@ DOMAIN: dict[str, str] = {
     "MY": "shopee.com.my",
     "ID": "shopee.co.id",
     "SG": "shopee.sg",
+    "TW": "shopee.tw",
+    "BR": "shopee.com.br",
 }
 
 
@@ -37,10 +56,10 @@ class Shopee(KeywordProvider):
     has_native_score = True
     markets = list(DOMAIN.keys())
 
-    async def fetch_suggestions(self, term: str, country: str) -> list[Suggestion]:
-        domain = DOMAIN.get(country.upper())
+    async def fetch_suggestions(self, term: str, ctx: SearchContext) -> list[Suggestion]:
+        domain = DOMAIN.get(ctx.country.upper())
         if not domain:
-            raise RuntimeError(f"Shopee không hoạt động ở {country}")
+            raise RuntimeError(f"Shopee không hoạt động ở {ctx.country}")
 
         encoded = quote(term, safe="")
         payload = await get_json(

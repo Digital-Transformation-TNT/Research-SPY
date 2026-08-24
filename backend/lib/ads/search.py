@@ -24,6 +24,7 @@ from lib.core.jscompat import or_default, to_number
 
 from .platform import PlatformSearchInput
 from .platforms import PLATFORM_IDS, get_platform, is_platform_id
+from .relevance import phrase_hit
 from .scoring import score_and_rank
 from .types import Ad, AdSearchParams, AdSearchResult, PlatformStatus
 
@@ -153,8 +154,21 @@ def _present(fetched: _CachedFetch, params: AdSearchParams, from_cache: bool) ->
     if params.min_days_active and params.min_days_active > 0:
         ads = [ad for ad in ads if ad.days_active is not None and ad.days_active >= params.min_days_active]
 
+    # ĐỘ LIÊN QUAN TỚI TỪ KHOÁ, tính ở đây chứ không ở `scoring.py`: điểm bên đó trả lời "sản
+    # phẩm này có đáng bán không", còn cờ này trả lời "quảng cáo này có đúng thứ tôi vừa tìm
+    # không". Trộn hai câu vào một con số thì không đọc lại được cái nào.
+    for ad in ads:
+        ad.phrase_hit = phrase_hit(
+            [ad.body, ad.title, ad.cta_text, ad.advertiser], params.keyword
+        )
+
+    # Quảng cáo CHỨA cụm từ lên trước, phần còn lại giữ nguyên thứ tự điểm ở trong nhóm — đúng
+    # khuôn `_sorted_matches` của mục Tìm bằng ảnh: xếp lại, không xoá bớt.
+    ranked = score_and_rank(ads)
+    ranked.sort(key=lambda ad: ad.phrase_hit is False)
+
     return AdSearchResult(
-        ads=_interleave_by_platform(score_and_rank(ads), params.limit),
+        ads=_interleave_by_platform(ranked, params.limit),
         statuses=fetched.statuses,
         cached=from_cache,
     )

@@ -28,6 +28,12 @@ export type SourceHit = {
   raw: string
   /** Shopee có công bố điểm liên quan; hai nguồn còn lại thì không. */
   nativeScore?: number
+  /** Lượng tìm tương đối 0–100 do nguồn đo được. Hiện chỉ Google Trends có. */
+  demand?: number
+  /** Từ khoá nằm ở bảng "đang tăng"; khi đó `demand` là phần trăm tăng, không phải khối lượng. */
+  rising?: boolean
+  /** Cột "Thay đổi" của Trends, đi cặp với `demand`. Vắng mặt với cụm ở bảng "đang tăng". */
+  changePercent?: number
 }
 
 export type KeywordScore = {
@@ -36,6 +42,17 @@ export type KeywordScore = {
   agreement: number
   prominence: number
   marketplace: number
+  /** Lượng tìm 0–100 đo bởi Google Trends. Vắng mặt nghĩa là CHƯA ĐO, không phải bằng 0. */
+  demand?: number
+  /**
+   * Cột "Thay đổi" của Trends cho cụm này — đi CẶP với `demand` và chỉ có khi `demand` có.
+   *
+   * Đây là con số CHÍNH GOOGLE công bố trong bảng truy vấn liên quan, không phải thứ ta tự
+   * tính — nên nó kiểm chứng được bằng cách mở đúng trang Trends đó.
+   */
+  changePercent?: number
+  /** Hạng trung bình có trọng số trên các nguồn. NHỎ HƠN LÀ TỐT HƠN — ngược mọi trường khác. */
+  meanRank: number
   reasons: string[]
 }
 
@@ -47,28 +64,101 @@ export type KeywordCandidate = {
   modifiers: string[]
   intent: Intent
   seasonal?: string
+  /**
+   * Thứ hạng trong tập kết quả của từng nguồn, đánh số từ 1.
+   *
+   * Khác `SourceHit.position`: `position` là chỗ đứng trong MỘT lần gọi gợi ý của một tiền
+   * tố, mà ta hỏi hàng chục tiền tố nên gần như dòng nào cũng từng đứng nhất ở đâu đó. Đây
+   * là thứ hạng trên toàn bộ những gì nguồn đó trả về, nên mỗi dòng một số khác nhau.
+   */
+  sourceRanks: Partial<Record<KeywordSource, number>>
+  /**
+   * Thứ hạng ĐỂ HIỂN THỊ: đánh số lại 1..N chỉ trong những dòng thật sự hiện ra.
+   *
+   * `sourceRanks` được gán trên toàn bộ ứng viên TRƯỚC khi lọc, nên các cụm bị bước lọc câu
+   * hỏi gạt ra vẫn giữ chỗ trong dãy số — bảng đọc thành "#5, #7, #8" và trông y như công cụ
+   * đánh rơi mất một dòng. Chip dùng số này để dãy liền mạch; tooltip vẫn nói số thật kèm
+   * mẫu số, nên phép kiểm chứng với Google không mất đi.
+   */
+  displayRanks?: Partial<Record<KeywordSource, number>>
   score: KeywordScore
 }
 
-/** Chuỗi quan tâm theo thời gian của Google Trends cho một cụm từ. */
-export type TrendSeries = {
+/**
+ * Một cách gọi ngành hàng ở thị trường đích.
+ *
+ * Nguồn sự thật: `backend/lib/keywords/bridge.py`. Gemini đề cử; việc chọn là của người dùng,
+ * vì các ứng viên thường là những SẢN PHẨM khác nhau (jacket · hoodie · windbreaker) chứ
+ * không phải cách viết khác nhau của một thứ — và không phép đo nào trả lời được câu "bạn
+ * định bán cái gì".
+ */
+/**
+ * Cụm này có đúng là ngành hàng người dùng hỏi không, sau khi đối chiếu với dữ liệu sàn.
+ *
+ * `unknown` nghĩa là CHƯA ĐỐI CHIẾU ĐƯỢC — thị trường không có sàn nào trong sổ đăng ký, hoặc
+ * lượt chấm lỗi. Không phải "đáng ngờ".
+ */
+export type BridgeVerdict =
+  | 'same'
+  | 'subtype'
+  | 'broader'
+  | 'brand'
+  | 'different'
+  | 'misspelling'
+  | 'unknown'
+
+export type SeedCandidate = {
+  term: string
+  /**
+   * Vì sao Gemini đề cử cụm này: "tiếng lóng bản địa", "tên tiếng Anh"…
+   *
+   * KHÔNG hiện nữa, và đó là kết luận của phép đo: đo 2026-08-12 thì `风衣` (áo gió, từ điển
+   * chuẩn) bị gán "tiếng lóng bản địa", `保温壶` bị gán "tên địa phương". Mô hình tự khai vì
+   * sao nó nghĩ ra một cụm, và lời khai đó không kiểm được. `reason` thay chỗ nó.
+   */
+  note: string
+  /** Phán quyết sau khi đối chiếu với chính ô tìm kiếm của sàn ở thị trường đó. */
+  verdict: BridgeVerdict
+  /** Một câu tiếng Việt DẪN RA bằng chứng — "sàn hoàn thiện thành mút trang điểm". */
+  reason: string
+  /** Gợi ý thật của sàn cho cụm này. Bằng chứng thô, hiện trong tooltip. */
+  evidence: string[]
+}
+
+export type BridgeResult = {
+  seed: string
+  country: string
+  /** Đã xếp: đo được đứng trước, trong đó cụm mạnh nhất đứng đầu. */
+  candidates: SeedCandidate[]
+  /** Cụm đáng dùng làm từ gốc. Chỉ là ĐỀ CỬ — không có gì tự thay từ gốc bằng nó. */
+  chosen?: string
+  message?: string
+  tookMs?: number
+  cached?: boolean
+}
+
+/**
+ * Vì sao một từ khoá đáng quan tâm, theo cách đọc của Gemini.
+ *
+ * Bốn nhãn chứ không phải hai như `Intent`, vì hai loại nhiễu chỉ lộ ra khi đọc được ngôn ngữ
+ * bản địa: `brand` (tên shop hay thương hiệu địa phương) và `off_topic` (mở rộng theo tiền tố
+ * trôi sang ngành hàng khác). Nguồn sự thật: `backend/lib/keywords/gloss.py`.
+ */
+export type GlossLabel = 'buy' | 'research' | 'brand' | 'off_topic'
+
+/**
+ * Nghĩa tiếng Việt của một từ khoá nước ngoài.
+ *
+ * KHÔNG bao giờ đi vào phần xếp hạng, và `label` KHÔNG thay `KeywordCandidate.intent`. Hai
+ * thứ đó trả lời cùng một câu hỏi bằng hai loại bằng chứng khác hẳn nhau — một bên là bảng
+ * dấu hiệu đếm được, một bên là phán đoán của mô hình — nên chúng nằm cạnh nhau cho người
+ * dùng so, không cái nào ghi đè cái nào.
+ */
+export type KeywordGloss = {
   keyword: string
-  geo: string
-  points: Array<{ date: string; value: number }>
-  /** Phần trăm thay đổi, quý cuối của cửa sổ so với quý đầu. */
-  changePercent: number
-  direction: 'rising' | 'falling' | 'flat'
-  peakMonth?: string
-  /**
-   * Mức quan tâm trung bình theo phần trăm so với từ gốc. Đây là tín hiệu nhu cầu thật duy
-   * nhất công cụ này có. Không có giá trị khi chỉ đo một từ đơn lẻ, vì khi đó không có mỏ neo.
-   */
-  relativeToSeed?: number
-  /**
-   * Trends *đã* đo từ này nhưng khối lượng làm tròn về 0 so với mỏ neo. Giao diện phải nói
-   * đúng như vậy chứ không hiện số 0 — số 0 đọc thành "không ai tìm từ này".
-   */
-  belowMeasurement?: boolean
+  /** Rỗng khi mô hình không chắc. Giao diện để trống chỗ đó chứ không hiện phỏng đoán. */
+  meaning: string
+  label: GlossLabel
 }
 
 export type KeywordSourceStatus = {
@@ -85,8 +175,16 @@ export type KeywordResult = {
   keywords: KeywordCandidate[]
   /** Bao nhiêu ứng viên còn lại sau khi lọc, trước khi cắt theo giới hạn hiển thị. */
   totalFound: number
+  /** Mỗi nguồn đóng góp bao nhiêu từ khoá — mẫu số của `KeywordCandidate.sourceRanks`. */
+  sourceTotals: Partial<Record<KeywordSource, number>>
   statuses: KeywordSourceStatus[]
-  seedTrend?: TrendSeries
-  trendNotice?: string
+  /**
+   * Lời nhắc khi chính TỪ GỐC là thứ sai, không phải nguồn nào hỏng.
+   *
+   * Khác `KeywordSourceStatus.message`: dòng kia nói "nguồn này gặp chuyện gì", dòng này nói
+   * "câu hỏi bạn vừa đặt không có câu trả lời" — ví dụ gõ từ gốc tiếng Việt cho thị trường
+   * Philippines. Vì vậy nó KHÔNG mang màu lỗi và phải đứng trên các dòng lỗi nguồn.
+   */
+  seedNotice?: string
   cached: boolean
 }
