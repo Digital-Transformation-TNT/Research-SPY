@@ -1,13 +1,20 @@
 # Research SPY
 
-Công cụ nội bộ cho phòng test sản phẩm. Hai mục lớn, hoàn toàn độc lập với nhau:
+Công cụ nội bộ cho phòng test sản phẩm. Bốn mục lớn, độc lập với nhau:
 
 | Mục | Đường dẫn | Làm gì | Lấy dữ liệu từ |
 |---|---|---|---|
-| **Quảng cáo** | `/ads` | Tìm content quảng cáo đang chạy, chấm điểm ứng viên sản phẩm | Facebook Ads Library, TikTok Creative Center *(sẽ thêm nguồn khác)* |
-| **Từ khoá** | `/keywords` | Mở rộng từ khoá gốc ra biến thể đang được tìm kiếm, đo xu hướng | Google Suggest, Shopee, TikTok, Google Trends |
+| **Quảng cáo** | `/ads` | Tìm quảng cáo và sản phẩm đang chạy, tìm video theo ảnh sản phẩm | Facebook Ads Library, TikTok Creative Center, YouTube, Etsy, **Shopee qua extension** |
+| **Từ khoá** | `/keywords` | Mở rộng từ khoá gốc ra biến thể đang được tìm kiếm, đo xu hướng | Google Suggest, Shopee, TikTok, Google Trends, 1688, Amazon, Douyin |
+| **Tìm bằng ảnh** | `/image` | Một tấm ảnh, ra nguồn hàng và giá ở năm sàn | 1688, Alibaba.com, AliExpress, Taobao, Google Lens |
+| **Cơ hội** | `/opportunity` | Hỏi đáp về khoảng trống thị trường trên dữ liệu đã thu | tổng hợp từ ba mục trên |
 
 Ngoài ra có `/guide` — trang hướng dẫn đọc số liệu, **nên đọc trước khi ra quyết định test sản phẩm**.
+
+**Một số nguồn chạy trong trình duyệt của bạn, không phải trên server.** Shopee và TikTok Shop
+trả 403 cho mọi lượt gọi ẩn danh từ server, nhưng trả dữ liệu bình thường cho chính phiên đăng
+nhập của bạn. Phần đó do [extension/](extension/) đảm nhiệm, và cookie không bao giờ rời trình
+duyệt. Xem [extension/README.md](extension/README.md) để cài — hai phút, chế độ dev của Chrome.
 
 ---
 
@@ -39,6 +46,16 @@ cp .env.example .env.local        # tuỳ chọn — chạy được mà không 
 cd ../frontend
 npm install
 ```
+
+**Cài extension** (chỉ cần nếu muốn dùng Shopee / TikTok Shop / Amazon / 1688 trong mục Quảng cáo):
+
+1. Mở `chrome://extensions`
+2. Bật **Developer mode** ở góc phải trên
+3. **Load unpacked**, chọn thư mục [extension/](extension/)
+4. Đăng nhập sẵn một tab của sàn bạn định tra — extension mượn đúng phiên đó
+
+Không cài cũng không sao: Facebook, TikTok Creative Center, YouTube và Etsy chạy thẳng từ
+server. Thiếu extension thì mục Quảng cáo báo rõ ra chứ không lặng lẽ bỏ trống Shopee.
 
 Chạy hằng ngày: **nhấp đúp `start.bat`** ở thư mục gốc. Nó bật cả hai tiến trình trong hai
 cửa sổ riêng rồi mở trình duyệt. Muốn chạy bằng tay — hoặc cần đọc log của một bên — thì
@@ -95,8 +112,10 @@ backend/
 ├── app/                     # TẦNG HTTP — mỏng, không chứa logic nghiệp vụ
 │   ├── main.py              #   dựng FastAPI, đóng trình duyệt khi tắt
 │   └── api/
-│       ├── ads.py           #   /api/ads/{platforms,search,health,filters}
-│       ├── keywords.py      #   /api/keywords{,/sources,/trend}
+│       ├── ads.py           #   /api/ads/{platforms,search,ingest,match-image,video-keywords}
+│       ├── keywords.py      #   /api/keywords{,/sources,/markets,/gloss,/bridge}
+│       ├── imagesearch.py   #   /api/imagesearch — một ảnh, năm sàn
+│       ├── opportunity.py   #   /api/opportunity/ask
 │       └── media.py         #   proxy phát video, có danh sách host cho phép
 │
 └── lib/
@@ -107,17 +126,32 @@ backend/
     │   ├── browser.py       #   kho phiên trình duyệt, chạy theo "recipe" nguồn tự khai
     │   ├── http.py          #   gọi JSON cho nguồn không cần trình duyệt
     │   ├── model.py         #   nền chung cho kiểu đi ra API (đổi tên trường sang camelCase)
+    │   ├── auth.py          #   hồ phiên đăng nhập Google: chọn, phạt, thưởng
+    │   ├── mtop.py          #   ký request cho cổng MTOP của Alibaba
+    │   ├── store.py         #   kho trên đĩa cho kết quả tra cứu tốn kém
     │   └── jscompat.py      #   những chỗ Python khác JavaScript  ← ĐỌC KHI SỬA ĐIỂM SỐ
     │
     ├── ads/                 # ===== MỤC QUẢNG CÁO =====
     │   ├── platform.py      #   HỢP ĐỒNG một nguồn quảng cáo phải thoả  ← đọc file này trước
     │   ├── platforms/
     │   │   ├── __init__.py  #   SỔ ĐĂNG KÝ — nơi duy nhất sửa khi thêm nguồn
-    │   │   ├── facebook.py  #   toàn bộ đặc thù Facebook nằm gọn ở đây
-    │   │   └── tiktok.py    #   toàn bộ đặc thù TikTok nằm gọn ở đây
-    │   ├── types.py         #   Ad, AdScore, tham số tìm kiếm
-    │   ├── scoring.py       #   chấm điểm ứng viên sản phẩm
-    │   └── search.py        #   điều phối: fan-out, gộp, lọc, xếp hạng
+    │   │   ├── facebook.py  #   fetch phía SERVER
+    │   │   ├── tiktok.py    #   fetch phía SERVER
+    │   │   ├── youtube.py   #   fetch phía SERVER (API chính thức, cần YOUTUBE_API_KEY)
+    │   │   ├── etsy.py      #   fetch phía SERVER (API chính thức, cần ETSY_*)
+    │   │   └── shopee.py    #   fetch phía CLIENT — server dựng lệnh, extension chạy
+    │   ├── types.py         #   Ad, AdScore, RequestSpec/ClientJob (hợp đồng với extension)
+    │   ├── scoring.py       #   quảng cáo chấm theo đời sống, sản phẩm chấm theo cầu và chất lượng
+    │   ├── relevance.py     #   cụm từ có nằm trong chữ đọc được không — XẾP HẠNG, không lọc
+    │   ├── imagematch.py    #   khớp ảnh bằng pHash (trùng gần như từng điểm ảnh)
+    │   ├── clipmatch.py     #   khớp ảnh bằng CLIP (cùng sản phẩm dù khác góc chụp)
+    │   ├── keyword_extract.py  # tiêu đề sản phẩm dài thành cụm từ khoá ngắn (Gemini)
+    │   └── search.py        #   điều phối hai pha: server fetch, rồi extension nộp raw về
+    │
+    ├── imagesearch/         # ===== MỤC TÌM BẰNG ẢNH =====
+    │   ├── ali.py  alibaba.py  aliexpress.py  taobao.py  lens.py
+    │   ├── types.py         #   ImageMatch, ImageSearchResult (sáu tầng giá)
+    │   └── search.py        #   điều phối năm nguồn, cache cả danh sách rồi lọc lúc đọc
     │
     └── keywords/            # ===== MỤC TỪ KHOÁ =====
         ├── provider.py      #   HỢP ĐỒNG một nguồn từ khoá phải thoả
@@ -135,17 +169,33 @@ frontend/
 ├── app/
 │   ├── ads/page.tsx         # trang Quảng cáo (server component, hỏi backend danh sách nguồn)
 │   ├── keywords/page.tsx    # trang Từ khoá
+│   ├── image/page.tsx       # trang Tìm bằng ảnh
+│   ├── opportunity/page.tsx # trang Cơ hội
 │   ├── guide/page.tsx       # trang Hướng dẫn
 │   └── page.tsx             # chuyển hướng về /ads
 ├── components/
 │   ├── ads/                 # AdsResearch, AdCard, HealthBar, PlatformOptions
 │   ├── keywords/            # KeywordResearch, KeywordTable, SeedTrend, TrendChart, Dropdown
+│   ├── imagesearch/         # ImageSearchWorkspace
 │   └── layout/              # Sidebar, BackendDown
 ├── lib/
 │   ├── api.ts               # địa chỉ backend cho server component
-│   ├── ads/                 # kiểu dữ liệu, gương của backend/lib/ads/types.py
-│   └── keywords/            # kiểu dữ liệu, gương của backend/lib/keywords/types.py
+│   ├── ads/                 # kiểu dữ liệu + extension.ts (cầu nối tới extension)
+│   ├── keywords/            # kiểu dữ liệu, gương của backend/lib/keywords/types.py
+│   └── imagesearch/         # kiểu dữ liệu, gương của backend/lib/imagesearch/types.py
 └── styles/                  # CSS tách theo đúng ranh giới trên: ads.css, keywords.css, …
+
+extension/                   # ===== EXTENSION CHROME (MV3) =====
+├── manifest.json            # quyền theo tên miền, content script cho web app
+├── background.js            # service worker: chạy fetch TRONG tab của sàn, nên same-origin
+├── content.js               # cầu nối web app với service worker qua postMessage
+├── page-hook.js             # chộp phản hồi mà chính trang tự gọi (Taobao, Temu)
+├── similar-hook.js          # tương tự, cho trang "sản phẩm tương tự" của Shopee
+├── popup.*                  # tự test một sàn, không cần web app
+└── results.*                # trang research đầy đủ, mở dạng full tab
+
+gtrends/                     # gói Google Trends TÁCH RỜI — copy sang dự án khác được
+docs/                        # ghi chép nghiên cứu nguồn dữ liệu, không phải phần mềm chạy
 ```
 
 ### Quy tắc phụ thuộc
@@ -221,9 +271,15 @@ Nếu muốn xoá hẳn cho gọn: `rm -rf _archive`.
 Ba điều này ảnh hưởng trực tiếp tới việc đọc số liệu — trang `/guide` giải thích kỹ hơn:
 
 1. **"CVR ước lượng" không phải CVR thật.** Không nền tảng công khai nào cung cấp tỷ lệ
-   chuyển đổi; đó là dữ liệu riêng trong tài khoản advertiser. Con số trên mỗi thẻ suy ra từ
-   số ngày quảng cáo đã chạy (55%), số biến thể creative (20%), CTR (15%) và tương tác (10%).
-   Dùng để **xếp hạng ứng viên với nhau**, không dùng thay số liệu thật khi tính ngân sách.
+   chuyển đổi; đó là dữ liệu riêng trong tài khoản advertiser. Con số này suy ra từ số ngày
+   quảng cáo đã chạy (55%), số biến thể creative (20%), CTR (15%) và tương tác (10%). Nó vẫn
+   được tính vì **thứ tự thẻ dựa vào nó**, nhưng cố ý KHÔNG hiện trên thẻ quảng cáo: với người
+   đi tìm sản phẩm để bán, một con số trộn sẵn không nói được gì mà số gốc — ngày chạy, biến
+   thể, CTR, đều in ngay trên thẻ — không nói rõ hơn.
+
+   Thẻ **sản phẩm sàn** thì có hiện điểm, và là điểm khác: *cầu* (số bán) và *chất lượng*
+   (rating cùng số lượt đánh giá). Đó là con số sàn công bố chứ không phải suy luận, nên nó
+   nói thêm chứ không trộn lẫn. Xem `backend/lib/ads/scoring.py`.
 
 2. **TikTok không search được theo từ khoá.** Creative Center chỉ mở chức năng này cho tài
    khoản đã đăng nhập; phiên ẩn danh nhận về *0 kết quả kèm mã thành công* — trông hệt như

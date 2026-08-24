@@ -16,6 +16,13 @@ export type PlatformDescriptor = {
   label: string
   capabilities: PlatformCapabilities
   options: PlatformOption[]
+  /**
+   * Các thị trường nguồn này phục vụ. `null` nghĩa là mọi thị trường.
+   *
+   * Nhờ trường này giao diện không phải đoán: nước nào không nguồn nào đang bật phục vụ thì
+   * bị khoá kèm lý do, thay vì cho chọn rồi trả về một lưới rỗng không lời giải thích.
+   */
+  countries?: string[] | null
 }
 
 export async function fetchPlatformDescriptors(): Promise<PlatformDescriptor[]> {

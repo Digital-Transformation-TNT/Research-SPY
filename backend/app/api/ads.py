@@ -13,10 +13,21 @@ import time
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from lib.ads.clipmatch import DEFAULT_MIN_SIM, clip_available, match_ads_by_image_clip
+from lib.ads.imagematch import DEFAULT_MAX_DISTANCE, match_ads_by_image
+from lib.ads.keyword_extract import extract_keywords, extract_video_terms, region_lang
 from lib.ads.platform import PlatformSearchInput
 from lib.ads.platforms import PLATFORM_DESCRIPTORS, PLATFORM_IDS, get_platform
-from lib.ads.search import parse_ad_search_params, run_ad_search
+from lib.ads.search import (
+    MAX_LIMIT,
+    ingest_client_results,
+    params_from_mapping,
+    parse_ad_search_params,
+    run_ad_search,
+)
+from lib.ads.types import AdSearchResult, ClientSubmission, PlatformStatus
 from lib.core.cache import cache_get, cache_set, cache_stats
+from lib.core.jscompat import or_default, to_number
 from lib.core.model import dump
 
 from ._query import multi_query
@@ -56,10 +67,174 @@ async def search(request: Request) -> JSONResponse:
     """
     query = multi_query(request)
     params = parse_ad_search_params(query)
+
+    skip_cache = query.get("fresh", [None])[0] == "true"
+
+    # Đầu vào có thể là TIÊU ĐỀ sản phẩm dài (từ list sàn) thay vì từ khoá. Gemini rút HAI cụm:
+    #   specific — đúng SP (brand+model) → TRẢ VỀ cho giao diện + extension tìm TikTok đúng SP.
+    #   broad    — loại chung 2-3 từ → dùng cho FB Ad Library (FB chỉ ra kết quả với cụm NGẮN;
+    #              cụm dài/brand+model gần như trả 0). Cache theo title để mở lại khỏi gọi Gemini.
+    title = (query.get("title", [""])[0] or "").strip()
+    if title and not params.keyword:
+        specific_kw, broad_kw = await _keywords_from_title(title)
+        params = params.model_copy(update={"keyword": broad_kw})
+    else:
+        specific_kw = params.keyword  # search từ khoá trực tiếp: specific = broad = keyword
+
     if not params.keyword:
         return JSONResponse({"error": "Thiếu từ khoá"}, status_code=400)
 
-    result = await run_ad_search(params, skip_cache=query.get("fresh", [None])[0] == "true")
+    result = await run_ad_search(params, skip_cache=skip_cache)
+
+    # Trả về SPECIFIC (đúng SP) để giao diện hiện đúng brand+model và extension tìm TikTok đúng SP,
+    # dù FB vừa search bằng broad.
+    return JSONResponse(dump(result.model_copy(update={"keyword": specific_kw})))
+
+
+async def _keywords_from_title(title: str) -> tuple[str, str]:
+    """
+    Rút (specific, broad) từ TIÊU ĐỀ qua Gemini, cache theo title (chỉ cache kết quả Gemini thật —
+    heuristic do 429/503 nhất thời KHÔNG cache, tránh đóng băng từ khoá kém cho title đó mãi).
+    """
+    key = f"gemkw2:{title.lower()}"
+    cached = cache_get(key)
+    if cached is not None:
+        return cached[0], cached[1]
+    specific, broad, from_gemini = await extract_keywords(title)
+    if from_gemini:
+        cache_set(key, [specific, broad])
+    return specific, broad
+
+
+@router.get("/video-keywords")
+async def video_keywords(request: Request) -> JSONResponse:
+    """
+    TIÊU ĐỀ sản phẩm + region → NHIỀU từ khoá + hashtag để tìm video (TikTok/Douyin), viết bằng
+    NGÔN NGỮ của region. Extension gọi một lần rồi lặp search từng cụm, gộp & bỏ link trùng.
+
+    Tham số: title (bắt buộc), region (mã 2 chữ, mặc định VN). Cache theo (title, region).
+    """
+    query = multi_query(request)
+    title = (query.get("title", [""])[0] or "").strip()
+    region = (query.get("region", ["VN"])[0] or "VN").strip().upper()
+    if not title:
+        return JSONResponse({"error": "Thiếu title"}, status_code=400)
+
+    key = f"gemvid2:{region}:{title.lower()}"  # bump v2: ép ngôn ngữ bản địa, bỏ hashtag tiếng Anh
+    cached = cache_get(key)
+    if cached is not None:
+        keywords, hashtags = cached[0], cached[1]
+    else:
+        keywords, hashtags, from_gemini = await extract_video_terms(title, region)
+        if from_gemini:
+            cache_set(key, [keywords, hashtags])
+    return JSONResponse({"keywords": keywords, "hashtags": hashtags, "region": region, "lang": region_lang(region)})
+
+
+@router.get("/match-image")
+async def match_image(request: Request) -> JSONResponse:
+    """
+    Tìm VIDEO quảng cáo cho một sản phẩm, KHỚP THEO ẢNH.
+
+    Facebook Ads Library và TikTok Creative Center không có search-by-image, nên đường đi là:
+    dùng `keyword` seed để lấy ứng viên video (lấy dư), rồi LỌC lại bằng perceptual hash so
+    với `image` (ảnh sản phẩm nguồn) — chỉ giữ video có poster trùng ảnh. Kết quả do ảnh
+    quyết định, keyword chỉ là lưới vét. Chi tiết: `lib/ads/imagematch.py`.
+
+    Tham số:
+      image        bắt buộc — URL ảnh sản phẩm nguồn (poster đem so khớp)
+      keyword      seed để lấy ứng viên (bắt buộc — 2 sàn video không trả gì nếu không có)
+      platforms    nên là các nguồn `videoAds` (Facebook, TikTok)
+      countries    mã ISO ngăn bởi dấu phẩy (mặc định VN)
+      limit        số kết quả cuối cùng
+      method       'clip' (ngữ nghĩa hình ảnh — cùng SP dù khác ảnh) | 'phash' (trùng đúng ảnh).
+                   Mặc định 'clip' nếu có model, không thì tự rơi về 'phash'.
+      maxDistance  ngưỡng Hamming pHash, mặc định 12 (nhỏ hơn = khắt khe hơn)
+      minSim       ngưỡng cosine CLIP 0-1, mặc định 0.80 (lớn hơn = khắt khe hơn)
+      fresh        'true' để bỏ qua cache
+    """
+    query = multi_query(request)
+    image = (query.get("image", [""])[0] or "").strip()
+    if not image:
+        return JSONResponse({"error": "Thiếu ảnh sản phẩm (image)"}, status_code=400)
+
+    params = parse_ad_search_params(query)
+    if not params.keyword:
+        return JSONResponse({"error": "Thiếu từ khoá seed"}, status_code=400)
+
+    max_distance = int(or_default(to_number(query.get("maxDistance", [None])[0]), DEFAULT_MAX_DISTANCE))
+    min_sim = or_default(to_number(query.get("minSim", [None])[0]), DEFAULT_MIN_SIM)
+    # 'clip' cho khớp theo ngữ nghĩa (mặc định khi có model); rơi về 'phash' nếu chọn phash hoặc
+    # thiếu model. Giao diện đọc statuses để biết đã dùng cách nào.
+    requested_method = (query.get("method", [""])[0] or "").strip().lower()
+    use_clip = requested_method != "phash" and clip_available()
+
+    # Lọc theo ảnh vứt phần lớn ứng viên, nên xin dư rồi mới cắt về `limit` sau khi khớp.
+    # `relax_keyword=True`: ẢNH (CLIP) là bộ lọc chính, nên nới lọc từ khoá văn bản của nguồn
+    # (nếu không, seed dài/generic sẽ bị lọc chữ vứt sạch ứng viên trước khi kịp so ảnh).
+    pool = min(MAX_LIMIT, max(params.limit * 4, 40))
+    fetch_params = params.model_copy(update={"video_only": True, "limit": pool, "relax_keyword": True})
+    search = await run_ad_search(fetch_params, skip_cache=query.get("fresh", [None])[0] == "true")
+
+    if use_clip:
+        matched, notice = await match_ads_by_image_clip(image, search.ads, min_sim)
+        method_used = "clip"
+    else:
+        matched, notice = await match_ads_by_image(image, search.ads, max_distance)
+        method_used = "phash"
+
+    statuses = list(search.statuses)
+    # Nói rõ đã khớp bằng cách nào (clip/phash) và còn lại bao nhiêu sau khi lọc ảnh — để giao
+    # diện không hiểu nhầm "quét 0 ứng viên" với "0 ảnh khớp".
+    match_msg = f"khớp ảnh bằng {method_used}"
+    if notice:
+        match_msg = f"{match_msg} · {notice}"
+    statuses.append(
+        PlatformStatus(platform="imagematch", ok=not notice, count=len(matched), message=match_msg, took_ms=0)
+    )
+
+    result = AdSearchResult(
+        ads=matched[: params.limit],
+        statuses=statuses,
+        cached=search.cached,
+        pending=search.pending,
+    )
+    return JSONResponse(dump(result))
+
+
+@router.post("/ingest")
+async def ingest(request: Request) -> JSONResponse:
+    """
+    Pha 2 của Cách A: nhận raw mà extension đã fetch bằng session user, trả kết quả đã chuẩn hoá.
+
+    Body JSON:
+      keyword, platforms, countries, limit, videoOnly, minDaysActive, platformOptions
+                    — cùng bối cảnh search của pha 1, để chấm điểm/lọc cho nhất quán
+      submissions   — [{ platform, country, responses: [{ tag, status, text }] }]
+
+    Không có gọi mạng ở đây: mọi request tốn tài khoản đã xảy ra ở trình duyệt user.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Body không phải JSON hợp lệ"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "Body phải là một object"}, status_code=400)
+
+    params = params_from_mapping(body)
+    if not params.keyword:
+        return JSONResponse({"error": "Thiếu từ khoá"}, status_code=400)
+
+    raw_submissions = body.get("submissions")
+    if not isinstance(raw_submissions, list) or not raw_submissions:
+        return JSONResponse({"error": "Thiếu submissions"}, status_code=400)
+
+    try:
+        submissions = [ClientSubmission.model_validate(item) for item in raw_submissions]
+    except Exception as error:
+        return JSONResponse({"error": f"submissions sai định dạng: {error}"}, status_code=400)
+
+    result = await ingest_client_results(params, submissions)
     return JSONResponse(dump(result))
 
 
@@ -79,6 +254,37 @@ async def health() -> JSONResponse:
         platform = get_platform(platform_id)
         assert platform is not None
         t = time.monotonic()
+
+        # Nguồn client_fetch không fetch được từ server (cần session user) — kiểm tra live sẽ
+        # luôn sai. Thay vào đó xác minh dựng được lệnh, và nói rõ nó phụ thuộc extension.
+        if platform.capabilities.client_fetch:
+            try:
+                specs = platform.build_request(
+                    PlatformSearchInput(
+                        keyword=platform.health_probe.keyword,
+                        country=platform.health_probe.country,
+                        limit=3,
+                        options=platform.parse_options({}),
+                    )
+                )
+                return {
+                    "id": platform_id,
+                    "label": platform.label,
+                    "ok": len(specs) > 0,
+                    "count": 0,
+                    "tookMs": round((time.monotonic() - t) * 1000),
+                    "message": "Nguồn chạy qua extension (session user) — không kiểm tra được từ server",
+                }
+            except Exception as error:
+                return {
+                    "id": platform_id,
+                    "label": platform.label,
+                    "ok": False,
+                    "count": 0,
+                    "tookMs": round((time.monotonic() - t) * 1000),
+                    "message": str(error),
+                }
+
         try:
             outcome = await platform.search(
                 PlatformSearchInput(

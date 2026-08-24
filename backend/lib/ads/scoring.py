@@ -127,7 +127,77 @@ def _content(ad: Ad) -> tuple[float, list[str]]:
     return clamp(score), reasons
 
 
+def _score_product(ad: Ad) -> AdScore:
+    """
+    Chấm điểm ỨNG VIÊN SẢN PHẨM (Shopee…), khác hẳn quảng cáo.
+
+    Với sản phẩm ta có con số bán THẬT, nên không cần suy ra CVR. Hai trụ:
+      - Cầu (60%): đang bán được tới đâu — ưu tiên số bán/tháng (nhu cầu HIỆN TẠI) hơn tổng
+        luỹ kế. Một sản phẩm 700 bán/tháng đáng research hơn cái tổng 400k đã nguội.
+      - Chất lượng (40%): rating cao + đủ review = khách hài lòng, ít hoàn hàng.
+    Kèm cờ "bão hoà / đang lên" so nhịp bán gần đây với tổng.
+    """
+    reasons: list[str] = []
+    monthly, historical = ad.monthly_sold, ad.sold_count
+
+    # --- Cầu ---
+    if monthly is not None:
+        demand = clamp(jround(math.log10(max(1, monthly)) / 4 * 100))  # ~10k/tháng ≈ 100
+        if monthly >= 1000:
+            reasons.append(f"{vi_thousands(monthly)} bán/tháng — cầu rất mạnh, đang chạy tốt")
+        elif monthly >= 100:
+            reasons.append(f"{vi_thousands(monthly)} bán/tháng — cầu ổn định")
+        else:
+            reasons.append(f"{vi_thousands(monthly)} bán/tháng — cầu còn thấp")
+    elif historical is not None:
+        demand = clamp(jround(math.log10(max(1, historical)) / 5.5 * 100))
+        reasons.append(f"{vi_thousands(historical)} đã bán (tổng) — không có số theo tháng để đo đà")
+    else:
+        demand = 0.0
+        reasons.append("Không có dữ liệu số bán — không đo được cầu")
+
+    # --- Chất lượng ---
+    if ad.rating is not None:
+        base = clamp(jround((ad.rating - 3.0) / 2.0 * 100))  # 3.0★→0, 5.0★→100
+        count = ad.rating_count or 0
+        trust = min(1.0, math.log10(count + 1) / 2)  # ~100 review = tin cậy đầy đủ
+        quality = clamp(jround(base * trust))
+        reasons.append(f"{_num(ad.rating)}★ từ {vi_thousands(count)} đánh giá")
+    else:
+        quality = 0.0
+        reasons.append("Chưa có đánh giá — chưa đo được chất lượng")
+
+    # --- Cờ đà / bão hoà ---
+    if monthly is not None and historical:
+        annual_share = monthly * 12 / max(1, historical)
+        if annual_share >= 0.5:
+            reasons.append("Đang lên: nhịp bán gần đây cao so với tổng")
+        elif annual_share <= 0.05 and historical > 5000:
+            reasons.append("Cảnh báo bão hoà: tổng bán lớn nhưng nhịp gần đây thấp")
+
+    total = clamp(jround(demand * 0.6 + quality * 0.4))
+    signals = sum(1 for x in (monthly, ad.rating) if x is not None)
+    confidence = (
+        "high" if signals >= 2 and (ad.rating_count or 0) >= 50 else "medium" if signals >= 1 else "low"
+    )
+
+    return AdScore(
+        total=int(total),
+        cvr_proxy=0,
+        content_score=0,
+        longevity_score=0,
+        demand_score=int(demand),
+        quality_score=int(quality),
+        reasons=reasons,
+        confidence=confidence,  # type: ignore[arg-type]
+    )
+
+
 def score_ad(ad: Ad) -> AdScore:
+    # Sản phẩm sàn TMĐT có con số bán/giá thật → chấm theo cầu + chất lượng, không phải CVR ước lượng.
+    if ad.price is not None or ad.sold_count is not None or ad.monthly_sold is not None:
+        return _score_product(ad)
+
     reasons: list[str] = []
 
     long_part = _longevity(ad)

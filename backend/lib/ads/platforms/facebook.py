@@ -290,7 +290,9 @@ def _rewrite_variables(post_body: str, mutate: dict[str, Any]) -> str:
 class Facebook(AdPlatform):
     id = PLATFORM_ID
     label = "Facebook"
-    capabilities = PlatformCapabilities(keyword_search=True, start_date=True, remote_filters=False)
+    capabilities = PlatformCapabilities(
+        keyword_search=True, start_date=True, remote_filters=False, video_ads=True
+    )
     options = [
         PlatformOption(
             key="matchMode",
@@ -398,6 +400,22 @@ class Facebook(AdPlatform):
                     break
                 cursor = next_cursor
 
+            # XẾP HẠNG, KHÔNG LOẠI BỎ — và việc đó không xảy ra ở đây.
+            #
+            # Ads Library khớp cụm từ ở ĐÂU ĐÓ trong dữ liệu quảng cáo (tên trang, đường dẫn,
+            # trang đích) chứ không bắt buộc trong phần chữ người xem đọc được, nên bảng trả về
+            # luôn lẫn 20-40% quảng cáo lệch chủ đề. Cách chữa nằm ở `lib/ads/relevance.py`: nó
+            # gắn cờ `phrase_hit` rồi ĐẨY XUỐNG DƯỚI, giữ nguyên số dòng.
+            #
+            # Ở đây từng có một bộ lọc thật sự cắt bỏ, và nó hỏng theo đúng kiểu tệ nhất: xin 8
+            # quảng cáo về 3 (đo "kem chống nắng" 2026-08-24, cắt 7/10) mà người dùng chỉ thấy
+            # một lưới ngắn — đọc thành "sản phẩm này không ai chạy quảng cáo". Một cụm từ nằm
+            # trong ẢNH quảng cáo là chuyện thường, và không có cách nào đọc được nó từ đây.
+            if request.relax_keyword:
+                return PlatformSearchOutcome(
+                    ads=collected[:limit],
+                    notice=f"Khớp ảnh: {len(collected)} ứng viên FB — để ảnh quyết định, không lọc chữ.",
+                )
             return PlatformSearchOutcome(ads=collected[:limit])
 
         return await schedule(f"{PLATFORM_ID}:{country}", MIN_INTERVAL_MS, run)

@@ -32,7 +32,7 @@ from urllib.parse import quote, urlencode
 from playwright.async_api import Request
 
 from lib.core.browser import SessionRecipe, fetch_in_page, get_session, invalidate_session
-from lib.core.config import env_number
+from lib.core.config import env_number, env_string
 from lib.core.jscompat import to_number, vi_sort_key
 
 from lib.core.rate_limit import schedule
@@ -68,6 +68,60 @@ MAX_PAGE_SIZE = 20
 #: Các trang được lấy liên tiếp trong cùng một suất rate-limit; vẫn giãn chúng ra.
 INTER_PAGE_DELAY_MS = 1_200
 
+#: 28 thị trường Creative Center phục vụ, đọc thẳng từ `top_ads/v2/filters` (đo 2026-07-30).
+#: Danh sách này KHÔNG phải mọi nước — chọn một nước ngoài danh sách sẽ ra rỗng, nên giao
+#: diện phải chặn trước thay vì để người dùng tự đoán.
+SUPPORTED_COUNTRIES = [
+    "AR", "AU", "BR", "CA", "CO", "DE", "ES", "FR", "GB", "ID",
+    "IT", "JP", "KR", "MX", "MY", "NL", "PH", "PK", "RO", "SA",
+    "SE", "SG", "TH", "TR", "AE", "US", "VN", "ZA",
+]
+
+#: Mục tiêu chiến dịch, đo từ cùng response filters. Giá trị là `id` dạng số của TikTok.
+#:
+#: ĐO ĐƯỢC (2026-07-30, VN/180 ngày, 20 kết quả): không lọc cho ra 10/20 là Product sales;
+#: `objective=15` cho ra 20/20. Với một công cụ research sản phẩm thì đây là bộ lọc làm tăng
+#: độ liên quan mạnh nhất trong số những thứ phiên ẩn danh còn dùng được.
+OBJECTIVES = [
+    ("15", "Bán hàng"),
+    ("3", "Chuyển đổi"),
+    ("1", "Kéo traffic"),
+    ("4", "Lượt xem video"),
+    ("8", "Thu lead"),
+    ("2", "Cài đặt app"),
+    ("5", "Phủ sóng"),
+]
+_OBJECTIVE_IDS = {value for value, _ in OBJECTIVES}
+
+#: `objective_key` trong kết quả trả về là khoá i18n, không phải tên đọc được.
+OBJECTIVE_NAMES = {
+    "campaign_objective_product_sales": "Bán hàng",
+    "campaign_objective_conversion": "Chuyển đổi",
+    "campaign_objective_traffic": "Kéo traffic",
+    "campaign_objective_video_view": "Lượt xem video",
+    "campaign_objective_lead_generation": "Thu lead",
+    "campaign_objective_app_install": "Cài đặt app",
+    "campaign_objective_reach": "Phủ sóng",
+}
+
+#: `ad_language` cũng chỉ trả về khoá i18n (`language_vi`), nên tên đọc được phải tự map.
+#: Danh sách id do TikTok quyết định — chỗ này chỉ dịch, thiếu thì rơi về chính mã đó.
+LANGUAGE_NAMES = {
+    "vi": "Tiếng Việt", "en": "Tiếng Anh", "th": "Tiếng Thái", "id": "Tiếng Indonesia",
+    "ms": "Tiếng Mã Lai", "zh-Hant": "Tiếng Trung phồn thể", "ko": "Tiếng Hàn",
+    "ja": "Tiếng Nhật", "es": "Tiếng Tây Ban Nha", "pt": "Tiếng Bồ Đào Nha",
+    "fr": "Tiếng Pháp", "de": "Tiếng Đức", "it": "Tiếng Ý", "nl": "Tiếng Hà Lan",
+    "ar": "Tiếng Ả Rập", "ro": "Tiếng Romania",
+}
+
+#: Tên ngành hàng, điền bởi `fetch_filters` và dùng lại khi chuẩn hoá kết quả.
+#:
+#: Kết quả trả về chỉ có `industry_key` dạng `label_14107000000` — một khoá i18n vô nghĩa với
+#: người đọc. Tên thật nằm trong response filters, mà giao diện vốn đã gọi để đổ ô "Ngành
+#: hàng", nên giữ lại ở đây là có tên mà không tốn thêm một suất rate-limit nào. Khi bản đồ
+#: còn rỗng thì trường `industry` để trống — thà thiếu còn hơn hiện khoá thô.
+_INDUSTRY_NAMES: dict[str, str] = {}
+
 
 # ---------------------------------------------------------------------------
 # Tuỳ chọn riêng của TikTok
@@ -80,11 +134,27 @@ class TikTokOptions:
     period: int
     #: Id ngành hàng, lấy từ `/api/ads/filters?platform=tiktok`.
     industry: str | None = None
+    #: Id mục tiêu chiến dịch, xem `OBJECTIVES`.
+    objective: str | None = None
+    #: Mã ngôn ngữ quảng cáo, ví dụ 'vi'. Lấy từ `/api/ads/filters?platform=tiktok`.
+    ad_language: str | None = None
 
 
 # ---------------------------------------------------------------------------
 # Phiên trình duyệt
 # ---------------------------------------------------------------------------
+
+
+#: Cookie tuỳ chọn của một tài khoản TikTok Business ("sessionid=...; sid_tt=...").
+#:
+#: ĐÂY LÀ THỨ DUY NHẤT MỞ ĐƯỢC SEARCH THEO TỪ KHOÁ. Đo 2026-07-30 với phiên ẩn danh:
+#: `keyword=kem` trả về `code=0, msg=OK` kèm **0 kết quả** — thành công về mặt giao thức,
+#: rỗng về mặt dữ liệu. Danh mục brand/product mà search chạy trên đó chỉ mở cho tài khoản
+#: đã đăng nhập. Không có cookie thì mọi truy vấn từ khoá đều rơi xuống đường duyệt bảng
+#: xếp hạng bên dưới, và kết quả KHÔNG liên quan tới từ khoá người dùng gõ.
+#:
+#: Dùng tài khoản phụ: cookie business bị dùng để gọi API tự động có rủi ro bị khoá.
+_cookie_header = env_string("TIKTOK_COOKIE")
 
 
 def _warm_url(country: str) -> str:
@@ -113,6 +183,8 @@ _recipe = SessionRecipe(
     id=PLATFORM_ID,
     locale="en-US",
     ttl_ms=SESSION_TTL_MS,
+    cookie_header=_cookie_header or None,
+    cookie_domain=".tiktok.com",
     warm_url=_warm_url,
     capture=_capture,
     failure_hint="Creative Center có thể đang giới hạn IP này, hoặc đã đổi cấu trúc trang.",
@@ -133,6 +205,18 @@ def _best_video_url(urls: dict[str, str] | None) -> str | None:
             return urls[key]
     values = list(urls.values())
     return values[0] if values else None
+
+
+def _industry_name(industry_key: Any) -> str | None:
+    """
+    `label_14107000000` → `Skincare`, dùng bản đồ mà `fetch_filters` đã dựng.
+
+    Trả `None` khi chưa tra được: một khoá i18n thô hiện trên thẻ trông y như lỗi parse, mà
+    đây là trường phụ nên bỏ trống là lựa chọn trung thực hơn.
+    """
+    if not isinstance(industry_key, str) or not _INDUSTRY_NAMES:
+        return None
+    return _INDUSTRY_NAMES.get(industry_key.removeprefix("label_"))
 
 
 def _normalise(material: dict[str, Any], country: CountryCode) -> Ad | None:
@@ -174,8 +258,8 @@ def _normalise(material: dict[str, Any], country: CountryCode) -> Ad | None:
         ctr_percent=material.get("ctr"),
         like_count=material.get("like"),
         cost_index=material.get("cost"),
-        industry=material.get("industry_key"),
-        objective=material.get("objective_key"),
+        industry=_industry_name(material.get("industry_key")),
+        objective=OBJECTIVE_NAMES.get(material.get("objective_key") or ""),
         countries=[country],
     )
 
@@ -199,24 +283,62 @@ def _matches_keyword(ad: Ad, keyword: str) -> bool:
 
 LOGIN_LIMIT_NOTE = (
     "TikTok không search được theo từ khoá — Creative Center chỉ mở chức năng này cho "
-    "tài khoản đã đăng nhập."
+    "tài khoản đã đăng nhập. Khai TIKTOK_COOKIE trong .env.local để bật."
 )
+
+#: Khi ĐÃ có cookie mà search vẫn rỗng thì nguyên nhân khác hẳn, và đổ cho "chưa đăng nhập"
+#: sẽ đẩy người vận hành đi sai hướng — họ sẽ đi khai một cookie vốn đã khai rồi.
+COOKIE_EMPTY_NOTE = (
+    "TikTok trả 0 kết quả cho từ khoá này dù đã có cookie đăng nhập — cookie có thể đã hết "
+    "hạn (lấy lại ở DevTools), hoặc từ khoá thật sự không nằm trong danh mục brand/product "
+    "mà Creative Center index."
+)
+
+
+def _fallback_note() -> str:
+    return COOKIE_EMPTY_NOTE if _cookie_header else LOGIN_LIMIT_NOTE
 
 
 class TikTok(AdPlatform):
     id = PLATFORM_ID
     label = "TikTok"
-    capabilities = PlatformCapabilities(keyword_search=False, start_date=False, remote_filters=True)
+    #: `keyword_search` khai theo sự thật của lần chạy này chứ không phải hằng số: có cookie
+    #: đăng nhập thì search từ khoá chạy thật, không có thì không. Giao diện đọc cờ này để
+    #: quyết định có hứa với người dùng chuyện search hay không.
+    capabilities = PlatformCapabilities(
+        keyword_search=bool(_cookie_header), start_date=False, remote_filters=True, video_ads=True
+    )
+    countries = SUPPORTED_COUNTRIES
     options = [
         PlatformOption(
             key="industry",
             label="Ngành hàng",
             hint=(
-                "TikTok không search được theo từ khoá, nên ngành hàng là cách duy nhất để "
-                "nhắm kết quả."
+                "Khi không search được theo từ khoá, ngành hàng là cách thu hẹp mạnh nhất. "
+                "Đã đo: bộ lọc này thật sự lọc, không phải trang trí."
             ),
             kind="remote",
             remote_group="industry",
+        ),
+        PlatformOption(
+            key="objective",
+            label="Mục tiêu chiến dịch",
+            hint=(
+                'Chọn "Bán hàng" để chỉ lấy quảng cáo nhắm bán hàng. Đo tại VN: không lọc thì '
+                "10/20 kết quả là quảng cáo bán hàng, lọc rồi thì 20/20."
+            ),
+            kind="choice",
+            choices=[PlatformChoice(value=value, label=label) for value, label in OBJECTIVES],
+        ),
+        PlatformOption(
+            key="adLanguage",
+            label="Ngôn ngữ quảng cáo",
+            hint=(
+                "Lọc theo ngôn ngữ của chính creative. Hữu ích khi bộ lọc quốc gia vẫn trả về "
+                "quảng cáo tiếng nước khác."
+            ),
+            kind="remote",
+            remote_group="adLanguage",
         ),
         PlatformOption(
             key="period",
@@ -248,7 +370,16 @@ class TikTok(AdPlatform):
     def parse_options(self, raw: dict[str, str]) -> TikTokOptions:
         period = to_number(raw.get("period"))
         industry = (raw.get("industry") or "").strip() or None
-        return TikTokOptions(period=int(period) if period in (7, 180) else 30, industry=industry)
+        objective = (raw.get("objective") or "").strip() or None
+        # Mã ngôn ngữ do TikTok quyết định nên không có danh sách trắng cố định; chỉ chấp
+        # nhận hình dạng mã ngôn ngữ để một giá trị bừa không đi thẳng vào query string.
+        language = (raw.get("adLanguage") or "").strip() or None
+        return TikTokOptions(
+            period=int(period) if period in (7, 180) else 30,
+            industry=industry,
+            objective=objective if objective in _OBJECTIVE_IDS else None,
+            ad_language=language if language and re.fullmatch(r"[A-Za-z]{2}(-[A-Za-z]{2,4})?", language) else None,
+        )
 
     async def search(self, request: PlatformSearchInput) -> PlatformSearchOutcome:
         keyword, country, limit = request.keyword, request.country, request.limit
@@ -293,6 +424,10 @@ class TikTok(AdPlatform):
                 ]
                 if industry:
                     query.append(("industry", industry))
+                if options.objective:
+                    query.append(("objective", options.objective))
+                if options.ad_language:
+                    query.append(("ad_language", options.ad_language))
                 return query
 
             async def collect(build: Callable[[int], list[tuple[str, str]]]) -> list[Ad]:
@@ -347,39 +482,60 @@ class TikTok(AdPlatform):
             # Ngành hàng người dùng chủ động chọn *chính là* phạm vi họ muốn. Lọc thêm bằng
             # từ khoá sẽ vứt đi đúng những quảng cáo họ vừa yêu cầu — và vì TikTok chưa từng
             # khớp từ khoá, bộ lọc đó dù sao cũng chỉ là đoán.
-            if industry:
+            # Nói rõ đường duyệt này đang được thu hẹp bằng gì, và còn đòn bẩy nào chưa dùng.
+            # Không có nó, người dùng không có cách nào biết ba bộ lọc kia tồn tại.
+            applied = [
+                name
+                for name, value in (
+                    ("ngành hàng", industry),
+                    ("mục tiêu", options.objective),
+                    ("ngôn ngữ", options.ad_language),
+                )
+                if value
+            ]
+            unused = [
+                name
+                for name, value in (
+                    ("Ngành hàng", industry),
+                    ("Mục tiêu chiến dịch", options.objective),
+                    ("Ngôn ngữ quảng cáo", options.ad_language),
+                )
+                if not value
+            ]
+            scope = f"đã lọc theo {', '.join(applied)}" if applied else "chưa lọc gì thêm"
+            lever = f' Thu hẹp thêm bằng: {", ".join(unused)}.' if unused else ""
+
+            if applied:
                 empty = (
-                    " (ngành này hiện không có quảng cáo nào trong khoảng thời gian đã chọn — "
-                    "thử nới lên 180 ngày)"
+                    " — không có quảng cáo nào khớp trong khoảng thời gian đã chọn, thử nới "
+                    "lên 180 ngày hoặc bỏ bớt bộ lọc"
                     if not browsed_ads
                     else ""
                 )
                 return PlatformSearchOutcome(
                     ads=browsed_ads[:limit],
                     notice=(
-                        f"{LOGIN_LIMIT_NOTE} Đang hiển thị Top Ads theo CTR của ngành hàng bạn "
-                        f"chọn tại {country}{empty}."
+                        f"{_fallback_note()} Đang hiển thị Top Ads theo CTR tại {country}, "
+                        f"{scope}{empty}.{lever}"
                     ),
                 )
 
-            scope_hint = 'chưa lọc ngành hàng — chọn "Ngành hàng" để thu hẹp lại'
             matched = [ad for ad in browsed_ads if _matches_keyword(ad, keyword)]
             if matched:
                 return PlatformSearchOutcome(
                     ads=matched[:limit],
                     notice=(
-                        f"{LOGIN_LIMIT_NOTE} Đây là kết quả lọc từ bảng xếp hạng Top Ads theo "
-                        f"CTR ({scope_hint})."
+                        f"{_fallback_note()} Đây là kết quả tự khớp từ khoá trên bảng xếp hạng "
+                        f"Top Ads theo CTR tại {country}, {scope}.{lever}"
                     ),
                 )
 
             return PlatformSearchOutcome(
                 ads=browsed_ads[:limit],
                 notice=(
-                    f"{LOGIN_LIMIT_NOTE} Đang hiển thị Top Ads theo CTR của {country}, "
-                    f"{scope_hint}. "
+                    f"{_fallback_note()} Đang hiển thị Top Ads theo CTR của {country}, {scope}. "
                     f'Đây KHÔNG phải kết quả cho "{keyword}" — hãy dựa vào phần Facebook để '
-                    "đánh giá nhu cầu sản phẩm."
+                    f"đánh giá nhu cầu sản phẩm.{lever}"
                 ),
             )
 
@@ -409,8 +565,14 @@ class TikTok(AdPlatform):
             if parsed.get("code") != 0:
                 raise RuntimeError(f"TikTok filters lỗi {parsed.get('code')}")
 
-            industries = (parsed.get("data") or {}).get("industry") or []
+            data = parsed.get("data") or {}
+            industries = data.get("industry") or []
             name_by_id = {str(item["id"]): item["value"] for item in industries}
+
+            # Giữ lại để `_normalise` đổi `label_14107000000` thành tên đọc được mà không
+            # phải gọi thêm lần nào. Giao diện vốn đã gọi route này để đổ ô "Ngành hàng",
+            # nên tới lúc search thì bản đồ thường đã ấm.
+            _INDUSTRY_NAMES.update(name_by_id)
 
             options: list[FilterOption] = []
             for item in industries:
@@ -428,7 +590,20 @@ class TikTok(AdPlatform):
                 )
 
             options.sort(key=lambda o: (vi_sort_key(o.group or ""), vi_sort_key(o.label)))
-            return [FilterGroup(key="industry", label="Ngành hàng", options=options)]
+
+            # `ad_language` chỉ trả về khoá i18n (`language_vi`) chứ không phải tên đọc được,
+            # nên tên tiếng Việt lấy từ `LANGUAGE_NAMES`; mã lạ rơi về chính nó thay vì bị bỏ.
+            languages = [
+                FilterOption(value=str(item["id"]), label=LANGUAGE_NAMES.get(str(item["id"]), str(item["id"])))
+                for item in (data.get("ad_language") or [])
+                if item.get("id")
+            ]
+            languages.sort(key=lambda o: vi_sort_key(o.label))
+
+            return [
+                FilterGroup(key="industry", label="Ngành hàng", options=options),
+                FilterGroup(key="adLanguage", label="Ngôn ngữ quảng cáo", options=languages),
+            ]
 
         return await schedule(f"{PLATFORM_ID}:{country}", MIN_INTERVAL_MS, run)
 

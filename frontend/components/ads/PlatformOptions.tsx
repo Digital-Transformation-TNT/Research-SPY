@@ -48,6 +48,34 @@ function ChoiceField({
 }
 
 type RemoteOption = { value: string; label: string; group?: string }
+type FiltersResponse = { groups?: Array<{ key: string; options: RemoteOption[] }>; error?: string }
+
+/**
+ * Một lần gọi `/api/ads/filters` cho mỗi nguồn, dùng chung cho mọi ô `remote` của nguồn đó.
+ *
+ * Backend trả TẤT CẢ nhóm bộ lọc trong cùng một response, còn `fetch_filters` phía nguồn thì
+ * bị giới hạn tần suất. Để mỗi ô tự gọi thì hai ô của cùng một nguồn sẽ cùng trượt cache khi
+ * mở trang, và lần gọi thứ hai phải xếp hàng chờ hết một suất rate-limit — chậm thêm gần
+ * mười giây mà không thu về thêm dữ liệu nào.
+ */
+const inFlight = new Map<string, Promise<FiltersResponse>>()
+
+function loadFilters(platformId: string): Promise<FiltersResponse> {
+  const shared = inFlight.get(platformId)
+  if (shared) return shared
+
+  const pending = fetch(`/api/ads/filters?platform=${encodeURIComponent(platformId)}`)
+    .then((r) => r.json() as Promise<FiltersResponse>)
+    .then((data) => {
+      // Một lần hỏng không được đóng băng vĩnh viễn: quên đi để lần sau còn thử lại.
+      if (data.error) inFlight.delete(platformId)
+      return data
+    })
+  pending.catch(() => inFlight.delete(platformId))
+
+  inFlight.set(platformId, pending)
+  return pending
+}
 
 function RemoteField({
   platformId,
@@ -67,9 +95,8 @@ function RemoteField({
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    fetch(`/api/ads/filters?platform=${encodeURIComponent(platformId)}`)
-      .then((r) => r.json())
-      .then((data: { groups?: Array<{ key: string; options: RemoteOption[] }>; error?: string }) => {
+    loadFilters(platformId)
+      .then((data) => {
         if (cancelled) return
         if (data.error) setError(data.error)
         const group = data.groups?.find((g) => g.key === option.remoteGroup)

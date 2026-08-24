@@ -17,12 +17,18 @@ from __future__ import annotations
 from lib.core.model import CamelModel
 
 from ..platform import AdPlatform, PlatformCapabilities, PlatformOption
+from .etsy import etsy
 from .facebook import facebook
+from .shopee import shopee
 from .tiktok import tiktok
+from .youtube import youtube
 
 AD_PLATFORMS: dict[str, AdPlatform] = {
     "facebook": facebook,
     "tiktok": tiktok,
+    "youtube": youtube,
+    "shopee": shopee,
+    "etsy": etsy,
 }
 
 PLATFORM_IDS: list[str] = list(AD_PLATFORMS.keys())
@@ -44,6 +50,8 @@ class PlatformDescriptor(CamelModel):
     label: str
     capabilities: PlatformCapabilities
     options: list[PlatformOption]
+    #: `None` nghĩa là nguồn phủ mọi thị trường — giao diện không được chặn nước nào.
+    countries: list[str] | None = None
 
 
 PLATFORM_DESCRIPTORS: list[PlatformDescriptor] = [
@@ -52,6 +60,7 @@ PLATFORM_DESCRIPTORS: list[PlatformDescriptor] = [
         label=AD_PLATFORMS[platform_id].label,
         capabilities=AD_PLATFORMS[platform_id].capabilities,
         options=AD_PLATFORMS[platform_id].options,
+        countries=AD_PLATFORMS[platform_id].countries,
     )
     for platform_id in PLATFORM_IDS
 ]

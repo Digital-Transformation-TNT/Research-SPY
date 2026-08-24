@@ -22,6 +22,17 @@ event loop ở trên.
 
 from __future__ import annotations
 
+import asyncio
+import sys
+
+# Chốt chặn thứ hai cho đúng cái bẫy nói ở trên: đặt Proactor policy NGAY LÚC IMPORT, trước
+# khi bất cứ ai dựng event loop. Với lệnh chạy bình thường thì dòng này là thừa (Windows đã
+# mặc định Proactor), nhưng nó cứu các đường vào khác — script gọi thẳng `app`, hoặc một trình
+# chủ khác đã lỡ đặt Selector. Nó KHÔNG cứu được `--reload`: uvicorn đặt policy của nó SAU khi
+# import xong, nên lời cảnh báo bên trên vẫn nguyên giá trị.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI

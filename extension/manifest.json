@@ -1,0 +1,82 @@
+{
+  "manifest_version": 3,
+  "name": "Research-SPY Fetcher",
+  "version": "0.3.0",
+  "description": "Lấy dữ liệu sản phẩm bằng chính phiên đăng nhập của bạn (Cách A). Cookie không bao giờ rời trình duyệt này.",
+  "permissions": ["scripting", "tabs", "cookies"],
+  "host_permissions": [
+    "https://shopee.vn/*",
+    "https://shopee.co.th/*",
+    "https://shopee.ph/*",
+    "https://shopee.com.my/*",
+    "https://shopee.co.id/*",
+    "https://shopee.sg/*",
+    "https://shopee.tw/*",
+    "https://shopee.com.br/*",
+    "https://shopee.com.mx/*",
+    "https://shopee.com.co/*",
+    "https://shopee.cl/*",
+    "https://www.amazon.com/*",
+    "https://www.amazon.co.uk/*",
+    "https://www.amazon.de/*",
+    "https://www.amazon.co.jp/*",
+    "https://www.amazon.fr/*",
+    "https://www.amazon.it/*",
+    "https://www.amazon.es/*",
+    "https://www.amazon.ca/*",
+    "https://seller-ph.tiktok.com/*",
+    "https://seller-vn.tiktok.com/*",
+    "https://seller-th.tiktok.com/*",
+    "https://seller-id.tiktok.com/*",
+    "https://seller-my.tiktok.com/*",
+    "https://seller-sg.tiktok.com/*",
+    "https://seller-us.tiktok.com/*",
+    "https://seller-uk.tiktok.com/*",
+    "https://*.1688.com/*",
+    "https://*.taobao.com/*",
+    "https://*.tmall.com/*",
+    "https://*.temu.com/*",
+    "https://www.tiktok.com/*",
+    "https://*.tiktok.com/*",
+    "https://www.douyin.com/*",
+    "https://*.douyin.com/*",
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "Research-SPY Fetcher" },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost:3000/*",
+        "http://127.0.0.1:3000/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://*.taobao.com/*",
+        "https://*.tmall.com/*",
+        "https://*.temu.com/*",
+        "https://www.tiktok.com/*",
+        "https://www.douyin.com/*",
+        "https://*.douyin.com/*",
+        "https://shopee.vn/*",
+        "https://shopee.co.th/*",
+        "https://shopee.ph/*",
+        "https://shopee.com.my/*",
+        "https://shopee.co.id/*",
+        "https://shopee.sg/*",
+        "https://shopee.tw/*",
+        "https://shopee.com.br/*",
+        "https://shopee.com.mx/*",
+        "https://shopee.com.co/*",
+        "https://shopee.cl/*"
+      ],
+      "js": ["page-hook.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ]
+}

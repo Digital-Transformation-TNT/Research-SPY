@@ -10,3 +10,14 @@ httpx==0.28.1
 playwright==1.56.0
 pydantic==2.10.5
 python-dotenv==1.0.1
+
+# Mục Quảng cáo — khớp sản phẩm bằng ẢNH (lib/ads/imagematch.py, clipmatch.py) và mục Tìm bằng
+# ảnh. Hai gói này được import NGAY LÚC KHỞI ĐỘNG, nên thiếu là server không lên được.
+numpy==2.4.6
+Pillow==12.3.0
+
+# Chạy CLIP image-encoder cho khớp ảnh theo NGỮ NGHĨA (cùng sản phẩm dù khác góc chụp). Đây là
+# gói DUY NHẤT trong danh sách này có thể bỏ: thiếu nó thì `clip_available()` trả False và
+# luồng tự rơi về pHash (chỉ bắt được ảnh trùng gần như từng pixel). Model không nằm trong
+# repo — xem `lib/ads/clipmatch.py` để biết chỗ đặt `backend/models/clip-vision.onnx`.
+onnxruntime==1.28.0

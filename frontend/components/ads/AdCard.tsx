@@ -8,6 +8,16 @@ function proxied(url: string) {
   return `/api/media?url=${encodeURIComponent(url)}`
 }
 
+function scoreClass(value: number) {
+  return value >= 70 ? 'high' : value >= 45 ? 'mid' : 'low'
+}
+
+const CONFIDENCE_LABEL = {
+  high: 'độ tin cậy cao',
+  medium: 'độ tin cậy trung bình',
+  low: 'độ tin cậy thấp',
+} as const
+
 function Media({ ad }: { ad: Ad }) {
   // Video chỉ tải khi bấm. Tự động tải cả lưới video sẽ dội vào CDN và đốt link ký số của
   // những creative không ai buồn xem.
@@ -56,6 +66,8 @@ function Media({ ad }: { ad: Ad }) {
 
 export default function AdCard({ ad, platformLabel }: { ad: Ad; platformLabel: string }) {
   const [expanded, setExpanded] = useState(false)
+  const [showReasons, setShowReasons] = useState(false)
+  const score = ad.score
   const videoCount = ad.creatives.filter((c) => c.kind === 'video').length
   const firstVideoUrl = ad.creatives.find((c) => c.kind === 'video')?.url
 
@@ -71,6 +83,10 @@ export default function AdCard({ ad, platformLabel }: { ad: Ad; platformLabel: s
             </span>
           ))}
           {videoCount > 0 && <span className="tag">{videoCount} video</span>}
+          {/* Nguồn không công bố tên brand (TikTok để trống với hầu hết advertiser) thì
+              ngành hàng và mục tiêu là thứ duy nhất còn nói được quảng cáo này bán gì. */}
+          {ad.industry && <span className="tag soft">{ad.industry}</span>}
+          {ad.objective && <span className="tag soft">{ad.objective}</span>}
         </div>
       </div>
 
@@ -79,19 +95,28 @@ export default function AdCard({ ad, platformLabel }: { ad: Ad; platformLabel: s
           {ad.advertiser}
         </div>
 
-        {/*
-          Chỉ hiện con số nào nền tảng THẬT SỰ công bố. Mỗi dòng tự quyết định có mặt hay
-          không, nên khối này vẫn không phải rẽ nhánh theo nguồn.
-
-          Vì vậy card Facebook chỉ còn số ngày chạy: Ads Library không công bố like / share /
-          comment / view của quảng cáo thương mại. Đo bằng `scripts/probe/fb_ad_fields.py` —
-          78 trường, `impressions_index` luôn -1, `reach_estimate` và `spend` luôn null, vì
-          `is_aaa_eligible: false` (Meta chỉ mở dữ liệu đó cho quảng cáo chính trị và vấn đề
-          xã hội). Đừng đi tìm lại; nếu cần con số ấy thì phải đổi hẳn cách thu thập.
-
-          TikTok Creative Center thì có công bố CTR và lượt thích, nên card TikTok giữ chúng.
-        */}
         <div className="metrics">
+          {typeof ad.price === 'number' && (
+            <span className="metric" title="Giá niêm yết trên sàn">
+              <b>{ad.price.toLocaleString('vi-VN')}</b> {ad.currency ?? ''}
+            </span>
+          )}
+          {typeof ad.monthlySold === 'number' && (
+            <span className="metric" title="Số bán ~30 ngày gần nhất — tín hiệu 'đang hot bây giờ', quan trọng nhất">
+              <b>{ad.monthlySold.toLocaleString('vi-VN')}</b>/tháng
+            </span>
+          )}
+          {typeof ad.soldCount === 'number' && (
+            <span className="metric" title="Tổng đã bán (luỹ kế)">
+              đã bán <b>{ad.soldCount.toLocaleString('vi-VN')}</b>
+            </span>
+          )}
+          {typeof ad.rating === 'number' && (
+            <span className="metric" title="Điểm đánh giá — rating cao + nhiều review = khách hài lòng, ít hoàn hàng">
+              <b>{ad.rating.toFixed(1)}★</b>
+              {typeof ad.ratingCount === 'number' && ` (${ad.ratingCount.toLocaleString('vi-VN')})`}
+            </span>
+          )}
           {typeof ad.daysActive === 'number' && (
             <span className="metric" title="Số ngày quảng cáo đã chạy — tín hiệu mạnh nhất cho thấy sản phẩm có lãi">
               <b>{ad.daysActive}</b> ngày chạy
@@ -107,6 +132,16 @@ export default function AdCard({ ad, platformLabel }: { ad: Ad; platformLabel: s
               <b>{ad.likeCount.toLocaleString('vi-VN')}</b> likes
             </span>
           )}
+          {typeof ad.variantCount === 'number' && ad.variantCount > 1 && (
+            <span className="metric" title="Số biến thể creative — nhiều biến thể nghĩa là advertiser đang scale">
+              <b>{ad.variantCount}</b> biến thể
+            </span>
+          )}
+          {typeof ad.pageLikeCount === 'number' && (
+            <span className="metric">
+              Page <b>{ad.pageLikeCount.toLocaleString('vi-VN')}</b>
+            </span>
+          )}
           {ad.isActive === false && <span className="metric">Đã dừng</span>}
           {/* Nhãn NHẸ, cố ý không phải màu cảnh báo: quảng cáo này vẫn có thể đáng xem — cụm từ
               có thể nằm trong ảnh, hoặc nền tảng khớp nó ở trang đích. Nó chỉ nói cho người
@@ -118,6 +153,40 @@ export default function AdCard({ ad, platformLabel }: { ad: Ad; platformLabel: s
             </span>
           )}
         </div>
+
+        {/*
+          Khối điểm CHỈ dành cho SẢN PHẨM SÀN (`demandScore` có mặt). Với quảng cáo thì không:
+          điểm tổng hợp trên thẻ quảng cáo đã được gỡ theo yêu cầu người dùng — với người đi
+          tìm sản phẩm để bán, một con số trộn sẵn không nói được gì mà số gốc (ngày chạy, biến
+          thể, CTR) không nói rõ hơn. Điểm vẫn được tính vì thứ tự thẻ dựa vào nó.
+
+          Cầu/chất lượng thì khác: đó là số của sàn — đã bán bao nhiêu, khách chấm mấy sao —
+          nên nó nói thêm chứ không trộn lẫn. Xem `backend/lib/ads/scoring.py::_score_product`.
+        */}
+        {score && typeof score.demandScore === 'number' && (
+          <>
+            <div className="score">
+              <span className={`score-num ${scoreClass(score.total)}`}>{score.total}</span>
+              <div className="score-bar">
+                <i style={{ width: `${score.total}%` }} />
+              </div>
+              <button className="linkish" onClick={() => setShowReasons((v) => !v)}>
+                {showReasons ? 'ẩn' : 'vì sao?'}
+              </button>
+            </div>
+            <div className="confidence">
+              Cầu {score.demandScore}/100 · Chất lượng {score.qualityScore}/100 ·{' '}
+              {CONFIDENCE_LABEL[score.confidence]}
+            </div>
+            {showReasons && (
+              <ul className="reasons">
+                {score.reasons.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
 
         {ad.body && (
           <div

@@ -75,11 +75,31 @@ async def main() -> int:
         check("điểm có kèm lý do", len(first_reasons) > 0, first_reasons[0] if first_reasons else "")
         check("facebook có ngày bắt đầu chạy", any("daysActive" in a for a in fb["ads"]))
 
-        ranked = [(a.get("score") or {}).get("total", 0) for a in fb["ads"]]
+        # THỨ TỰ LÀ HAI TẦNG, không phải một. `lib/ads/relevance.py` đẩy nhóm "không chứa cụm
+        # từ khoá" xuống dưới TRƯỚC, rồi trong mỗi nhóm mới xếp theo điểm. Bài test này từng
+        # đòi điểm giảm dần trên cả bảng và vì thế luôn trượt kể từ khi có tầng xếp hạng ấy —
+        # nó đo sai thứ, chứ công cụ không sai.
+        groups: dict[bool, list[int]] = {}
+        for ad in fb["ads"]:
+            # `phraseHit` vắng mặt (nguồn cũ, hoặc luồng khớp ảnh) thì coi như thuộc nhóm trên,
+            # để bài test không đổi kết luận chỉ vì một trường tuỳ chọn không được gửi xuống.
+            groups.setdefault(ad.get("phraseHit") is False, []).append(
+                (ad.get("score") or {}).get("total", 0)
+            )
         check(
-            "kết quả xếp tốt nhất lên đầu",
-            all(ranked[i - 1] >= v for i, v in enumerate(ranked) if i > 0),
-            ",".join(str(v) for v in ranked),
+            "trong mỗi nhóm, điểm cao xếp lên trên",
+            all(g[i - 1] >= v for g in groups.values() for i, v in enumerate(g) if i > 0),
+            " | ".join(
+                f"{'không chứa từ khoá' if off else 'chứa từ khoá'}: "
+                + ",".join(str(v) for v in g)
+                for off, g in sorted(groups.items())
+            ),
+        )
+        check(
+            "quảng cáo chứa cụm từ khoá xếp trên nhóm còn lại",
+            [a.get("phraseHit") is False for a in fb["ads"]]
+            == sorted(a.get("phraseHit") is False for a in fb["ads"]),
+            f"{sum(1 for a in fb['ads'] if a.get('phraseHit') is not False)}/{len(fb['ads'])} chứa cụm từ",
         )
 
         print("\n=== 2. Bộ lọc hậu kỳ (không được nhận nhầm cache chưa lọc) ===")

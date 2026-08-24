@@ -40,6 +40,9 @@ export type AdScore = {
   cvrProxy: number
   contentScore: number
   longevityScore: number
+  /** Riêng product search: điểm cầu (số bán) và chất lượng (rating). Vắng với quảng cáo. */
+  demandScore?: number
+  qualityScore?: number
   /** Lý do đọc được, hiện trên giao diện để người dùng tự kiểm chứng con số. */
   reasons: string[]
   confidence: 'high' | 'medium' | 'low'
@@ -68,6 +71,18 @@ export type Ad = {
   costIndex?: number
   industry?: string
   objective?: string
+  /** Giá niêm yết — có ở sàn TMĐT (Shopee…), vắng ở ads-spy. */
+  price?: number
+  /** Mã tiền tệ ISO-4217, ví dụ 'VND'. Đi kèm `price`. */
+  currency?: string
+  /** Số đã bán (tổng luỹ kế) nếu sàn công bố. */
+  soldCount?: number
+  /** Số bán ~30 ngày gần nhất — tín hiệu "đang hot bây giờ", quan trọng hơn tổng luỹ kế. */
+  monthlySold?: number
+  /** Điểm đánh giá trung bình (0-5). */
+  rating?: number
+  /** Số lượt đánh giá — độ tin của rating. */
+  ratingCount?: number
   countries: CountryCode[]
   platforms?: string[]
   score?: AdScore
@@ -79,6 +94,8 @@ export type Ad = {
    * ghi chú để người dùng biết vì sao chúng có mặt. Xem `backend/lib/ads/relevance.py`.
    */
   phraseHit?: boolean
+  /** Độ trùng ẢNH (0-100) ở luồng khớp-ảnh. Vắng ở search thường. */
+  matchScore?: number
 }
 
 export type PlatformStatus = {
@@ -91,8 +108,42 @@ export type PlatformStatus = {
   tookMs: number
 }
 
+// --- Fetch phía client (Cách A) — nguồn chạy bằng session đăng nhập của user ---
+// Extension nhận `RequestSpec`, fetch bằng cookie của user (không rời trình duyệt), trả
+// `ClientResponse` ngược lên rồi POST về /api/ads/ingest để backend chuẩn hoá.
+
+export type RequestSpec = {
+  url: string
+  method?: string
+  headers?: Record<string, string>
+  body?: string | null
+  tag?: string | null
+}
+
+export type ClientResponse = {
+  tag?: string | null
+  status: number
+  text: string
+}
+
+/** Việc backend giao cho extension chạy (đi trong `AdSearchResult.pending`). */
+export type ClientJob = {
+  platform: PlatformId
+  country: CountryCode
+  requests: RequestSpec[]
+}
+
+/** Extension nộp lại raw cho một cặp (nguồn, quốc gia) — body của POST /api/ads/ingest. */
+export type ClientSubmission = {
+  platform: PlatformId
+  country: CountryCode
+  responses: ClientResponse[]
+}
+
 export type AdSearchResult = {
   ads: Ad[]
   statuses: PlatformStatus[]
   cached: boolean
+  /** Việc cần extension chạy (Cách A). Rỗng khi mọi nguồn fetch phía server hoặc trúng cache. */
+  pending?: ClientJob[]
 }

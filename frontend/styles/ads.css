@@ -124,6 +124,15 @@
 .tag.platform-facebook { border-color: #6ba7f5; }
 .tag.platform-tiktok { border-color: #ff7a95; }
 
+/* Nhãn mô tả (ngành hàng, mục tiêu) — là thông tin nền, không được cạnh tranh chú ý với
+   nhãn nguồn và nhãn quốc gia. */
+.tag.soft {
+  font-weight: 500;
+  background: rgba(0, 0, 0, 0.5);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.82);
+}
+
 .card-body {
   padding: 13px 15px 15px;
   display: flex;
@@ -185,8 +194,46 @@
   padding-top: 4px;
 }
 
-/* Điểm số vẫn được tính ở backend để xếp hạng, nhưng không còn hiện lên thẻ — nên các quy
-   tắc `.score`, `.score-bar`, `.confidence` đã bị gỡ khỏi đây. Xem `lib/ads/scoring.py`. */
+
+/* ==================== score ==================== */
+
+.score {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.score-num {
+  font-size: 17px;
+  font-weight: 700;
+  min-width: 30px;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-num.high { color: var(--good); }
+.score-num.mid { color: var(--warn); }
+.score-num.low { color: var(--text-mute); }
+
+.score-bar {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.score-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--brand);
+}
+
+
+.confidence {
+  font-size: 11px;
+  color: var(--text-mute);
+}
 
 /* Nhãn "không chứa từ khoá" trên thẻ quảng cáo.
  *
