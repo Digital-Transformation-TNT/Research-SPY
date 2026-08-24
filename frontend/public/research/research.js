@@ -814,7 +814,7 @@ async function research() {
 
   if (!all.length) {
     const msg = backendDown
-      ? 'Backend chưa chạy — Etsy/Facebook cần backend ở localhost:8000 (chạy: uvicorn app.main:app).'
+      ? 'Không gọi được backend — Etsy/Facebook cần nó. Kiểm cửa sổ backend còn chạy không, rồi tải lại trang.'
       : notices.length
         ? notices.join(' · ') // hiện lý do thật từ backend (vd Etsy chưa có key)
         : 'Không có kết quả — Shopee: kiểm tra đăng nhập; Amazon: có thể bị chặn tạm/captcha.';
@@ -1102,7 +1102,7 @@ async function contentResearch() {
   setCStatus(`Đang tìm content quảng cáo cho "${kw}" (${region})… (FB lần đầu chậm)`);
   const r = await fetchBackend('facebook', kw, region, count);
   $('cgo').disabled = false;
-  if (r.backendDown) { setCStatus('Backend chưa chạy — Content cần backend ở localhost:8000.', 'err'); $('contentGrid').innerHTML = ''; return; }
+  if (r.backendDown) { setCStatus('Không gọi được backend — kiểm cửa sổ backend còn chạy không, rồi tải lại trang.', 'err'); $('contentGrid').innerHTML = ''; return; }
   if (!r.products.length) { setCStatus(r.notice || 'Không có quảng cáo nào khớp từ khoá.', 'err'); $('contentGrid').innerHTML = ''; return; }
   const list = r.products.slice().sort((a, b) => ((b.score && b.score.total) || 0) - ((a.score && a.score.total) || 0));
   setCStatus(`${list.length} quảng cáo · Facebook ${region}${r.notice ? ' · ' + r.notice : ''}`, 'ok');
@@ -1212,7 +1212,7 @@ $('iGoProduct').addEventListener('click', () => showTab('product'));
 
 // ===== MODAL VIDEO — "video quảng cáo khớp ẢNH sản phẩm" cho một dòng ở tab Sản phẩm =====
 // Gọi backend /api/ads/match-image: seed keyword (tên SP) lấy ứng viên Facebook/TikTok, rồi backend
-// so pHash poster video với ẢNH sản phẩm, chỉ trả video TRÙNG ảnh. Cần backend chạy (localhost:8000).
+// so pHash poster video với ẢNH sản phẩm, chỉ trả video TRÙNG ảnh. Cần backend chạy.
 let vidToken = 0; // chống race: mỗi lần mở gắn một token, chỉ render kết quả của token mới nhất.
 let vidState = null; // { p, usedKw, fbAds, marketAds } — giữ FB/Sàn để đổi NƯỚC chỉ tải lại TikTok.
 
@@ -1250,7 +1250,7 @@ async function openVideoModal(p) {
     if (!r.ok) { setVidStatus((data && data.error) || `backend HTTP ${r.status}`, 'err'); return; }
   } catch (e) {
     if (my !== vidToken) return;
-    setVidStatus('Backend chưa chạy (localhost:8000) — cần backend để lấy video quảng cáo.', 'err');
+    setVidStatus('Không gọi được backend — cần nó để lấy video quảng cáo. Kiểm cửa sổ backend rồi thử lại.', 'err');
     return;
   }
 

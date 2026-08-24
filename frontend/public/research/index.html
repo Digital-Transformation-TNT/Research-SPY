@@ -12,9 +12,14 @@
       --line-soft: color-mix(in srgb, CanvasText 8%, transparent);
       --muted: color-mix(in srgb, CanvasText 55%, transparent);
       --panel: color-mix(in srgb, CanvasText 4%, transparent);
-      --accent: #0f9488; --accent-ink: #0b6b62;
+      /* Cam, LẤY ĐÚNG mã của webtool (`styles/base.css`: --brand / --brand-hover). Trang này
+         nằm trong iframe nên không kế thừa được token của trang ngoài — phải chép giá trị.
+         Đổi màu thương hiệu ở webtool thì nhớ sửa cả hai chỗ. */
+      --accent: #f26522; --accent-ink: #d9541a;
       --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
-      --money: #d9711c; --disc: #e11d48; --good: #16a34a;
+      /* Giá dùng CHUNG màu thương hiệu, giống `.img-price` bên Image Search — trước đây là một
+         mã cam riêng (#d9711c) lệch nhẹ so với nút, đặt cạnh nhau nhìn ra ngay là hai màu. */
+      --money: var(--accent); --disc: #e11d48; --good: #16a34a;
       /* Bán kính và bóng đổ dùng CHUNG cho mọi khối — một nơi chỉnh, cả trang đổi theo,
          thay vì mỗi nút mỗi bảng tự chọn một con số khác nhau như bản trước. */
       --radius: 12px;
@@ -305,7 +310,7 @@
         </select>
         <button id="cgo" class="primary">Tìm content</button>
       </div>
-      <div class="hint">Content = quảng cáo đang chạy (Facebook Ad Library): creative + advertiser + ngày chạy. Cần backend chạy (localhost:8000).</div>
+      <div class="hint">Content = quảng cáo đang chạy (Facebook Ad Library): creative + advertiser + ngày chạy. Không cần extension.</div>
     </div>
     <div class="status" id="cstatus"><span id="cstatusText">Nhập keyword để tìm content quảng cáo đang chạy.</span></div>
     <div class="wrap"><div id="contentGrid" class="cgrid"></div></div>
