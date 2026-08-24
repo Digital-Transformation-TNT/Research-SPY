@@ -102,12 +102,27 @@ const chrome = {
     },
   },
   tabs: {
-    // `chrome.tabs.create` mở tab nền và không cần người dùng cho phép; `window.open` thì có
-    // thể bị chặn nếu gọi ngoài một cú click. Mọi chỗ dùng ở đây đều nằm trong click handler
-    // nên không sao, nhưng vẫn kiểm để báo ra thay vì im lặng không mở gì.
+    // Mở bằng một thẻ <a> tạm chứ KHÔNG bằng `window.open`, và đây là chỗ đã sai một lần
+    // (2026-08-24) nên ghi lại cho rõ:
+    //
+    //     window.open(url, '_blank', 'noopener')  → trả về null NHƯNG TAB VẪN MỞ
+    //     window.open(url, '_blank')              → trả về Window
+    //
+    // `noopener` theo đúng chuẩn là trả `null`, vì bên mở cố ý không được giữ tham chiếu tới
+    // cửa sổ mới. Bản trước kiểm `if (!win)` rồi kêu "trình duyệt đã chặn cửa sổ bật lên" —
+    // báo động giả MỖI LẦN BẤM, trong khi tab vẫn mở ra ngay sau lưng thông báo đó.
+    //
+    // Thẻ <a target="_blank" rel="noopener"> giữ nguyên phần an toàn (trang mới không với
+    // được `window.opener`), mở ra TAB chứ không phải cửa sổ popup, và không có giá trị trả
+    // về nào để hiểu nhầm. Mọi chỗ gọi đều nằm trong click handler nên không đụng bộ chặn.
     create({ url }) {
-      const win = window.open(url, '_blank', 'noopener');
-      if (!win) alert('Trình duyệt đã chặn cửa sổ bật lên — cho phép popup cho trang này rồi bấm lại.');
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
     },
   },
   cookies: {
