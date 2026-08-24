@@ -500,6 +500,84 @@ async function focusTab(tabId) {
   } catch (e) {}
 }
 
+// TikTok API response → items chuẩn hoá. Đầu vào là raw text của response từ __rsCap (đã lọc
+// theo /api/search/(general|item|video)/). Trả về [{id, name, author, videoUrl, image, likeCount,
+// createdAt}]. likeCount = statistics.digg_count; createdAt = create_time (unix giây). desc =
+// caption đẹp hơn nhiều so với DOM alt.
+function parseTiktokTexts(texts, count) {
+  const out = [];
+  const seen = new Set();
+  const looks = (x) => x && typeof x === 'object' && (x.id || x.aweme_id) && (x.author || x.desc || x.video || x.statistics);
+  for (const t of texts) {
+    let j = null; try { j = JSON.parse(t); } catch (e) { continue; }
+    let arr = [];
+    if (Array.isArray(j.item_list)) arr = j.item_list;
+    else if (Array.isArray(j.data)) arr = j.data.map((d) => (d && (d.item || d.aweme_info)) || d).filter(Boolean);
+    if (!arr.length) arr = rsDeepFindArray(j, looks);
+    for (const it of arr) {
+      const id = String(it.id || it.aweme_id || '');
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const author = (it.author && (it.author.unique_id || it.author.uniqueId || it.author.nickname)) || '';
+      const stats = it.statistics || it.stats || {};
+      out.push({
+        id,
+        name: it.desc || '',
+        author,
+        videoUrl: author ? `https://www.tiktok.com/@${author}/video/${id}` : `https://www.tiktok.com/video/${id}`,
+        image: (it.video && (it.video.cover || (it.video.origin_cover && it.video.origin_cover.url_list && it.video.origin_cover.url_list[0]))) || '',
+        platform: 'TikTok',
+        likeCount: Number(stats.digg_count || stats.diggCount || 0) || null,
+        commentCount: Number(stats.comment_count || stats.commentCount || 0) || null,
+        shareCount: Number(stats.share_count || stats.shareCount || 0) || null,
+        playCount: Number(stats.play_count || stats.playCount || 0) || null,
+        createdAt: Number(it.create_time || it.createTime || 0) || null,
+      });
+      if (out.length >= count) return out;
+    }
+  }
+  return out;
+}
+
+// Douyin API response → items chuẩn hoá. Endpoint /aweme/v1/web/general/search/single/ trả về
+// data[].aweme_info = { aweme_id, desc, create_time, statistics.digg_count, video.cover, author }.
+// Cùng schema với TikTok (cùng gốc ByteDance), nên gần như copy parser.
+function parseDouyinTexts(texts, count) {
+  const out = [];
+  const seen = new Set();
+  const looks = (x) => x && typeof x === 'object' && (x.aweme_id || x.id) && (x.statistics || x.desc || x.video);
+  for (const t of texts) {
+    let j = null; try { j = JSON.parse(t); } catch (e) { continue; }
+    // Douyin bọc mỗi item trong { aweme_info: {...} } hoặc thẳng { aweme_id, ... }.
+    let arr = [];
+    if (Array.isArray(j.data)) arr = j.data.map((d) => (d && (d.aweme_info || d.item || d)) || null).filter(Boolean);
+    if (!arr.length) arr = rsDeepFindArray(j, looks);
+    for (const it of arr) {
+      const id = String(it.aweme_id || it.id || '');
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const stats = it.statistics || {};
+      const author = (it.author && (it.author.nickname || it.author.sec_uid || it.author.short_id)) || '';
+      const cover = (it.video && ((it.video.cover && it.video.cover.url_list && it.video.cover.url_list[0]) || it.video.origin_cover?.url_list?.[0])) || '';
+      out.push({
+        id,
+        name: it.desc || '',
+        author,
+        videoUrl: `https://www.douyin.com/video/${id}`,
+        image: cover,
+        platform: 'Douyin',
+        likeCount: Number(stats.digg_count || 0) || null,
+        commentCount: Number(stats.comment_count || 0) || null,
+        shareCount: Number(stats.share_count || 0) || null,
+        playCount: Number(stats.play_count || 0) || null,
+        createdAt: Number(it.create_time || 0) || null,
+      });
+      if (out.length >= count) return out;
+    }
+  }
+  return out;
+}
+
 // Dò MẢNG sản phẩm trong JSON bất kỳ: mảng có ≥3 phần tử "trông giống sản phẩm" (theo `looksItem`).
 function rsDeepFindArray(root, looksItem) {
   let best = null;
@@ -1146,7 +1224,9 @@ async function searchDouyinTerm(tab, term, byId, target, budgetMs, isFirst) {
             const href = a.href.startsWith('http') ? a.href : ('https://www.douyin.com' + a.getAttribute('href'));
             links.push({ id: m[1], url: href.split('?')[0], image: img ? (img.src || img.getAttribute('data-src') || '') : '', name });
           });
-          return { links, href: location.href, body: document.body ? document.body.innerText.slice(0, 400) : '' };
+          // Filter API response Douyin để lấy digg_count + create_time (DOM không có 2 field này).
+          const cap = (window.__rsCap || []).filter((c) => /aweme\/v1\/web\/(general\/search|search\/item)/.test(c.url)).map((c) => c.text);
+          return { links, cap, href: location.href, body: document.body ? document.body.innerText.slice(0, 400) : '' };
         },
       });
       r = out && out[0] && out[0].result;
@@ -1156,6 +1236,8 @@ async function searchDouyinTerm(tab, term, byId, target, budgetMs, isFirst) {
       for (const it of (r.links || [])) {
         if (it.id && !byId[it.id]) byId[it.id] = { id: it.id, name: it.name || '', author: '', videoUrl: it.url, image: it.image || '', platform: 'Douyin' };
       }
+      // API (nếu chộp được) có digg_count + create_time — gộp đè lên bản DOM (DOM không có 2 số này).
+      for (const it of parseDouyinTexts(r.cap || [], 999)) byId[it.id] = Object.assign({}, byId[it.id] || {}, it);
       const n = Object.keys(byId).length;
       if (n >= target) return {};
       if (/passport|\/login/i.test(lastHref) || /扫码登录|需要登录|请登录/.test(lastBody)) return { blocked: 'login' };

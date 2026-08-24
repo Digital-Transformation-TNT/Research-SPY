@@ -331,6 +331,23 @@ function esc(s) { return String(s == null ? '' : s).replace(/</g, '&lt;').replac
 function setStatus(msg, kind) { $('statusText').textContent = msg; $('status').className = 'status' + (kind ? ' ' + kind : ''); }
 function fmtInt(n) { return typeof n === 'number' ? n.toLocaleString('vi-VN') : '—'; }
 function fmtPrice(v, cur) { return v == null ? '—' : v.toLocaleString('vi-VN') + ' ' + cur; }
+// 1234 → "1,2K" · 12345 → "12,3K" · 1234567 → "1,2M". Số nhỏ giữ nguyên (dễ đọc).
+function fmtCompact(n) {
+  if (typeof n !== 'number' || !isFinite(n) || n < 0) return '';
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return (n / 1000).toFixed(n < 10_000 ? 1 : 0).replace('.', ',') + 'K';
+  return (n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0).replace('.', ',') + 'M';
+}
+// Unix giây → "hôm nay" / "hôm qua" / "N ngày trước" / "N tháng trước" / "N năm trước".
+function fmtRelDate(unixSec) {
+  if (typeof unixSec !== 'number' || unixSec < 1_000_000_000) return '';
+  const days = Math.max(0, Math.floor((Date.now() / 1000 - unixSec) / 86400));
+  if (days === 0) return 'hôm nay';
+  if (days === 1) return 'hôm qua';
+  if (days < 30) return days + ' ngày trước';
+  if (days < 365) return Math.floor(days / 30) + ' tháng trước';
+  return Math.floor(days / 365) + ' năm trước';
+}
 function imageUrl(region, hash) { return hash ? `https://down-${IMG_REGION[region] || 'vn'}.img.susercontent.com/file/${hash}` : ''; }
 // Gỡ lớp proxy `/api/media?url=` để lấy lại URL CDN GỐC — backend /match-image cần url thật của
 // ảnh sản phẩm (nó tự bọc Referer khi tải). Ảnh Shopee/Amazon vốn đã là url gốc nên trả nguyên.
@@ -1333,9 +1350,13 @@ async function loadModalTiktok(region) {
 
   // Chuẩn hoá item TikTok về dạng "ad" để render chung; permalink = LINK VIDEO THẬT.
   // langMatch chuyển sang creative để renderVideos gắn badge (không đổi thứ tự — đã sort ở background).
+  // likeCount + createdAt: chỉ có khi parseTiktokTexts chộp được API (không DOM), nên có thể null.
   const tkAds = tkItems.map((it) => ({
     platform: 'tiktok', id: it.id, advertiser: it.author || 'TikTok', title: it.name, body: it.name,
     permalink: it.videoUrl, langMatch: it.langMatch || 'neutral', regionTag: region,
+    likeCount: it.likeCount || null,
+    commentCount: it.commentCount || null,
+    startedAt: it.createdAt || null,
     creatives: [{ kind: 'video', posterUrl: it.image || '' }],
   }));
 
@@ -1380,7 +1401,18 @@ function renderVideos(ads) {
     const poster = (video && video.posterUrl) ||
       (creatives.find((c) => c.posterUrl) || {}).posterUrl ||
       (creatives.find((c) => c.url) || {}).url || '';
-    const days = ad.daysActive != null ? `<span>${ad.daysActive} ngày chạy</span>` : '';
+    const days = ad.daysActive != null ? `<span title="Số ngày ad chạy trên Facebook">${ad.daysActive} ngày chạy</span>` : '';
+    // Tương tác video: ưu tiên likeCount (TikTok/Douyin video-level) → page_like_count (FB page).
+    // FB Ad Library KHÔNG expose like video, chỉ có follower của page.
+    let engage = '';
+    if (ad.likeCount) {
+      engage = `<span title="Lượt tim video">❤️ ${fmtCompact(ad.likeCount)}</span>`;
+      if (ad.commentCount) engage += `<span title="Bình luận">💬 ${fmtCompact(ad.commentCount)}</span>`;
+    } else if (ad.pageLikeCount) {
+      engage = `<span title="Followers của Facebook Page (không phải like video)">👥 ${fmtCompact(ad.pageLikeCount)}</span>`;
+    }
+    // Ngày đăng: TikTok/Douyin = create_time video; FB = ngày ad start chạy.
+    const posted = ad.startedAt ? `<span title="Ngày đăng / bắt đầu chạy">📅 ${fmtRelDate(ad.startedAt)}</span>` : '';
     const match = typeof ad.matchScore === 'number' ? `<span class="mbadge">🎯 ${ad.matchScore}% khớp ảnh</span>` : '';
     // Badge KHI video có mô tả khác ngôn ngữ nước đang chọn (TikTok cá nhân hoá theo account/IP).
     // Không dìm/bỏ, chỉ nhắc user: "cái này lệch nước, coi cẩn thận".
@@ -1409,7 +1441,7 @@ function renderVideos(ads) {
       `<div class="cbody">` +
       `<div class="cadv">${esc(ad.advertiser || '—')}</div>` +
       `<div class="ccopy">${esc(ad.title || ad.body || '')}</div>` +
-      `<div class="cmeta"><span class="pill">${esc(PF_LABEL[ad.platform] || ad.platform)}</span>${days}</div>` +
+      `<div class="cmeta"><span class="pill">${esc(PF_LABEL[ad.platform] || ad.platform)}</span>${engage}${posted}${days}</div>` +
       (ad.permalink ? `<a class="clink" href="${esc(ad.permalink)}" target="_blank" rel="noreferrer">${isTk ? 'Mở trên TikTok ↗' : 'Xem quảng cáo ↗'}</a>` : '') +
       `</div>`;
     grid.appendChild(el);
@@ -1467,9 +1499,13 @@ async function loadModalDouyin() {
 
   // Chuẩn hoá Douyin item về "ad" — Douyin video KHÔNG có player embed public như TikTok, nên chỉ
   // hiện poster + link mở trên Douyin. platform='douyin' để card không dính nhánh play-overlay TikTok.
+  // likeCount + createdAt: chỉ có khi parseDouyinTexts chộp được API, có thể null.
   const dyAds = dyItems.map((it) => ({
-    platform: 'douyin', id: it.id, advertiser: 'Douyin', title: it.name, body: it.name,
+    platform: 'douyin', id: it.id, advertiser: it.author || 'Douyin', title: it.name, body: it.name,
     permalink: it.videoUrl, langMatch: 'match', regionTag: 'CN',
+    likeCount: it.likeCount || null,
+    commentCount: it.commentCount || null,
+    startedAt: it.createdAt || null,
     creatives: [{ kind: 'image', posterUrl: it.image || '' }],
   }));
 
