@@ -3,7 +3,11 @@
   "name": "Research-SPY Fetcher",
   "version": "0.3.0",
   "description": "Lấy dữ liệu sản phẩm bằng chính phiên đăng nhập của bạn (Cách A). Cookie không bao giờ rời trình duyệt này.",
-  "permissions": ["scripting", "tabs", "cookies"],
+  "permissions": [
+    "scripting",
+    "tabs",
+    "cookies"
+  ],
   "host_permissions": [
     "https://shopee.vn/*",
     "https://shopee.co.th/*",
@@ -43,16 +47,24 @@
     "http://localhost:8000/*",
     "http://127.0.0.1:8000/*"
   ],
-  "background": { "service_worker": "background.js" },
-  "action": { "default_popup": "popup.html", "default_title": "Research-SPY Fetcher" },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Research-SPY Fetcher"
+  },
   "content_scripts": [
     {
       "matches": [
         "http://localhost:3000/*",
         "http://127.0.0.1:3000/*"
       ],
-      "js": ["content.js"],
-      "run_at": "document_start"
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true
     },
     {
       "matches": [
@@ -74,7 +86,9 @@
         "https://shopee.com.co/*",
         "https://shopee.cl/*"
       ],
-      "js": ["page-hook.js"],
+      "js": [
+        "page-hook.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     }

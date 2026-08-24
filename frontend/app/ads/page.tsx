@@ -1,31 +1,26 @@
 import type { Metadata } from 'next'
-import AdsResearch from '@/components/ads/AdsResearch'
-import BackendDown from '@/components/layout/BackendDown'
-import { fetchPlatformDescriptors } from '@/lib/ads/platforms'
-import { BackendDownError } from '@/lib/api'
 
 export const metadata: Metadata = {
-  title: 'Quảng cáo — Research SPY',
+  title: 'Research — Research SPY',
 }
 
 /**
- * Trang research quảng cáo.
+ * Trang Research.
  *
- * Đây là server component, và việc duy nhất nó làm là hỏi backend danh sách nguồn rồi truyền
- * mô tả xuống cho phần giao diện. Giao diện vì thế không hard-code Facebook hay TikTok ở bất
- * kỳ đâu — thêm một nguồn ở backend là nó tự hiện ra.
+ * Đây là trang research đa sàn vốn chạy trong extension (`results.html`), đã chuyển hẳn vào
+ * webtool. Nó được nhúng NGUYÊN VẸN từ `public/research/index.html` chứ không viết lại thành
+ * component React, và đó là một quyết định có chủ đích:
  *
- * `force-dynamic` để `next build` không cố gọi backend lúc build; danh sách nguồn được đọc
- * mỗi lần vào trang.
+ *  - GIAO DIỆN KHÔNG ĐƯỢC LỆCH. Yêu cầu là giữ y như bản đang chạy. Viết lại 1.300 dòng thao
+ *    tác DOM thành React thì chắc chắn lệch ở đâu đó, và lệch kiểu khó thấy.
+ *  - CSS KHÔNG ĐƯỢC ĐỤNG NHAU. Trang đó khai `body`, `table`, `input`, `.status`, `.chip`…
+ *    Nhiều tên trùng với `styles/` của webtool. Trong iframe thì hai bộ CSS không thấy nhau,
+ *    khỏi phải đổi tên hàng trăm lớp.
+ *
+ * ĐÁNH ĐỔI phải biết: iframe là một tài liệu riêng, nên `extension/manifest.json` phải khai
+ * `all_frames: true`, nếu không content script chỉ chạy ở khung ngoài và cầu postMessage
+ * không có ai nghe — trang sẽ báo "chưa cài extension" dù đã cài.
  */
-export const dynamic = 'force-dynamic'
-
-export default async function AdsPage() {
-  try {
-    const platforms = await fetchPlatformDescriptors()
-    return <AdsResearch platforms={platforms} />
-  } catch (error) {
-    if (error instanceof BackendDownError) return <BackendDown message={error.message} />
-    throw error
-  }
+export default function ResearchPage() {
+  return <iframe src="/research/index.html" className="research-frame" title="Research đa sàn" />
 }

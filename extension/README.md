@@ -16,13 +16,26 @@ Server (kể cả Crawlee) gọi API sản phẩm Shopee đều bị **HTTP 403 
 | `page-hook.js` | Chộp phản hồi mà **chính trang tự gọi** — dùng cho Taobao/Tmall/Temu, nơi request có chữ ký (`mtop x5sec`, `anti-content`) mà mình không tự ký được |
 | `similar-hook.js` | Như trên, cho trang "sản phẩm tương tự" của Shopee |
 | `popup.html` / `popup.js` | **Tự test** một sàn: nhập từ khoá → ra sản phẩm thật, không cần web app |
-| `results.html` / `results.js` | **Trang research đầy đủ**, mở dạng full tab: nhiều từ khoá cùng lúc, nhiều sàn, một bảng gộp có cột Từ khoá và Sàn |
 
-Các sàn `results.js` đang phủ: Shopee, TikTok Shop (qua Seller Center), Amazon, Taobao, 1688,
-Temu, cộng Etsy và Facebook đi qua backend, và video từ TikTok với Douyin.
+### Trang Research đã CHUYỂN sang webtool
 
-Chấm điểm trong `results.js` **soi gương** `backend/lib/ads/scoring.py::_score_product` — sửa
-một bên thì nhớ sửa bên kia, vì không có gì tự bắt lỗi lệch nhau giữa hai bản.
+Trước đây extension có `results.html` / `results.js` — trang research đa sàn mở dạng full tab.
+Nó đã chuyển hẳn sang webtool và giờ sống ở `frontend/public/research/`, hiện ra ở đường `/ads`.
+
+**Chuyển chứ không nhân bản**: hai bản của cùng 1.300 dòng chắc chắn sẽ trôi dạt khỏi nhau, và
+không có gì tự bắt được lúc chúng lệch. File trong webtool giống bản cũ từng dòng, trừ một lớp
+ở đầu file giả lập `chrome.runtime` và `chrome.tabs` bằng cầu postMessage của `content.js`.
+
+Nhờ vậy extension trở lại đúng một việc: **mượn phiên đăng nhập để gọi mạng**. Không giao diện,
+không chấm điểm, không trạng thái. Các sàn nó phục vụ: Shopee, TikTok Shop (qua Seller Center),
+Amazon, Taobao, 1688, Temu, cùng video TikTok và Douyin.
+
+Chấm điểm trong `public/research/research.js` **soi gương** `backend/lib/ads/scoring.py::_score_product`
+— sửa một bên thì nhớ sửa bên kia, vì không có gì tự bắt lỗi lệch nhau giữa hai bản.
+
+> **`all_frames: true` trong `manifest.json` là bắt buộc.** Trang Research nằm trong một
+> `<iframe>` của webtool, mà content script mặc định chỉ chạy ở khung trên cùng. Thiếu dòng đó
+> thì cầu postMessage không có ai nghe, và trang báo "chưa cài extension" dù đã cài.
 
 ## Cài (Chrome/Edge, chế độ dev)
 
@@ -62,12 +75,13 @@ Extension đang trỏ cứng vào máy cá nhân. Đổi cả ba, thiếu một 
 | Chỗ | Đang là | Sửa thành |
 |---|---|---|
 | `manifest.json` → `content_scripts[0].matches` | `http://localhost:3000/*` | tên miền web app thật |
-| `manifest.json` → `host_permissions` | `http://localhost:8000/*` | tên miền backend thật |
-| `results.js` → hằng `BACKEND` | `http://localhost:8000` | tên miền backend thật |
+| `popup.js` → hằng `WEBAPP` | `http://localhost:3000` | tên miền web app thật |
 
-Hai chỗ đầu chỉ ảnh hưởng luồng web app; chỗ thứ ba ảnh hưởng trang `results.html` chạy độc
-lập. Nếu backend chạy HTTPS thì cả ba phải là `https://`, vì trang HTTPS không gọi được
-`http://` (mixed content) và lỗi ấy chỉ hiện trong console chứ không hiện trên giao diện.
+Chỉ còn hai chỗ. Hằng `BACKEND` không còn phải sửa nữa: trang Research đã nằm trong webtool nên
+`/api/...` đi cùng origin, và `frontend/next.config.mjs` lo phần chuyển tiếp.
+
+Nếu web app chạy HTTPS thì cả hai phải là `https://`, và nhớ rằng trang HTTPS không gọi được
+`http://` (mixed content) — lỗi ấy chỉ hiện trong console chứ không hiện trên giao diện.
 
 ## Thêm sàn mới
 

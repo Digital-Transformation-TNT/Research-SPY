@@ -6,6 +6,12 @@
  * trả về "không có" một cách êm — giao diện tự rơi về thông báo, không treo.
  *
  * Nguồn sự thật hình dạng dữ liệu: `frontend/lib/ads/types.ts` (mirror của backend).
+ *
+ * HIỆN KHÔNG CÓ AI GỌI FILE NÀY. Nó phục vụ luồng `AdSearchResult.pending` → `/api/ads/ingest`
+ * của backend, và người gọi duy nhất là màn hình Quảng cáo cũ — đã bị trang Research thay chỗ
+ * (trang đó tự nói chuyện với extension bằng các lệnh `RS_*` riêng, không đi qua đây). Giữ lại
+ * vì đường ở backend vẫn còn nguyên và vẫn chạy được; xoá file này thì lần sau muốn dùng phải
+ * dựng lại từ đầu. Đừng đọc nó như mã đang chạy.
  */
 
 import type { ClientJob, ClientResponse, ClientSubmission } from './types'

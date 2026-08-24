@@ -12,6 +12,11 @@ const IMG_REGION = { VN: 'vn', TH: 'th', PH: 'ph', MY: 'my', ID: 'id', SG: 'sg',
 const CURRENCY = { VN: 'VND', TH: 'THB', PH: 'PHP', MY: 'MYR', ID: 'IDR', SG: 'SGD', TW: 'TWD', BR: 'BRL', MX: 'MXN', CO: 'COP', CL: 'CLP' };
 const PRICE_SCALE = 100000;
 
+// Địa chỉ webtool. Nút "Research đầy đủ" mở trang Research ở đây chứ không mở trang trong
+// extension nữa — trang đó đã chuyển hẳn sang webtool để chỉ còn MỘT bản, không phải hai bản
+// trôi dạt khỏi nhau. Đổi khi deploy lên server thật.
+const WEBAPP = 'http://localhost:3000';
+
 function searchUrl(domain, keyword) {
   const q = new URLSearchParams({
     // by=sales = sort "Bán chạy" (giống ?sortBy=sales trên web) → top-seller thật, ít quảng cáo.
@@ -223,7 +228,9 @@ $('kw').addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
 $('similar').addEventListener('click', testFindSimilar);
 $('openResults').addEventListener('click', () => {
   const kw = encodeURIComponent($('kw').value.trim());
-  chrome.tabs.create({ url: chrome.runtime.getURL('results.html') + (kw ? `?kw=${kw}` : '') });
+  // Trang Research đã chuyển vào webtool (`/ads`) nên không còn nằm trong extension nữa.
+  // Đổi WEBAPP ở đầu file này khi deploy — xem bảng ba-chỗ-phải-sửa trong README.
+  chrome.tabs.create({ url: `${WEBAPP}/ads` + (kw ? `?kw=${encodeURIComponent(kw)}` : '') });
 });
 $('copy').addEventListener('click', async () => {
   if (!lastSample) return;

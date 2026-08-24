@@ -11,6 +11,105 @@
  * domain vào host_permissions; cột "Sàn" đã sẵn cho việc đó.
  */
 
+/*
+ * ĐÓNG GÓI TOÀN BỘ FILE TRONG MỘT HÀM. Bắt buộc, không phải cho gọn:
+ *
+ * Trình duyệt Chrome tự tạo sẵn `window.chrome` cho mọi trang. Ở phạm vi script, `const chrome`
+ * đụng đúng cái tên đó và ném `Identifier 'chrome' has already been declared` — lỗi xảy ra lúc
+ * KHỞI TẠO script, nên KHÔNG một dòng nào trong file chạy. Triệu chứng rất dễ chẩn đoán nhầm:
+ * trang vẫn hiện đủ tab, đủ cột, đủ chữ (tất cả là HTML tĩnh), chỉ có điều bấm gì cũng không
+ * phản ứng. Đã đo 2026-08-24, và đó là lý do có hai dòng này.
+ *
+ * Trong phạm vi hàm thì `const chrome` chỉ che đi biến toàn cục, hợp lệ. Không thụt lề lại phần
+ * bên dưới, cố ý: giữ file khác bản gốc đúng những chỗ buộc phải khác.
+ */
+(function () {
+/*
+ * ===========================================================================
+ * LỚP GIẢ LẬP API EXTENSION  —  phần DUY NHẤT khác bản chạy trong extension
+ * ===========================================================================
+ *
+ * Trang này vốn là một trang của extension (`chrome-extension://…/results.html`) nên gọi được
+ * thẳng `chrome.runtime` và `chrome.tabs`. Giờ nó là một trang web bình thường trong webtool,
+ * và trang web thì KHÔNG có hai API đó.
+ *
+ * Thay vì sửa 16 chỗ gọi rải khắp 1.300 dòng bên dưới, ở đây dựng lại đúng hai API ấy bằng
+ * cầu `postMessage` mà `extension/content.js` đang lắng nghe. Toàn bộ phần còn lại của file
+ * giữ nguyên từng ký tự so với `extension/results.js` — đó là chủ đích: giao diện và hành vi
+ * không được phép lệch đi chỉ vì đổi chỗ ở.
+ *
+ * `const chrome` ở phạm vi script che đi `window.chrome` mà trình duyệt tự tạo (một object
+ * gần như rỗng với trang thường). Cố ý: mọi lượt gọi bên dưới đi vào cầu này.
+ *
+ * KHÔNG CÓ EXTENSION thì mỗi lượt gọi trả về `null` sau 30 giây. Không phải giá trị tuỳ tiện:
+ * mọi chỗ gọi bên dưới đều đã kiểm `!res || !res.ok` hoặc `(r && r.items) || []` sẵn, nên
+ * `null` đi qua đúng những nhánh báo lỗi mà tác giả đã viết, thay vì ném TypeError.
+ */
+const RS_PAGE = 'research-spy';
+const RS_EXT = 'research-spy-ext';
+const RS_TIMEOUT_MS = 30000;
+let _rsSeq = 0;
+
+function rsSend(msg) {
+  return new Promise((resolve) => {
+    const id = `rs-page-${Date.now()}-${_rsSeq++}`;
+    const timer = setTimeout(() => {
+      window.removeEventListener('message', onMessage);
+      resolve(null);
+    }, RS_TIMEOUT_MS);
+
+    function onMessage(event) {
+      if (event.source !== window) return;
+      const d = event.data;
+      if (!d || d.source !== RS_EXT || d.id !== id) return;
+      clearTimeout(timer);
+      window.removeEventListener('message', onMessage);
+      resolve(d.result);
+    }
+
+    window.addEventListener('message', onMessage);
+    window.postMessage({ source: RS_PAGE, type: 'CALL', id, msg }, '*');
+  });
+}
+
+const chrome = {
+  runtime: {
+    sendMessage(msg, callback) {
+      rsSend(msg).then((result) => { if (callback) callback(result); });
+    },
+  },
+  tabs: {
+    // `chrome.tabs.create` mở tab nền và không cần người dùng cho phép; `window.open` thì có
+    // thể bị chặn nếu gọi ngoài một cú click. Mọi chỗ dùng ở đây đều nằm trong click handler
+    // nên không sao, nhưng vẫn kiểm để báo ra thay vì im lặng không mở gì.
+    create({ url }) {
+      const win = window.open(url, '_blank', 'noopener');
+      if (!win) alert('Trình duyệt đã chặn cửa sổ bật lên — cho phép popup cho trang này rồi bấm lại.');
+    },
+  },
+};
+
+/** Extension đã cài và trả lời chưa. Trang tự hỏi lúc nạp để báo sớm thay vì để người dùng chờ. */
+async function rsExtensionReady() {
+  const resp = await Promise.race([
+    rsSend({ type: 'RS_PING' }),
+    new Promise((r) => setTimeout(() => r(null), 2000)),
+  ]);
+  return !!(resp && resp.ok);
+}
+
+window.addEventListener('DOMContentLoaded', async () => {
+  if (await rsExtensionReady()) return;
+  const bar = document.getElementById('status');
+  const text = document.getElementById('statusText');
+  if (!bar || !text) return;
+  bar.classList.add('err');
+  text.textContent =
+    'Chưa thấy extension Research-SPY Fetcher. Các sàn cần phiên đăng nhập của bạn (Shopee, ' +
+    'TikTok Shop, Amazon, Taobao, 1688, Temu) sẽ không chạy. Cài ở chrome://extensions → ' +
+    'Developer mode → Load unpacked → chọn thư mục extension/, rồi tải lại trang.';
+});
+
 const DOMAIN = { VN: 'shopee.vn', TH: 'shopee.co.th', PH: 'shopee.ph', MY: 'shopee.com.my', ID: 'shopee.co.id', SG: 'shopee.sg', TW: 'shopee.tw', BR: 'shopee.com.br', MX: 'shopee.com.mx', CO: 'shopee.com.co', CL: 'shopee.cl' };
 const IMG_REGION = { VN: 'vn', TH: 'th', PH: 'ph', MY: 'my', ID: 'id', SG: 'sg', TW: 'tw', BR: 'br', MX: 'mx', CO: 'co', CL: 'cl' };
 const CURRENCY = { VN: 'VND', TH: 'THB', PH: 'PHP', MY: 'MYR', ID: 'IDR', SG: 'SGD', TW: 'TWD', BR: 'BRL', MX: 'MXN', CO: 'COP', CL: 'CLP' };
@@ -28,8 +127,12 @@ const TT_TZ = { PH: 'Asia/Manila', VN: 'Asia/Ho_Chi_Minh', TH: 'Asia/Bangkok', I
 // Tỉ giá xấp xỉ về USD — để quy GMV các sàn/nước về cùng thang khi chấm "chất" (không phụ thuộc
 // đơn vị tiền). Chỉ dùng cho chuẩn hoá điểm, không phải giá trị tài chính chính xác.
 const FX_USD = { PHP: 0.017, VND: 0.00004, THB: 0.028, IDR: 0.000062, MYR: 0.22, SGD: 0.74, USD: 1, GBP: 1.27 };
-// Sàn chạy ở BACKEND (secret/scrape phía server): Etsy, Facebook. Extension gọi backend.
-const BACKEND = 'http://localhost:8000';
+// Sàn chạy ở BACKEND (secret/scrape phía server): Etsy, Facebook.
+//
+// RỖNG là cố ý: trang này giờ nằm trong webtool, nên `/api/...` đi cùng origin và được
+// `frontend/next.config.mjs` chuyển tiếp sang FastAPI. Nhờ vậy đổi tên miền lúc deploy
+// không phải sửa file này — khác hẳn bản cũ trỏ cứng vào localhost:8000.
+const BACKEND = '';
 const PF_LABEL = { etsy: 'Etsy', facebook: 'Facebook', tiktok: 'TikTok', douyin: 'Douyin 抖音' };
 const PRICE_SCALE = 100000;
 
@@ -1300,3 +1403,5 @@ async function loadModalDouyin() {
 }
 $('vidModal').addEventListener('click', (e) => { if (e.target === $('vidModal')) closeVideoModal(); });
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('vidModal').classList.contains('on')) closeVideoModal(); });
+
+})();

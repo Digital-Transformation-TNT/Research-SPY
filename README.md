@@ -4,7 +4,7 @@ Công cụ nội bộ cho phòng test sản phẩm. Bốn mục lớn, độc l�
 
 | Mục | Đường dẫn | Làm gì | Lấy dữ liệu từ |
 |---|---|---|---|
-| **Quảng cáo** | `/ads` | Tìm quảng cáo và sản phẩm đang chạy, tìm video theo ảnh sản phẩm | Facebook Ads Library, TikTok Creative Center, YouTube, Etsy, **Shopee qua extension** |
+| **Sản phẩm & Content** | `/ads` | Top sản phẩm đa sàn, content quảng cáo đang chạy, video theo sản phẩm | Facebook Ads Library, YouTube, Etsy *(qua server)* · **Shopee, TikTok Shop, Amazon, Taobao, 1688, Temu, video TikTok/Douyin** *(qua extension)* |
 | **Từ khoá** | `/keywords` | Mở rộng từ khoá gốc ra biến thể đang được tìm kiếm, đo xu hướng | Google Suggest, Shopee, TikTok, Google Trends, 1688, Amazon, Douyin |
 | **Tìm bằng ảnh** | `/image` | Một tấm ảnh, ra nguồn hàng và giá ở năm sàn | 1688, Alibaba.com, AliExpress, Taobao, Google Lens |
 | **Cơ hội** | `/opportunity` | Hỏi đáp về khoảng trống thị trường trên dữ liệu đã thu | tổng hợp từ ba mục trên |
@@ -174,10 +174,12 @@ frontend/
 │   ├── guide/page.tsx       # trang Hướng dẫn
 │   └── page.tsx             # chuyển hướng về /ads
 ├── components/
-│   ├── ads/                 # AdsResearch, AdCard, HealthBar, PlatformOptions
 │   ├── keywords/            # KeywordResearch, KeywordTable, SeedTrend, TrendChart, Dropdown
 │   ├── imagesearch/         # ImageSearchWorkspace
 │   └── layout/              # Sidebar, BackendDown
+├── public/
+│   └── research/            # TRANG RESEARCH — HTML/JS thuần, nhúng nguyên vào /ads
+│                            #   chuyển từ extension sang, cố ý KHÔNG viết lại thành React
 ├── lib/
 │   ├── api.ts               # địa chỉ backend cho server component
 │   ├── ads/                 # kiểu dữ liệu + extension.ts (cầu nối tới extension)
@@ -191,8 +193,7 @@ extension/                   # ===== EXTENSION CHROME (MV3) =====
 ├── content.js               # cầu nối web app với service worker qua postMessage
 ├── page-hook.js             # chộp phản hồi mà chính trang tự gọi (Taobao, Temu)
 ├── similar-hook.js          # tương tự, cho trang "sản phẩm tương tự" của Shopee
-├── popup.*                  # tự test một sàn, không cần web app
-└── results.*                # trang research đầy đủ, mở dạng full tab
+└── popup.*                  # tự test một sàn, không cần web app
 
 gtrends/                     # gói Google Trends TÁCH RỜI — copy sang dự án khác được
 docs/                        # ghi chép nghiên cứu nguồn dữ liệu, không phải phần mềm chạy
