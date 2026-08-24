@@ -767,178 +767,129 @@ async function searchTiktokCreative(region, keyword, count) {
   try {
     const tab = await tkccTab();
     const target = Math.min(60, Math.max(12, count || 24));
+    const kw = String(keyword || '').trim();
 
-    // 1. Cài fetch hook TRƯỚC khi navigate (document_start không có cho ads.tiktok.com, nên cài
-    //    sau khi navigate lần đầu, rồi reload để capture request batch đầu tiên).
+    // ---------------------------------------------------------------------------
+    // VÌ SAO CHỘP CHỨ KHÔNG TỰ GỌI. Đo 2026-08-24.
+    //
+    // API thật là `/creative_radar_api/v1/top_ads/v2/list`, và NÓ CÓ tham số `keyword` —
+    // gõ vào ô "Search by brand or product keywords" thì trang gửi đúng tham số ấy và trả
+    // 19/33 kết quả cho "kem chống nắng". Nhưng request được KÝ: ngoài cookie còn bốn header
+    // `anonymous-user-id`, `timestamp`, `lang` và `user-sign`, và chữ ký phủ cả query string.
+    //
+    //     header chộp được + URL GỐC          → 19 mục, code 0, OK
+    //     header chộp được + thêm `&keyword=` → 0 mục, VẪN HTTP 200, VẪN msg "OK"
+    //
+    // Tức là sai chữ ký thì server trả rỗng chứ không báo lỗi — đúng kiểu chặn mềm mà cả repo
+    // này viết ghi chú để chống. Nên không tự dựng request, mà để trang tự gọi rồi chộp lấy,
+    // y như cách `lib/ads/platforms/facebook.py` mượn lại truy vấn GraphQL đã ký.
+    //
+    // BẢN CŨ HỎNG Ở ĐÂU, để không ai làm lại: nó (1) bóc DOM bằng selector đoán —
+    // `a[href*="/topads/detail/"]` khớp ĐÚNG 0 phần tử trên trang thật; (2) móc `window.fetch`,
+    // trong khi trang gọi bằng XMLHttpRequest nên không bắt được gì; (3) không hề gửi từ khoá
+    // đi đâu cả, chỉ mở danh sách Top Ads của cả nước rồi lọc chuỗi con phía client.
+    // ---------------------------------------------------------------------------
+    const HOOK = () => {
+      if (window.__rsCc) return;
+      window.__rsCc = [];
+      const nhan = (u, j) => { try { if (String(u).indexOf('/top_ads/v2/list') >= 0) window.__rsCc.push(j); } catch (e) {} };
+      const of = window.fetch;
+      window.fetch = function () {
+        const u = typeof arguments[0] === 'string' ? arguments[0] : (arguments[0] && arguments[0].url) || '';
+        const p = of.apply(this, arguments);
+        if (String(u).indexOf('/top_ads/v2/list') >= 0) {
+          p.then((r) => r.clone().json().then((j) => nhan(u, j)).catch(() => {})).catch(() => {});
+        }
+        return p;
+      };
+      // Trang thật dùng ĐƯỜNG NÀY. Thiếu nó thì móc trên không bắt được gì — lỗi của bản cũ.
+      const oo = XMLHttpRequest.prototype.open, os = XMLHttpRequest.prototype.send;
+      XMLHttpRequest.prototype.open = function (m, u) { this.__rsU = u; return oo.apply(this, arguments); };
+      XMLHttpRequest.prototype.send = function () {
+        if (this.__rsU && String(this.__rsU).indexOf('/top_ads/v2/list') >= 0) {
+          this.addEventListener('load', () => { try { nhan(this.__rsU, JSON.parse(this.responseText)); } catch (e) {} });
+        }
+        return os.apply(this, arguments);
+      };
+    };
+
     await chrome.tabs.update(tab.id, { url: tkccUrl(region, 30) });
     await waitForComplete(tab.id, 20000);
-    await focusTab(tab.id);
-    await sleep(1500);
-
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id }, world: 'MAIN',
-      func: () => {
-        if (window.__rsCcCap) return;
-        window.__rsCcCap = [];
-        const of = window.fetch;
-        window.fetch = function () {
-          const u = typeof arguments[0] === 'string' ? arguments[0] : (arguments[0] && arguments[0].url) || '';
-          const p = of.apply(this, arguments);
-          if (/biz_id=cc/.test(u)) {
-            p.then((r) => { try { r.clone().text().then((t) => window.__rsCcCap.push({ url: u, text: t })); } catch (e) {} }).catch(() => {});
-          }
-          return p;
-        };
-      },
-    });
-
-    // 2. Reload để hook chộp được batch request LOAD LIST (không phải bootstrap).
+    // Cài móc rồi TẢI LẠI: lượt gọi danh sách xảy ra ngay lúc trang dựng, cài sau là lỡ nhịp.
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: HOOK });
     await chrome.tabs.reload(tab.id);
     await waitForComplete(tab.id, 20000);
-    await sleep(3500);
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: HOOK });
 
-    // 3. Gom item: scroll để load-more + poll DOM/hook. Trả raw sample nếu chưa parse được.
-    const byId = {};
-    const rawSamples = [];
-    const deadline = Date.now() + 45000;
-    let prev = 0, stagnant = 0;
-    let lastBody = '';
+    // Chờ trang gọi xong. Bỏ luôn lớp phủ quảng cáo để nó không nuốt thao tác về sau.
+    let materials = [];
+    const deadline = Date.now() + 25000;
     while (Date.now() < deadline) {
-      let r = null;
-      try {
-        const out = await chrome.scripting.executeScript({
-          target: { tabId: tab.id }, world: 'MAIN',
-          func: () => {
-            try {
-              const h = document.documentElement.scrollHeight;
-              window.scrollTo(0, h * 0.7);
-              window.scrollTo(0, h);
-            } catch (e) {}
-            // Scrape DOM cards — chưa biết selector chuẩn nên thử nhiều pattern.
-            const items = [];
-            const seen = new Set();
-            // Pattern A: link chi tiết topads có id số
-            document.querySelectorAll('a[href*="/topads/detail/"], a[href*="/detail/pc/"]').forEach((a) => {
-              const m = (a.href || '').match(/(?:detail\/pc\/|detail\/)(\d+)/);
-              if (!m || seen.has(m[1])) return;
-              seen.add(m[1]);
-              const card = a.closest('[class*="card"], [class*="Card"], [class*="item"], [class*="Item"], div');
-              const img = a.querySelector('img') || (card && card.querySelector('img'));
-              const vid = a.querySelector('video') || (card && card.querySelector('video'));
-              let brand = '', body = '', metrics = '';
-              if (card) {
-                const spans = [...card.querySelectorAll('span,p,div')].map((e) => (e.textContent || '').trim()).filter(Boolean).slice(0, 8);
-                brand = spans[0] || '';
-                body = spans.find((s) => s.length > 15) || '';
-                metrics = spans.filter((s) => /\d/.test(s)).slice(0, 3).join(' · ');
-              }
-              items.push({
-                id: m[1], brand, body, metrics,
-                image: img ? (img.src || img.getAttribute('data-src') || '') : '',
-                videoUrl: vid ? (vid.src || vid.getAttribute('src') || '') : '',
-                permalink: a.href,
-              });
-            });
-            const caps = (window.__rsCcCap || []).slice(-3).map((c) => ({ url: c.url, text: (c.text || '').slice(0, 2000) }));
-            return { items, caps, href: location.href, body: (document.body ? document.body.innerText : '').slice(0, 500) };
-          },
-        });
-        r = out && out[0] && out[0].result;
-      } catch (e) {}
-      if (r) {
-        lastBody = r.body || '';
-        for (const it of (r.items || [])) if (it.id && !byId[it.id]) byId[it.id] = { ...it, platform: 'TikTok Creative Center' };
-        for (const c of (r.caps || [])) {
-          if (rawSamples.length < 3 && !rawSamples.some((s) => s.url === c.url)) rawSamples.push(c);
-        }
-        const n = Object.keys(byId).length;
-        if (n >= target) break;
-        if (/log ?in|please sign in|đăng nhập/i.test(lastBody) && n === 0) {
-          return { items: [], blocked: true, error: 'Creative Center đòi đăng nhập — mở tab, đăng nhập xong bấm lại.', raw: rawSamples };
-        }
-        stagnant = n === prev ? stagnant + 1 : 0; prev = n;
-        if (stagnant >= 6) break;
-      }
-      await sleep(1300);
+      await sleep(1200);
+      const out = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: () => {
+          document.querySelectorAll('[class*="RevampPopup"], .byted-modal, .byted-modal-mask').forEach((e) => e.remove());
+          const gom = [];
+          for (const j of (window.__rsCc || [])) for (const m of ((j && j.data && j.data.materials) || [])) gom.push(m);
+          return gom;
+        },
+      });
+      materials = (out && out[0] && out[0].result) || [];
+      if (materials.length) break;
     }
-    const items = Object.values(byId).slice(0, target);
-    // Filter theo keyword (client-side) nếu có — CC keyword search yếu, ta lọc lại từ industry list.
-    const kw = String(keyword || '').trim().toLowerCase();
-    const filtered = kw
-      ? items.filter((it) => (`${it.brand} ${it.body}`).toLowerCase().includes(kw))
-      : items;
+
+    if (!materials.length) {
+      return { items: [], blocked: true, error: 'Creative Center không trả về danh sách nào — mở tab đó xem có đòi đăng nhập hay xác minh không.' };
+    }
+
+    const items = materials.map((m) => {
+      const v = m.video_info || {};
+      const urls = v.video_url || {};
+      // Khoá là '720p', '480p'… lấy bản nét nhất.
+      const key = Object.keys(urls).sort((a, b) => parseInt(b) - parseInt(a))[0];
+      const so = (n) => (typeof n === 'number' ? n.toLocaleString('vi-VN') : null);
+      return {
+        id: String(m.id),
+        brand: m.brand_name || '',
+        body: m.ad_title || '',
+        metrics: [
+          typeof m.ctr === 'number' && m.ctr > 0 ? `CTR ${m.ctr}%` : null,
+          m.like ? `${so(m.like)} thích` : null,
+          v.duration ? `${Math.round(v.duration)} giây` : null,
+        ].filter(Boolean).join(' · '),
+        image: v.cover || '',
+        videoUrl: key ? urls[key] : '',
+        // Dạng link lấy từ chính thẻ <a> của trang, không suy ra.
+        permalink: `https://ads.tiktok.com/business/creativecenter/topads/${m.id}`,
+        platform: 'TikTok Creative Center',
+      };
+    });
+
+    // LỌC PHÍA MÌNH, và nói thẳng đây là lọc phía mình.
+    //
+    // Không gửi từ khoá lên server được (xem khối ghi chú ở trên), nên tất cả những gì có là
+    // ~20 quảng cáo Top Ads của cả nước. Lọc trên chừng đó thì phần lớn từ khoá sản phẩm cụ
+    // thể sẽ ra rỗng — đó là giới hạn thật, không phải lỗi.
+    //
+    // Trả RỖNG kèm lời giải thích, KHÔNG trả danh sách chưa lọc: đây là cửa sổ "video quảng
+    // cáo cho SẢN PHẨM NÀY", nên đổ vào đó 20 quảng cáo ngành khác là nói dối người dùng.
+    if (!kw) return { items: items.slice(0, target), blocked: false, error: null, total: items.length };
+
+    const chuan = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const needle = chuan(kw);
+    const khop = items.filter((it) => chuan(`${it.brand} ${it.body}`).includes(needle));
+    if (khop.length) return { items: khop.slice(0, target), blocked: false, error: null, total: khop.length };
+
     return {
-      items: filtered.length ? filtered : items,
-      blocked: !items.length,
-      error: items.length ? null : 'Chưa parse được item — xem `raw` để refine selector.',
-      raw: rawSamples,
-      total: items.length,
-      filtered: filtered.length,
+      items: [], blocked: false,
+      error: `Creative Center: không tìm theo từ khoá được từ đây (request có chữ ký), nên chỉ đọc ${items.length} Top Ads của ${region} — không cái nào nhắc tới "${kw}".`,
     };
   } catch (e) {
     return { items: [], blocked: false, error: String(e) };
   }
 }
 
-// Một item TikTok (aweme/item) → có id + (author|desc|video).
-function _tkLooksItem(x) {
-  return x && typeof x === 'object' && (x.id || x.aweme_id) && (x.author || x.desc || x.video);
-}
-
-function parseTiktokTexts(texts, count) {
-  const out = [];
-  const seen = new Set();
-  for (const t of texts) {
-    let j = null; try { j = JSON.parse(t); } catch (e) { continue; }
-    // Các hình dạng response TikTok: item_list[], data[].item, hoặc lồng sâu → deep-find dự phòng.
-    let arr = [];
-    if (Array.isArray(j.item_list)) arr = j.item_list;
-    else if (Array.isArray(j.data)) arr = j.data.map((d) => (d && (d.item || d.aweme_info)) || d).filter(Boolean);
-    if (!arr.length) arr = rsDeepFindArray(j, _tkLooksItem);
-    for (const raw of arr) {
-      const it = (raw && (raw.item || raw.aweme_info)) || raw;
-      if (!_tkLooksItem(it)) continue;
-      const id = String(it.id || it.aweme_id || '');
-      if (!id || seen.has(id)) continue;
-      const author = it.author || {};
-      const uid = author.uniqueId || author.unique_id || author.uid || '';
-      const video = it.video || {};
-      const cover = video.cover || video.originCover || video.origin_cover || video.dynamicCover || '';
-      seen.add(id);
-      out.push({
-        id,
-        name: String(it.desc || '').slice(0, 120),
-        author: author.nickname || author.uniqueId || '',
-        // Link video THẬT (permalink) — dựng từ id + user do TikTok trả về, không bịa.
-        videoUrl: uid ? `https://www.tiktok.com/@${uid}/video/${id}` : `https://www.tiktok.com/video/${id}`,
-        image: typeof cover === 'string' ? cover : (Array.isArray(cover && cover.url_list) ? cover.url_list[0] : ''),
-        platform: 'TikTok',
-      });
-      if (out.length >= count) return out;
-    }
-  }
-  return out;
-}
-
-// URL cho một cụm. hashtag mode + có anchor (brand+model đã dịch) → search text = `<anchor> <term>`
-// để TikTok chỉ trả video ĐÚNG SP CÓ tag/từ khoá đó (không loãng ra cả ngành hàng như trang /tag/ trần).
-// Không có anchor → hạ về /tag/<name> (rộng nhưng vẫn on-topic của tag).
-function tkTermUrl(term, mode, anchor) {
-  const t = String(term || '').trim();
-  if (mode === 'hashtag') {
-    if (anchor) return 'https://www.tiktok.com/search/video?q=' + encodeURIComponent(anchor + ' ' + t);
-    if (/^#/.test(t)) {
-      const clean = t.replace(/^#+/, '').replace(/[\s#]+/g, '').trim();
-      if (clean) return 'https://www.tiktok.com/tag/' + encodeURIComponent(clean);
-    }
-  }
-  return 'https://www.tiktok.com/search/video?q=' + encodeURIComponent(t);
-}
-
-// Cuộn + bóc video cho MỘT cụm tìm (keyword hoặc hashtag), gộp vào `byId` (dedup theo id video —
-// "link trùng thì bỏ qua"). Trả {blocked?: 'login'|'verify'}. Điều hướng CÙNG một tab qua từng cụm.
-// Gõ vào ô search của TikTok + Enter, không navigate URL. Trả true nếu tìm được ô, false nếu không
-// (caller hạ về navigate). Dùng native setter cho React. Xoá __rsCap trước để lượt sau không nuốt cũ.
 async function tkTypeInSearchBox(tabId, term) {
   try {
     const out = await chrome.scripting.executeScript({
