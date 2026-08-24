@@ -47,7 +47,27 @@
  */
 const RS_PAGE = 'research-spy';
 const RS_EXT = 'research-spy-ext';
-const RS_TIMEOUT_MS = 30000;
+
+/*
+ * PHẢI lớn hơn ngân sách của MỌI lệnh trong `background.js`, không phải một con số cho đẹp.
+ *
+ * `chrome.runtime.sendMessage` thật không có timeout — nó chờ service worker bao lâu cũng được.
+ * Con số ở đây chỉ là lưới an toàn phòng khi extension chết giữa chừng, nên nó phải nằm TRÊN
+ * lệnh chậm nhất, không phải dưới. Ngân sách đo được (2026-08-24):
+ *
+ *     searchTiktok          120.000 ms   ← chậm nhất
+ *     searchDouyin          120.000 ms
+ *     searchTiktokCreative   45.000 ms
+ *     mọi lệnh sàn còn lại  ≤ 18.000 ms
+ *
+ * Cộng thêm thời gian mở tab và chờ trang tải trước khi vào vòng lặp → chọn 240 giây.
+ *
+ * ĐÃ SAI MỘT LẦN Ở ĐÂY: đặt 30 giây thì Shopee/1688/Taobao/Amazon vẫn chạy (đều dưới 18 giây)
+ * nên trông như mọi thứ bình thường, còn đúng ba nguồn VIDEO thì luôn rỗng. Rỗng IM LẶNG, vì
+ * hết giờ trả `null` mà nhánh báo lỗi của trang là `if (tk && tk.blocked && tk.error)` — `null`
+ * trượt qua hết. Người dùng chỉ thấy "Không có video", không phân biệt được với thật sự không có.
+ */
+const RS_TIMEOUT_MS = 240000;
 let _rsSeq = 0;
 
 function rsSend(msg) {
@@ -55,6 +75,9 @@ function rsSend(msg) {
     const id = `rs-page-${Date.now()}-${_rsSeq++}`;
     const timer = setTimeout(() => {
       window.removeEventListener('message', onMessage);
+      // Ít nhất phải để lại dấu vết. Trang xử `null` như "không có kết quả", nên nếu không có
+      // dòng này thì một lượt hết giờ trông y hệt một lượt trả về rỗng.
+      console.warn(`[research] ${msg && msg.type} không có trả lời sau ${RS_TIMEOUT_MS / 1000}s — extension còn sống không?`);
       resolve(null);
     }, RS_TIMEOUT_MS);
 
