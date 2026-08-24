@@ -87,6 +87,17 @@ const chrome = {
       if (!win) alert('Trình duyệt đã chặn cửa sổ bật lên — cho phép popup cho trang này rồi bấm lại.');
     },
   },
+  cookies: {
+    // Trang web KHÔNG đọc được cookie đăng nhập của các sàn, kể cả khi cùng miền: chúng đều là
+    // HttpOnly. Phải nhờ service worker, nơi duy nhất có quyền `cookies`.
+    //
+    // Thiếu hàm này thì lượt gọi ném TypeError, bị `catch` của trang nuốt và thành `false` —
+    // và vì `research()` bỏ qua sàn nào có `loginStatus === false`, Shopee với TikTok Shop sẽ
+    // im lặng không bao giờ chạy. Đã sập đúng vào đó một lần, 2026-08-24.
+    get({ url, name }, callback) {
+      rsSend({ type: 'RS_COOKIE', url, name }).then((r) => callback((r && r.cookie) || null));
+    },
+  },
 };
 
 /** Extension đã cài và trả lời chưa. Trang tự hỏi lúc nạp để báo sớm thay vì để người dùng chờ. */

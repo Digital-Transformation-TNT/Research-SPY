@@ -1311,6 +1311,25 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return;
   }
 
+  // Đọc MỘT cookie theo tên, cho trang Research dò xem đã đăng nhập sàn nào.
+  //
+  // Chỉ service worker mới có `chrome.cookies` (trang web thì không, kể cả trang cùng miền —
+  // cookie đăng nhập của các sàn đều là HttpOnly). Trang gọi qua cầu `content.js`.
+  //
+  // Trả về cookie NGUYÊN VẸN chứ không phải true/false: `research.js` tự quyết định thế nào là
+  // "đã đăng nhập" theo từng sàn (Shopee coi `SPC_U === '-'` là chưa), và TikTok Shop còn cần
+  // chính giá trị đó làm seller id để dựng request.
+  if (msg.type === 'RS_COOKIE') {
+    try {
+      chrome.cookies.get({ url: msg.url, name: msg.name }, (c) => {
+        sendResponse({ ok: true, cookie: c ? { name: c.name, value: c.value, domain: c.domain } : null });
+      });
+    } catch (e) {
+      sendResponse({ ok: false, cookie: null, error: String(e) });
+    }
+    return true; // giữ kênh mở cho phản hồi bất đồng bộ
+  }
+
   if (msg.type === 'RS_FETCH') {
     handleFetch(msg.requests).then((responses) => sendResponse({ ok: true, responses }));
     return true; // giữ kênh mở cho phản hồi bất đồng bộ
