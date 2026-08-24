@@ -13,40 +13,68 @@
       --muted: color-mix(in srgb, CanvasText 55%, transparent);
       --panel: color-mix(in srgb, CanvasText 4%, transparent);
       --accent: #0f9488; --accent-ink: #0b6b62;
+      --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
       --money: #d9711c; --disc: #e11d48; --good: #16a34a;
+      /* Bán kính và bóng đổ dùng CHUNG cho mọi khối — một nơi chỉnh, cả trang đổi theo,
+         thay vì mỗi nút mỗi bảng tự chọn một con số khác nhau như bản trước. */
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,.05);
+      --shadow-md: 0 10px 28px -10px rgba(0,0,0,.22);
+      --ease: cubic-bezier(.2,.7,.3,1);
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; }
-    body { font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--fg); }
+    body { font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--fg); -webkit-font-smoothing: antialiased; }
 
-    header { border-bottom: 1px solid var(--line); padding: 16px 22px; }
-    .brand { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
-    .brand h1 { font-size: 17px; font-weight: 750; margin: 0; letter-spacing: -.01em; }
-    .brand .tag { font-size: 12px; color: var(--muted); }
-    .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    input, select, button { font: inherit; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--fg); }
+    header { border-bottom: 1px solid var(--line); padding: 18px 24px 0; position: sticky; top: 0; z-index: 10; background: var(--bg); }
+    .brand { display: flex; align-items: baseline; gap: 10px; margin-bottom: 16px; }
+    .brand h1 { font-size: 17px; font-weight: 800; margin: 0; letter-spacing: -.015em; }
+    .brand .tag { font-size: 12.5px; color: var(--muted); }
+    .controls { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
+    input, select, button {
+      font: inherit; padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+      background: var(--bg); color: var(--fg); transition: border-color .14s var(--ease), background-color .14s var(--ease), box-shadow .14s var(--ease), transform .1s var(--ease);
+    }
     input#kw { flex: 1; min-width: 260px; }
     input#kw:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
-    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 650; padding-inline: 18px; }
-    button.primary:disabled { opacity: .5; cursor: default; }
-    button.primary:not(:disabled):hover { background: var(--accent-ink); }
+    button { cursor: pointer; }
+    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 700; padding-inline: 20px; box-shadow: var(--shadow-sm); }
+    button.primary:disabled { opacity: .5; cursor: default; box-shadow: none; }
+    button.primary:not(:disabled):hover { background: var(--accent-ink); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+    button.primary:not(:disabled):active { transform: translateY(0); }
     button.link { background: transparent; border-color: var(--disc); color: var(--disc); font-weight: 600; }
+    button.link:hover { background: color-mix(in srgb, var(--disc) 8%, transparent); }
     .hint { font-size: 11.5px; color: var(--muted); margin-top: 8px; }
 
-    .status { padding: 12px 22px; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid var(--line-soft); }
-    .status.err { color: var(--disc); }
-    .status.ok { color: var(--good); }
+    /* Công tắc "So sánh nhiều sàn" — bật thì mục ① quay lại kiểu chọn-cộng-dồn cũ. */
+    .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12.5px; color: var(--muted); user-select: none; margin-left: auto; }
+    .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+    .switchtrack { width: 34px; height: 20px; border-radius: 999px; background: var(--line); position: relative; flex: none; transition: background-color .16s var(--ease); }
+    .switchtrack::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--bg); box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .16s var(--ease); }
+    .switch input:checked + .switchtrack { background: var(--accent); }
+    .switch input:checked + .switchtrack::after { transform: translateX(14px); }
+    .switch input:focus-visible + .switchtrack { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .switch:hover .switchlbl { color: var(--fg); }
+
+    .status { padding: 13px 24px; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid var(--line-soft); }
+    .status.err { color: var(--disc); font-weight: 600; }
+    .status.ok { color: var(--good); font-weight: 600; }
     .status select { padding: 5px 8px; }
 
-    .wrap { padding: 0 22px 80px; overflow-x: auto; }
+    .wrap { padding: 4px 24px 80px; overflow-x: auto; }
     table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 1040px; }
-    thead th { position: sticky; top: 0; z-index: 4; background: var(--bg); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--line); cursor: pointer; user-select: none; white-space: nowrap; }
+    thead th { position: sticky; top: 0; z-index: 4; background: var(--bg); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; text-align: left; padding: 12px; border-bottom: 1px solid var(--line); cursor: pointer; user-select: none; white-space: nowrap; }
+    thead th:hover { color: var(--fg); }
     thead th.num { text-align: right; }
     thead th.plain { cursor: default; }
+    thead th.plain:hover { color: var(--muted); }
     thead th.sorted { color: var(--accent); }
+    thead th.sorted:hover { color: var(--accent); }
     thead th.sorted::after { content: " ▾"; }
-    tbody td { padding: 10px 12px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
+    tbody td { padding: 11px 12px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
     tbody td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    tbody tr { transition: background-color .1s var(--ease); }
     tbody tr:hover td { background: var(--panel); }
 
     .rank { color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -59,38 +87,54 @@
     .adtag { font-size: 10px; color: var(--money); border: 1px solid var(--money); border-radius: 4px; padding: 0 4px; margin-left: 5px; vertical-align: middle; }
     .pill { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line-soft); white-space: nowrap; }
 
-    .score { font-weight: 800; font-size: 15px; }
+    .score { font-weight: 800; font-size: 15px; font-variant-numeric: tabular-nums; }
     .score.hi { color: var(--good); } .score.mid { color: var(--money); } .score.lo { color: var(--disc); }
-    .bar { height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; margin: 3px 0 0 auto; width: 64px; }
-    .bar > i { display: block; height: 100%; background: var(--accent); }
+    .bar { height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; margin: 4px 0 0 auto; width: 64px; }
+    .bar > i { display: block; height: 100%; background: var(--accent); transition: width .2s var(--ease); }
     .sub { font-size: 11px; color: var(--muted); }
     .strike { text-decoration: line-through; }
     .price { color: var(--money); font-weight: 700; }
     .disc { display: inline-block; background: color-mix(in srgb, var(--disc) 14%, transparent); color: var(--disc); font-weight: 700; border-radius: 6px; padding: 2px 7px; font-variant-numeric: tabular-nums; }
-    button.sim { padding: 5px 9px; font-size: 12px; border-radius: 7px; background: var(--panel); border: 1px solid var(--line); color: var(--fg); cursor: pointer; white-space: nowrap; }
-    button.sim:hover { border-color: var(--accent); color: var(--accent); }
+    button.sim { padding: 6px 10px; font-size: 12px; border-radius: var(--radius-sm); background: var(--panel); border: 1px solid var(--line); color: var(--fg); cursor: pointer; white-space: nowrap; }
+    button.sim:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
-    .row2 { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
-    .lbl { font-size: 12px; color: var(--muted); font-weight: 600; }
-    .rgchip { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--fg); cursor: pointer; display: inline-flex; gap: 5px; align-items: center; }
-    .rgchip[data-on="1"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-weight: 650; }
-    .rgchip .ok { color: var(--good); } .rgchip .no { color: var(--disc); }
+    .row2 { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; margin-top: 12px; }
+    .lbl { font-size: 12px; color: var(--muted); font-weight: 700; letter-spacing: .01em; }
+    .rgchip {
+      font: inherit; font-size: 13px; padding: 6px 11px; border: 1px solid var(--line); border-radius: 999px;
+      background: var(--bg); color: var(--fg); cursor: pointer; display: inline-flex; gap: 5px; align-items: center;
+    }
+    .rgchip:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+    .rgchip[data-on="1"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 700; box-shadow: var(--shadow-sm); }
+    .rgchip.dim { opacity: .48; cursor: default; }
+    .rgchip.dim:hover { border-color: var(--line); }
+    .rgchip .ok { color: var(--good); font-weight: 700; } .rgchip .no { color: var(--disc); font-weight: 700; }
 
-    /* Region chọn theo TỪNG sàn → gom nhóm theo sàn trong một hộp cuộn, tránh lẫn lộn khi
-       chọn nhiều sàn có bộ region khác nhau (Shopee 11 nước vs Amazon 8 nước…). */
+    /* Ô "+ Thêm nước" — dáng chip đứt nét để phân biệt với chip nước ĐÃ chọn cạnh nó. */
+    select.region-add {
+      font-size: 12.5px; padding: 6px 12px; border: 1.5px dashed var(--line); border-radius: 999px;
+      background: var(--bg); color: var(--muted); cursor: pointer;
+    }
+    select.region-add:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Region chọn theo TỪNG sàn → gom nhóm theo sàn trong một hộp, tránh lẫn lộn khi chọn
+       nhiều sàn có bộ region khác nhau (Shopee 11 nước vs Amazon 8 nước…). */
     #regionSection { align-items: flex-start; }
-    #regions { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; max-height: 148px; overflow-y: auto; border: 1px solid var(--line-soft); border-radius: 10px; padding: 9px 11px; background: var(--panel); }
-    .rgroup { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-    .rgroup + .rgroup { border-top: 1px solid var(--line-soft); padding-top: 8px; }
-    .rglabel { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; min-width: 74px; }
+    #regions { display: flex; flex-direction: column; gap: 9px; flex: 1; min-width: 0; border: 1px solid var(--line-soft); border-radius: var(--radius); padding: 11px 13px; background: var(--panel); }
+    .rgroup { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+    .rgroup + .rgroup { border-top: 1px solid var(--line-soft); padding-top: 9px; }
+    .rglabel { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; min-width: 74px; }
 
     .tabs { display: flex; gap: 6px; }
-    .tab { font: inherit; padding: 8px 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--muted); cursor: pointer; font-weight: 600; }
-    .tab.on { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .ctrls { padding: 14px 22px; border-bottom: 1px solid var(--line-soft); }
+    .tab { font: inherit; padding: 9px 18px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--muted); cursor: pointer; font-weight: 650; }
+    .tab:hover { color: var(--fg); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+    .tab.on { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: var(--shadow-sm); }
+    .tab.on:hover { color: #fff; }
+    .ctrls { padding: 16px 24px 18px; border-bottom: 1px solid var(--line-soft); background: color-mix(in srgb, var(--panel) 55%, transparent); }
 
-    .cgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
-    .ccard { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--bg); display: flex; flex-direction: column; }
+    .cgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
+    .ccard { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--bg); display: flex; flex-direction: column; transition: box-shadow .16s var(--ease), transform .16s var(--ease); }
+    .ccard:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
     .ccard .media { position: relative; aspect-ratio: 1 / 1; background: var(--panel); }
     .ccard .media img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .ccard .play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 30px; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,.7); pointer-events: none; }
@@ -147,11 +191,16 @@
   <div id="tabProduct">
     <div class="ctrls">
       <div class="row2">
-        <span class="lbl">① Sàn <span class="sub" style="font-weight:400">(chọn nhiều = so sánh)</span></span>
+        <span class="lbl">① Sàn</span>
         <span id="platforms"></span>
+        <label class="switch" id="multiPfWrap" title="Bật để chọn nhiều sàn cùng lúc và so sánh">
+          <input type="checkbox" id="multiPf" />
+          <span class="switchtrack"></span>
+          <span class="switchlbl">So sánh nhiều sàn</span>
+        </label>
       </div>
       <div class="row2" id="regionSection">
-        <span class="lbl">② Region</span>
+        <span class="lbl">② Region <span class="sub" style="font-weight:400">(chọn từ danh sách)</span></span>
         <div id="regions"></div>
         <button id="refreshLogin" class="link" style="border-color:var(--muted); color:var(--muted)">⟳ Kiểm tra đăng nhập</button>
       </div>
