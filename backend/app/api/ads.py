@@ -109,8 +109,12 @@ async def _keywords_from_title(title: str) -> tuple[str, str]:
 @router.get("/video-keywords")
 async def video_keywords(request: Request) -> JSONResponse:
     """
-    TIÊU ĐỀ sản phẩm + region → NHIỀU từ khoá + hashtag để tìm video (TikTok/Douyin), viết bằng
-    NGÔN NGỮ của region. Extension gọi một lần rồi lặp search từng cụm, gộp & bỏ link trùng.
+    TIÊU ĐỀ sản phẩm + region → MỘT cụm từ khoá để tìm video (TikTok/Douyin), viết bằng NGÔN NGỮ
+    của region.
+
+    Một cụm chứ không phải nhiều: mỗi cụm là một lượt tìm THẬT trên TikTok (mở tab, gõ, cuộn),
+    và các cụm biến tấu quanh cùng sản phẩm chỉ kéo về đúng nhóm video ấy — trả giá bằng thời
+    gian chờ gấp mấy lần. Xem `_VIDEO_PROMPT` trong `lib/ads/keyword_extract.py`.
 
     Tham số: title (bắt buộc), region (mã 2 chữ, mặc định VN). Cache theo (title, region).
     """
@@ -120,15 +124,16 @@ async def video_keywords(request: Request) -> JSONResponse:
     if not title:
         return JSONResponse({"error": "Thiếu title"}, status_code=400)
 
-    key = f"gemvid2:{region}:{title.lower()}"  # bump v2: ép ngôn ngữ bản địa, bỏ hashtag tiếng Anh
+    # bump v3: MỘT cụm, bỏ hashtag. Khoá cache đổi theo để không đọc phải bản v2 nhiều cụm.
+    key = f"gemvid3:{region}:{title.lower()}"
     cached = cache_get(key)
     if cached is not None:
-        keywords, hashtags = cached[0], cached[1]
+        keywords = cached
     else:
-        keywords, hashtags, from_gemini = await extract_video_terms(title, region)
+        keywords, from_gemini = await extract_video_terms(title, region)
         if from_gemini:
-            cache_set(key, [keywords, hashtags])
-    return JSONResponse({"keywords": keywords, "hashtags": hashtags, "region": region, "lang": region_lang(region)})
+            cache_set(key, keywords)
+    return JSONResponse({"keywords": keywords, "region": region, "lang": region_lang(region)})
 
 
 @router.get("/match-image")

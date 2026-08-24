@@ -90,62 +90,80 @@ def region_lang(region: str) -> str:
     return _REGION_LANG.get((region or "").strip().upper(), "English")
 
 
+#: MỘT cụm, không phải một chùm.
+#:
+#: Bản trước xin 3-4 từ khoá cộng 5-7 hashtag, và mỗi cụm là MỘT lượt tìm thật trên TikTok —
+#: mở tab, gõ, cuộn. Đo "Tai Nghe Bluetooth Redmi Buds 6 PLay Hồng BHR8775GL/…" ngày
+#: 2026-08-24: ra 4 từ khoá + 6 hashtag, tức tới 6 lượt tìm cho một sản phẩm. Chậm gấp mấy
+#: lần, mà các cụm sau ("tai nghe redmi chính hãng", "đánh giá redmi buds 6 play") chỉ là
+#: biến tấu quanh cùng một thứ — chúng kéo về đúng nhóm video ấy thôi.
+#:
+#: Nên giờ chỉ xin đúng một cụm: LOẠI SẢN PHẨM + HÃNG + DÒNG. Bỏ màu, bỏ mã SKU, bỏ dung
+#: lượng — người ta không gõ "BHR8775GL" lên TikTok bao giờ.
 _VIDEO_PROMPT = (
-    "You extract TikTok video-search terms from an e-commerce product title. The title may be in "
-    "Vietnamese or another language. TARGET MARKET LANGUAGE: {lang}.\n"
+    "You extract ONE TikTok video-search phrase from an e-commerce product title. The title may be "
+    "in Vietnamese or another language. TARGET MARKET LANGUAGE: {lang}.\n"
     "Return STRICT JSON only (no markdown, no comments) shaped exactly:\n"
-    '{{"keywords": ["..."], "hashtags": ["..."]}}\n'
-    "HARD RULE: write EVERYTHING in {lang} ONLY — every keyword and every hashtag must be in the "
-    "native language and script of {lang}. Do NOT output any English words or English hashtags, "
-    "UNLESS {lang} is itself English. The ONLY Latin text allowed inside a non-English language is a "
-    "real BRAND or MODEL name copied verbatim from the title (e.g. 'Ugreen Hitune Max5c'); translate "
-    "or transliterate every other word. Reason: English queries surface videos from the wrong country "
-    "(IP-skewed), so they must be avoided.\n"
+    '{{"keyword": "..."}}\n'
+    "HARD RULE: write it in {lang} ONLY. Do NOT output English words UNLESS {lang} is itself English. "
+    "The ONLY Latin text allowed inside a non-English language is a real BRAND or MODEL name copied "
+    "verbatim from the title (e.g. 'Redmi Buds 6 Play'); translate or transliterate every other word. "
+    "Reason: English queries surface videos from the wrong country (IP-skewed).\n"
     "EXCEPTION: if {lang} has ADOPTED a foreign word as its own everyday term (a true loanword locals "
-    "actually type, e.g. Indonesian/Malay 'headset', 'earphone', 'bluetooth'), use that loanword — it "
-    "counts as native. But never add extra English beyond such established loanwords or the brand name.\n"
-    "- keywords: 3-4 short natural phrases a LOCAL shopper would TYPE on TikTok to find videos OF THIS "
-    "product, in {lang}. Include product type + brand/model if the title has them. No store names, no "
-    "marketing fluff (Hi-Res, ANC…).\n"
-    "- hashtags: 5-7 relevant hashtags in {lang}, single token, NO spaces, NO leading '#'.\n"
-    "Do NOT invent brands/models absent from the title.\n"
+    "actually type, e.g. Indonesian/Malay 'headset', 'bluetooth'), use that loanword — it counts as native.\n"
+    "THE PHRASE: what a LOCAL shopper would TYPE on TikTok to find videos of this product — "
+    "PRODUCT TYPE + BRAND + MODEL LINE, and nothing else. Keep it SHORT (2-5 words).\n"
+    "DROP: colour names, SKU/part numbers (BHR8775GL), capacity, store names, and marketing fluff "
+    "(Hi-Res, ANC, chính hãng, freeship). Nobody types those on TikTok.\n"
+    "Do NOT invent a brand or model absent from the title.\n"
+    "Example: 'Tai Nghe Bluetooth Redmi Buds 6 PLay Hồng BHR8775GL/ Trắng BHR8773GL/ Xanh' "
+    '→ {{"keyword": "tai nghe redmi buds 6 play"}}\n'
     "Title: {title}"
 )
 
 
-def _video_heuristic(title: str, region: str) -> tuple[list[str], list[str]]:
-    """Không có Gemini: từ khoá = vài từ đầu (KHÔNG dịch được), hashtag = ghép token. Đủ để luồng chạy."""
+def _video_heuristic(title: str, region: str) -> list[str]:
+    """Không có Gemini: lấy vài từ đầu tiêu đề (KHÔNG dịch được). Đủ để luồng chạy."""
     words = [w for w in re.split(r"[\s,|]+", title) if w]
-    kw = [" ".join(words[:4]).strip(), " ".join(words[:2]).strip()]
-    tag = "".join(re.findall(r"[0-9A-Za-zÀ-ỹ]+", " ".join(words[:3]))).lower()
-    return [k for k in dict.fromkeys(kw) if k], ([tag] if tag else [])
+    kw = " ".join(words[:4]).strip()
+    return [kw] if kw else []
 
 
-def _parse_video_json(text: str) -> tuple[list[str], list[str]]:
-    """Bóc JSON keywords/hashtags kể cả khi model bọc ```json ... ``` hay kèm chữ thừa."""
+def _parse_video_json(text: str) -> list[str]:
+    """
+    Bóc cụm từ khoá kể cả khi model bọc ```json ... ``` hay kèm chữ thừa.
+
+    Vẫn nhận cả `keywords` dạng danh sách (hình dạng cũ) và chỉ lấy phần tử đầu: model đôi khi
+    quay về thói quen cũ, và một cụm đúng vẫn hơn là ném lỗi rồi rơi về heuristic không dịch.
+    """
     raw = text.strip()
     m = re.search(r"\{.*\}", raw, re.S)  # lấy khối {...} đầu tiên, bỏ code-fence/giải thích
     if m:
         raw = m.group(0)
     obj = json.loads(raw)
+    one = str(obj.get("keyword") or "").strip()
+    if one:
+        return [one]
     kws = [str(x).strip() for x in (obj.get("keywords") or []) if str(x).strip()]
-    tags = [str(x).strip().lstrip("#").replace(" ", "") for x in (obj.get("hashtags") or []) if str(x).strip()]
-    return list(dict.fromkeys(kws)), list(dict.fromkeys(tags))
+    return kws[:1]
 
 
-async def extract_video_terms(title: str, region: str) -> tuple[list[str], list[str], bool]:
+async def extract_video_terms(title: str, region: str) -> tuple[list[str], bool]:
     """
-    TIÊU ĐỀ + region → (keywords[], hashtags[], from_gemini) theo ngôn ngữ của region.
+    TIÊU ĐỀ + region → (keywords[], from_gemini) theo ngôn ngữ của region.
+
+    Danh sách luôn có nhiều nhất MỘT phần tử — mỗi cụm là một lượt tìm thật trên TikTok, và
+    các cụm biến tấu chỉ kéo về đúng nhóm video ấy. Giữ kiểu danh sách thay vì trả chuỗi để
+    nơi gọi không phải phân biệt "chưa có" với "rỗng".
 
     Không ném lỗi. from_gemini=False → heuristic (không dịch) → nơi gọi KHÔNG cache.
     """
     title = (title or "").strip()
     if not title:
-        return [], [], False
+        return [], False
     lang = region_lang(region)
     if not _API_KEY:
-        kw, tag = _video_heuristic(title, region)
-        return kw, tag, False
+        return _video_heuristic(title, region), False
 
     prompt = _VIDEO_PROMPT.format(lang=lang, title=title)
     body = {
@@ -157,26 +175,22 @@ async def extract_video_terms(title: str, region: str) -> tuple[list[str], list[
         try:
             resp = await get_client().post(f"{_URL}?key={_API_KEY}", json=body, timeout=40)
         except Exception:
-            kw, tag = _video_heuristic(title, region)
-            return kw, tag, False
+            return _video_heuristic(title, region), False
         if resp.status_code == 200:
             try:
                 text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-                kws, tags = _parse_video_json(text)
-                if kws or tags:
-                    return kws, tags, True
+                kws = _parse_video_json(text)
+                if kws:
+                    return kws, True
             except Exception:
                 pass
-            kw, tag = _video_heuristic(title, region)
-            return kw, tag, False
+            return _video_heuristic(title, region), False
         if resp.status_code in (429, 503):
             await asyncio.sleep(delay)
             delay *= 1.5
             continue
-        kw, tag = _video_heuristic(title, region)
-        return kw, tag, False
-    kw, tag = _video_heuristic(title, region)
-    return kw, tag, False
+        return _video_heuristic(title, region), False
+    return _video_heuristic(title, region), False
 
 
 async def extract_keywords(title: str) -> tuple[str, str, bool]:

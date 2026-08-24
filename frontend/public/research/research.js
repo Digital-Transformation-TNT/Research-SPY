@@ -1231,63 +1231,38 @@ async function loadModalTiktok(region) {
   const my = ++vidToken; // đổi nước = huỷ lần tải TikTok trước (chống race)
   const p = st.p, usedKw = st.usedKw;
 
-  // NHIỀU cụm tìm (keyword + hashtag) theo NGÔN NGỮ nước đã chọn. Backend lỗi → rơi về usedKw đơn.
-  // ANCHOR = brand+model đã dịch (cụm keyword NGẮN NHẤT thường là "hoco w65 藍牙耳機"). Dùng để
-  // NEO mỗi cụm khi chạy hashtag mode → tránh /tag/ trần trả video ngành hàng loãng, không đúng SP.
-  let tkTerms = [usedKw], tkKws = [];
+  // MỘT cụm, MỘT lượt tìm.
+  //
+  // Bản trước gom 3-4 từ khoá cộng 5-7 hashtag rồi chạy tới sáu lượt tìm nối nhau, mỗi lượt là
+  // một lần mở tab, gõ chữ, cuộn — người dùng ngồi chờ mấy phút cho một sản phẩm. Mà các cụm
+  // thêm ("tai nghe redmi chính hãng", "đánh giá redmi buds 6 play") chỉ là biến tấu quanh cùng
+  // một thứ, nên chúng kéo về gần đúng nhóm video mà cụm đầu đã kéo về.
+  //
+  // Backend giờ trả đúng một cụm đã dịch sang tiếng của nước đang chọn (`/api/ads/video-keywords`).
+  // Hỏng thì rơi về `usedKw` — cụm brand+model mà Gemini rút từ tiêu đề ở bước trước.
+  let tkTerm = usedKw;
   try {
     const vkParams = new URLSearchParams({ title: p.name || usedKw, region });
     const vr = await fetch(`${BACKEND}/api/ads/video-keywords?${vkParams.toString()}`);
     if (my !== vidToken) return;
     if (vr.ok) {
       const vk = await vr.json();
-      tkKws = Array.isArray(vk.keywords) ? vk.keywords : [];
-      const tags = Array.isArray(vk.hashtags) ? vk.hashtags.map((t) => '#' + String(t).replace(/^#/, '')) : [];
-      const merged = [...tkKws, ...tags];
-      if (merged.length) tkTerms = merged;
+      const first = (Array.isArray(vk.keywords) ? vk.keywords : []).map((x) => String(x || '').trim()).filter(Boolean)[0];
+      if (first) tkTerm = first;
     }
-  } catch (e) { /* backend lỗi → dùng usedKw đơn */ }
-  tkTerms = [...new Set(tkTerms.map((s) => String(s || '').trim()).filter(Boolean))]; // bỏ rỗng/trùng
-  // Anchor: keyword ngắn nhất (brand+model, ngôn ngữ nước đích). Không có → usedKw (có thể chưa dịch,
-  // TikTok vẫn AND được token brand — brand thường latin nên OK cross-country).
-  const anchor = tkKws.length
-    ? tkKws.reduce((a, b) => (a.length <= b.length ? a : b))
-    : usedKw;
+  } catch (e) { /* backend lỗi → dùng usedKw */ }
 
-  // Chọn NƯỚC khác nước SP → hashtag-only mode (trang /tag/<name> ít cá nhân hoá hơn search text
-  // → cross-country cho video sát ngôn ngữ hơn). Nước gốc = mixed (keyword + hashtag).
-  const crossCountry = region !== st.homeRegion;
   const flag = FLAG[region] || '', country = COUNTRY[region] || region;
-  // Cross-country: anchored (brand+model + từng cụm) — hẹp về SP, đỡ loãng như /tag/ trần.
-  // Nước gốc: mixed như cũ.
-  const askedMode = crossCountry ? 'hashtag' : 'mixed';
-  const shownMode = crossCountry ? (anchor ? 'anchored' : 'hashtag') : 'mixed';
-  setVidStatus(`FB ${st.fbAds.length} · Sàn ${st.marketAds.length} · đang lấy TikTok ${flag} ${country} · ${shownMode}${anchor && crossCountry ? ` (neo: "${anchor}")` : ''}… (tool tự cuộn)`);
+  setVidStatus(`FB ${st.fbAds.length} · Sàn ${st.marketAds.length} · đang tìm TikTok ${flag} ${country} · “${tkTerm}”… (tool tự cuộn)`);
   let tkItems = [], tkNote = '', tkCounts = null, tkMode = null;
   try {
-    const tk = await new Promise((res) => chrome.runtime.sendMessage({ type: 'RS_TIKTOK', keyword: usedKw, keywords: tkTerms, region, mode: askedMode, anchor, count: 100 }, (x) => res(x)));
+    const tk = await new Promise((res) => chrome.runtime.sendMessage({ type: 'RS_TIKTOK', keyword: tkTerm, keywords: [tkTerm], region, mode: 'mixed', count: 100 }, (x) => res(x)));
     if (my !== vidToken) return;
     tkItems = (tk && tk.items) || [];
     tkCounts = (tk && tk.counts) || null;
-    tkMode = (tk && tk.mode) || shownMode;
+    tkMode = (tk && tk.mode) || 'mixed';
     if (tk && tk.blocked && tk.error) tkNote = ' · TikTok: ' + tk.error;
   } catch (e) { tkNote = ' · TikTok: extension chưa sẵn sàng'; }
-
-  // Anchored/hashtag bốc quá ít (< 8) → fallback tự động sang mixed (không neo) để đừng rỗng grid.
-  if (crossCountry && tkItems.length < 8) {
-    setVidStatus(`${tkMode || shownMode} chỉ ${tkItems.length} video ${flag} ${country} — thử thêm mixed để bù…`);
-    try {
-      const tk2 = await new Promise((res) => chrome.runtime.sendMessage({ type: 'RS_TIKTOK', keyword: usedKw, keywords: tkTerms, region, mode: 'mixed', count: 100 }, (x) => res(x)));
-      if (my !== vidToken) return;
-      const extra = ((tk2 && tk2.items) || []).filter((x) => !tkItems.some((y) => y.id === x.id));
-      tkItems = tkItems.concat(extra);
-      tkMode = (tkMode || shownMode) + '+mixed';
-      if (tk2 && tk2.counts) {
-        tkCounts = tkCounts || { match: 0, neutral: 0, other: 0 };
-        for (const it of extra) tkCounts[it.langMatch || 'neutral']++;
-      }
-    } catch (e) { /* fallback lỗi → dùng nguyên phần đã có */ }
-  }
 
   // Chuẩn hoá item TikTok về dạng "ad" để render chung; permalink = LINK VIDEO THẬT.
   // langMatch chuyển sang creative để renderVideos gắn badge (không đổi thứ tự — đã sort ở background).
@@ -1297,21 +1272,18 @@ async function loadModalTiktok(region) {
     creatives: [{ kind: 'video', posterUrl: it.image || '' }],
   }));
 
-  // Creative Center: filter country THẬT (không bám IP). Chạy song song với TikTok organic để
-  // đỡ chậm; v1 chưa biết shape batch response nên còn thô — extension trả `raw` để iterate.
-  let ccAds = [];
-  try {
-    const cc = await new Promise((res) => chrome.runtime.sendMessage({ type: 'RS_TIKTOK_CC', region, keyword: usedKw, count: 30 }, (x) => res(x)));
-    if (my !== vidToken) return;
-    if (cc && cc.raw && (!cc.items || !cc.items.length)) {
-      console.log('[Creative Center raw response — cần shape này để refine parser]', cc.raw);
-    }
-    ccAds = ((cc && cc.items) || []).map((it) => ({
-      platform: 'tiktok', id: 'cc_' + it.id, advertiser: it.brand || 'TikTok Ad', title: it.body || it.brand, body: it.metrics || it.body,
-      permalink: it.permalink, regionTag: region, source: 'creative_center',
-      creatives: [{ kind: 'video', posterUrl: it.image || '', url: it.videoUrl || '' }],
-    }));
-  } catch (e) { /* CC lỗi → bỏ qua, giữ nguyên tkAds */ }
+// TikTok Ads (Creative Center) ĐÃ GỠ khỏi đây, 2026-08-24.
+  //
+  // Không phải vì hỏng — sau khi sửa thì nó chộp được 18 quảng cáo thật, đủ video và ảnh bìa.
+  // Gỡ vì nó không trả lời được câu hỏi của cửa sổ này. Request tìm-theo-từ-khoá của Creative
+  // Center có chữ ký (`user-sign`) phủ cả query string, nên từ đây chỉ đọc được ~20 Top Ads của
+  // cả nước rồi lọc phía mình. Đo: "kem chống nắng" 0/18, "tai nghe" 0/18, "áo" 7/18 — và 7 kia
+  // chỉ vì "áo" là chuỗi con quá phổ biến. Tức là gần như luôn rỗng, mà vẫn tốn một lượt mở tab
+  // cộng tải lại trang.
+  //
+  // `RS_TIKTOK_CC` vẫn còn ở `extension/background.js` cùng toàn bộ ghi chú đo đạc, phòng khi
+  // sau này Creative Center mở đường tìm không cần ký.
+  const ccAds = [];
 
   st.tkAds = tkAds; // lưu để nút 🎥 Douyin có thể gộp thêm mà không xoá TikTok đang có
   st.ccAds = ccAds;
@@ -1403,26 +1375,24 @@ async function loadModalDouyin() {
   const p = st.p, usedKw = st.usedKw;
   const my = ++vidToken;
 
-  // Dịch sang tiếng Trung (CN) qua backend đã dựng sẵn.
-  let dyTerms = [usedKw], dyKws = [];
+  // MỘT cụm, dịch sang tiếng Trung (CN) — cùng lý do như TikTok: mỗi cụm là một lượt mở tab,
+  // gõ, cuộn, và Douyin còn hay chen màn xác minh 滑块 giữa chừng.
+  let dyTerm = usedKw;
   try {
     const vkParams = new URLSearchParams({ title: p.name || usedKw, region: 'CN' });
     const vr = await fetch(`${BACKEND}/api/ads/video-keywords?${vkParams.toString()}`);
     if (my !== vidToken) return;
     if (vr.ok) {
       const vk = await vr.json();
-      dyKws = Array.isArray(vk.keywords) ? vk.keywords : [];
-      const tags = Array.isArray(vk.hashtags) ? vk.hashtags.map((t) => '#' + String(t).replace(/^#/, '')) : [];
-      const merged = [...dyKws, ...tags];
-      if (merged.length) dyTerms = merged;
+      const first = (Array.isArray(vk.keywords) ? vk.keywords : []).map((x) => String(x || '').trim()).filter(Boolean)[0];
+      if (first) dyTerm = first;
     }
-  } catch (e) { /* backend lỗi → dùng usedKw đơn (tiếng Việt, Douyin vẫn thử) */ }
-  const anchor = dyKws.length ? dyKws.reduce((a, b) => (a.length <= b.length ? a : b)) : usedKw;
+  } catch (e) { /* backend lỗi → dùng usedKw (tiếng Việt, Douyin vẫn thử) */ }
 
-  setVidStatus(`Đang lấy Douyin (抖音) cho "${anchor}" — ${dyTerms.length} cụm… (nếu ra 滑块 verify, kéo trong tab)`);
+  setVidStatus(`Đang lấy Douyin (抖音) cho “${dyTerm}”… (nếu ra 滑块 verify, kéo trong tab)`);
   let dyItems = [], dyNote = '';
   try {
-    const dy = await new Promise((res) => chrome.runtime.sendMessage({ type: 'RS_DOUYIN', keyword: usedKw, keywords: dyTerms, anchor, count: 60 }, (x) => res(x)));
+    const dy = await new Promise((res) => chrome.runtime.sendMessage({ type: 'RS_DOUYIN', keyword: dyTerm, keywords: [dyTerm], anchor: dyTerm, count: 60 }, (x) => res(x)));
     if (my !== vidToken) return;
     dyItems = (dy && dy.items) || [];
     if (dy && dy.blocked && dy.error) dyNote = ' · Douyin: ' + dy.error;
