@@ -54,8 +54,13 @@ def _db_missing():
 
 
 class CreateUserBody(BaseModel):
-    username: str = Field(..., min_length=1, max_length=64)
+    email: str = Field(..., min_length=3, max_length=120)
+    full_name: str = Field(default="", alias="fullName", max_length=120)
+    position: str = Field(default="", max_length=120)
+    bu: str = Field(default="", max_length=120)
     role: str = Field(default="user")
+
+    model_config = {"populate_by_name": True}
 
 
 class UpdateUserBody(BaseModel):
@@ -65,7 +70,7 @@ class UpdateUserBody(BaseModel):
     status: str | None = None
 
 
-_SELECT = "id, username, role, is_active, status, created_at, last_login_at"
+_SELECT = "id, email, full_name, position, bu, role, is_active, status, created_at, last_login_at"
 
 
 @router.get("/users")
@@ -92,20 +97,23 @@ async def create_user(body: CreateUserBody, request: Request) -> JSONResponse:
         return err
     if not db_ready():
         return _db_missing()
-    username = body.username.strip().lower()
+    email = body.email.strip().lower()
     if body.role not in ("admin", "user"):
         return JSONResponse({"error": "role phải là 'admin' hoặc 'user'"}, status_code=400)
     supa = supabase_or_none()
     try:
         # Admin tạo tay → duyệt luôn (status='approved'), không phải chờ.
         res = supa.table("users").insert({
-            "username": username,
+            "email": email,
+            "full_name": body.full_name.strip() or None,
+            "position": body.position.strip() or None,
+            "bu": body.bu.strip() or None,
             "role": body.role,
             "is_active": True,
             "status": "approved",
         }).execute()
     except Exception as e:
-        # Supabase raise nếu username trùng (unique constraint).
+        # Supabase raise nếu email trùng (unique index).
         return JSONResponse({"error": f"Không tạo được: {e}"}, status_code=400)
     return JSONResponse({"user": (res.data or [{}])[0]})
 

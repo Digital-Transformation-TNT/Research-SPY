@@ -111,27 +111,28 @@ export default function Sidebar() {
   // Auth đọc từ localStorage — chỉ có ở client, nên chờ mounted rồi mới quyết định hiển thị gì
   // (tránh hydration mismatch: server không biết localStorage). Trước mounted: coi như chưa rõ.
   const [mounted, setMounted] = useState(false)
-  const [username, setUsername] = useState('')
+  const [display, setDisplay] = useState('')
   const [role, setRole] = useState('user')
 
   useEffect(() => {
     setMounted(true)
-    const uname = localStorage.getItem('rs_username') || ''
-    const r = localStorage.getItem('rs_role') || 'user'
     const token = localStorage.getItem('rs_token')
-    // Auth gate cho TOÀN app: chưa đăng nhập (không token và không username) → về trang login.
+    const email = localStorage.getItem('rs_email') || ''
+    const r = localStorage.getItem('rs_role') || 'user'
+    // Auth gate cho TOÀN app: chưa đăng nhập (không token và không email) → về trang login.
     // Sidebar chỉ render trong layout bọc /ads,/keywords,... nên không đụng trang /login,/admin
     // (chúng là HTML tĩnh riêng) → không sợ vòng lặp redirect.
-    if (!token && !uname) {
+    if (!token && !email) {
       window.location.replace('/login')
       return
     }
-    setUsername(uname)
+    // Tên hiển thị = "Tên · Vị trí · BU" (ghép sẵn ở backend, lưu rs_display). Thiếu thì rơi về email.
+    setDisplay(localStorage.getItem('rs_display') || email)
     setRole(r)
   }, [])
 
   const logout = () => {
-    ;['rs_token', 'rs_username', 'rs_role', 'rs_user_id', 'rs_loginAt'].forEach((k) =>
+    ;['rs_token', 'rs_email', 'rs_role', 'rs_user_id', 'rs_display', 'rs_username', 'rs_loginAt'].forEach((k) =>
       localStorage.removeItem(k),
     )
     window.location.replace('/login')
@@ -180,11 +181,11 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Chân sidebar: tên user + đăng xuất. Chỉ hiện sau mounted (cần localStorage). */}
-      {mounted && username ? (
+      {/* Chân sidebar: tên (Tên · Vị trí · BU) + đăng xuất. Chỉ hiện sau mounted (cần localStorage). */}
+      {mounted && display ? (
         <div className="sidebar-user">
-          <span className="user-name" title={role === 'admin' ? 'Quản trị viên' : 'Người dùng'}>
-            <b>{username}</b>
+          <span className="user-name" title={display}>
+            <b>{display}</b>
             <small>{role === 'admin' ? 'Quản trị viên' : 'Người dùng'}</small>
           </span>
           <button type="button" className="user-logout" onClick={logout} title="Đăng xuất">

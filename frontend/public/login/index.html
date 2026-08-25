@@ -9,15 +9,10 @@
       color-scheme: light dark;
       --bg: Canvas; --fg: CanvasText;
       --line: color-mix(in srgb, CanvasText 14%, transparent);
-      --line-soft: color-mix(in srgb, CanvasText 8%, transparent);
       --muted: color-mix(in srgb, CanvasText 55%, transparent);
-      --panel: color-mix(in srgb, CanvasText 4%, transparent);
-      /* Cam brand — chép đúng mã của trang Research (index.html) và webtool base.css.
-         Đổi màu ở webtool thì phải sửa cả đây, trang Research, và base.css. */
       --accent: #f26522; --accent-ink: #d9541a;
-      --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
-      --radius: 12px;
-      --radius-sm: 8px;
+      --good: #16a34a; --bad: #e11d48;
+      --radius: 12px; --radius-sm: 8px;
       --shadow-sm: 0 1px 2px rgba(0,0,0,.05);
       --shadow-md: 0 10px 28px -10px rgba(0,0,0,.22);
       --ease: cubic-bezier(.2,.7,.3,1);
@@ -26,177 +21,215 @@
     html, body { margin: 0; height: 100%; }
     body {
       font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-      background: var(--bg); color: var(--fg);
-      -webkit-font-smoothing: antialiased;
-      min-height: 100vh;
-      display: flex; align-items: center; justify-content: center;
-      padding: 24px;
+      background: var(--bg); color: var(--fg); -webkit-font-smoothing: antialiased;
+      min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
     }
-
     .card {
-      width: 100%;
-      max-width: 380px;
-      background: var(--bg);
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      padding: 32px 28px 28px;
-      box-shadow: var(--shadow-md);
+      width: 100%; max-width: 400px; background: var(--bg);
+      border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 32px 28px 28px; box-shadow: var(--shadow-md);
     }
-
-    .brand { text-align: center; margin-bottom: 24px; }
+    .brand { text-align: center; margin-bottom: 22px; }
     .brand h1 { font-size: 20px; font-weight: 800; margin: 0 0 4px; letter-spacing: -.015em; }
     .brand .tag { font-size: 12.5px; color: var(--muted); }
 
-    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
-
+    label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 6px; }
+    label:first-of-type { margin-top: 0; }
     input {
-      font: inherit;
-      width: 100%;
-      padding: 11px 14px;
-      border: 1px solid var(--line);
-      border-radius: var(--radius-sm);
+      font: inherit; width: 100%; padding: 11px 14px;
+      border: 1px solid var(--line); border-radius: var(--radius-sm);
       background: var(--bg); color: var(--fg);
       transition: border-color .14s var(--ease), box-shadow .14s var(--ease);
     }
-    input:focus {
-      outline: 2px solid var(--accent);
-      outline-offset: 1px;
-      border-color: transparent;
-    }
+    input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+    input:disabled { opacity: .6; }
 
     button.primary {
-      font: inherit;
-      width: 100%;
-      margin-top: 16px;
-      padding: 11px 20px;
-      background: var(--accent);
-      color: #fff;
-      border: 1px solid var(--accent);
-      border-radius: var(--radius-sm);
-      font-weight: 700;
-      cursor: pointer;
-      box-shadow: var(--shadow-sm);
-      transition: background-color .14s var(--ease), transform .1s var(--ease), box-shadow .14s var(--ease);
+      font: inherit; width: 100%; margin-top: 18px; padding: 11px 20px;
+      background: var(--accent); color: #fff; border: 1px solid var(--accent);
+      border-radius: var(--radius-sm); font-weight: 700; cursor: pointer; box-shadow: var(--shadow-sm);
+      transition: background-color .14s var(--ease), transform .1s var(--ease);
     }
-    button.primary:hover { background: var(--accent-ink); box-shadow: var(--shadow-md); transform: translateY(-1px); }
-    button.primary:active { transform: translateY(0); }
-    button.primary:disabled { opacity: .5; cursor: default; box-shadow: none; transform: none; }
+    button.primary:hover { background: var(--accent-ink); transform: translateY(-1px); }
+    button.primary:disabled { opacity: .5; cursor: default; transform: none; }
+    button.ghost {
+      font: inherit; width: 100%; margin-top: 8px; padding: 9px 20px; background: transparent;
+      color: var(--muted); border: none; cursor: pointer; font-size: 12.5px;
+    }
+    button.ghost:hover { color: var(--fg); }
 
-    .hint {
-      font-size: 12px;
-      color: var(--muted);
-      margin-top: 14px;
-      text-align: center;
-      line-height: 1.5;
-    }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 14px; text-align: center; line-height: 1.5; }
+    .status { margin-top: 14px; padding: 9px 13px; border-radius: var(--radius-sm); font-size: 12.5px; display: none; }
+    .status.err  { display: block; background: color-mix(in srgb, var(--bad) 10%, transparent); color: var(--bad); border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent); }
+    .status.wait { display: block; background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent-ink); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+    .status.ok   { display: block; background: color-mix(in srgb, var(--good) 10%, transparent); color: var(--good); border: 1px solid color-mix(in srgb, var(--good) 30%, transparent); }
 
-    .status {
-      margin-top: 12px;
-      padding: 8px 12px;
-      border-radius: var(--radius-sm);
-      font-size: 12.5px;
-      display: none;
+    .hidden { display: none; }
+
+    /* Màn chờ duyệt */
+    .wait-box { text-align: center; padding: 8px 0; }
+    .spinner {
+      width: 42px; height: 42px; margin: 6px auto 16px; border-radius: 50%;
+      border: 3px solid var(--line); border-top-color: var(--accent);
+      animation: spin 0.9s linear infinite;
     }
-    .status.err {
-      display: block;
-      background: color-mix(in srgb, #e11d48 10%, transparent);
-      color: #e11d48;
-      border: 1px solid color-mix(in srgb, #e11d48 30%, transparent);
-    }
-    .status.wait {
-      display: block;
-      background: color-mix(in srgb, var(--accent) 10%, transparent);
-      color: var(--accent-ink);
-      border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+    .wait-box h2 { font-size: 16px; margin: 0 0 8px; }
+    .wait-box p { color: var(--muted); font-size: 13px; margin: 0 0 4px; }
+    .wait-email { font-weight: 700; color: var(--fg); }
   </style>
 </head>
 <body>
-  <form class="card" id="loginForm" autocomplete="off">
+  <div class="card">
     <div class="brand">
       <h1>🛰️ Research-SPY</h1>
-      <div class="tag">Đăng nhập để bắt đầu</div>
+      <div class="tag">Đăng nhập bằng email công ty</div>
     </div>
 
-    <label for="username">Tên đăng nhập</label>
-    <input id="username" type="text" placeholder="vd: nam.pham" required autofocus />
+    <!-- BƯỚC 1: email -->
+    <form id="emailForm">
+      <label for="email">Email công ty</label>
+      <input id="email" type="email" placeholder="vd: tuyengm@tntecom.com" required autofocus autocomplete="email" />
+      <button class="primary" type="submit">Tiếp tục →</button>
+      <div class="hint">Chỉ nhận email <b id="domainHint">@tntecom.com</b>.</div>
+    </form>
 
-    <button class="primary" type="submit">Đăng nhập →</button>
+    <!-- BƯỚC 2: đăng ký hồ sơ (email chưa có trong hệ thống) -->
+    <form id="regForm" class="hidden">
+      <label>Email</label>
+      <input id="regEmail" type="email" disabled />
+      <label for="regName">Tên</label>
+      <input id="regName" type="text" placeholder="Họ và tên" maxlength="120" />
+      <label for="regPos">Vị trí</label>
+      <input id="regPos" type="text" placeholder="vd: Nhân viên Research" maxlength="120" />
+      <label for="regBu">BU (đơn vị làm việc)</label>
+      <input id="regBu" type="text" placeholder="vd: Ecom" maxlength="120" />
+      <button class="primary" type="submit">Gửi yêu cầu →</button>
+      <button class="ghost" type="button" id="regBack">← Đổi email khác</button>
+    </form>
 
-    <div class="status" id="err"></div>
+    <!-- BƯỚC 3: chờ duyệt -->
+    <div id="waitBox" class="wait-box hidden">
+      <div class="spinner"></div>
+      <h2>Đang chờ quản trị viên duyệt</h2>
+      <p>Yêu cầu của <span class="wait-email" id="waitEmail"></span> đã được gửi.</p>
+      <p>Trang này tự động vào ngay khi được duyệt — không cần làm gì thêm.</p>
+      <button class="ghost" type="button" id="waitBack">← Dùng email khác</button>
+    </div>
 
-    <div class="hint">Chỉ cần username — chưa cần mật khẩu ở giai đoạn nội bộ.</div>
-  </form>
+    <div class="status" id="msg"></div>
+  </div>
 
   <script>
-    // Đã có token còn hạn → đi thẳng vào Research thay vì bắt gõ lại. Token hết hạn thì trang
-    // Research sẽ tự đá về đây khi gọi API bị 401.
-    if (localStorage.getItem('rs_token')) {
-      window.location.replace('/ads');
+    const ENTER_URL = '/ads';           // trang chính sau khi đăng nhập
+    const POLL_MS = 15000;              // chu kỳ hỏi lại xem đã duyệt chưa
+
+    // Đã có token → vào thẳng.
+    if (localStorage.getItem('rs_token')) window.location.replace(ENTER_URL);
+
+    const $ = (id) => document.getElementById(id);
+    const emailForm = $('emailForm'), regForm = $('regForm'), waitBox = $('waitBox'), msg = $('msg');
+    let pollTimer = null;
+
+    function show(which) {
+      emailForm.classList.toggle('hidden', which !== 'email');
+      regForm.classList.toggle('hidden', which !== 'reg');
+      waitBox.classList.toggle('hidden', which !== 'wait');
+      if (which !== 'wait' && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    }
+    function setMsg(text, kind) { msg.textContent = text || ''; msg.className = 'status' + (kind ? ' ' + kind : ''); }
+
+    function saveAndEnter(data) {
+      localStorage.setItem('rs_token', data.token);
+      localStorage.setItem('rs_email', data.user.email || '');
+      localStorage.setItem('rs_role', data.user.role || 'user');
+      localStorage.setItem('rs_user_id', data.user.id || '');
+      localStorage.setItem('rs_display', data.user.displayName || data.user.email || '');
+      window.location.replace(ENTER_URL);
     }
 
-    const form = document.getElementById('loginForm');
-    const input = document.getElementById('username');
-    const err = document.getElementById('err');
-    const btn = form.querySelector('button');
+    // Gọi /login cho 1 email → phân nhánh theo kết quả.
+    async function callLogin(email) {
+      const r = await fetch('/api/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await r.json().catch(() => ({}));
+      return { status: r.status, ok: r.ok, data };
+    }
 
-    form.addEventListener('submit', async (e) => {
+    // Bước 1: nhập email
+    emailForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const name = (input.value || '').trim().toLowerCase();
-      if (!name) {
-        err.textContent = 'Nhập tên đăng nhập trước đã.';
-        err.className = 'status err';
-        input.focus();
-        return;
-      }
-      if (!/^[a-z0-9._-]+$/.test(name)) {
-        err.textContent = 'Chỉ dùng chữ, số, dấu chấm, gạch dưới, gạch nối.';
-        err.className = 'status err';
-        input.focus();
-        return;
-      }
-
-      btn.disabled = true; btn.textContent = 'Đang đăng nhập…';
+      const email = ($('email').value || '').trim().toLowerCase();
+      const btn = emailForm.querySelector('button');
+      setMsg('');
+      btn.disabled = true; btn.textContent = 'Đang kiểm tra…';
       try {
-        const r = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: name }),
-        });
-        const data = await r.json();
-
-        // CHỜ DUYỆT: user mới (202) hoặc user pending (403 + pending) → hiện thông điệp chờ, KHÔNG
-        // lưu token, KHÔNG vào app. Admin phải duyệt ở trang Quản trị.
-        if (data && data.pending) {
-          err.textContent = data.message || 'Yêu cầu đang chờ quản trị viên duyệt.';
-          err.className = 'status wait';
-          btn.disabled = false; btn.textContent = 'Đăng nhập →';
-          return;
+        const { status, data } = await callLogin(email);
+        if (status === 501) { // chưa cấu hình Supabase → fallback dev
+          localStorage.setItem('rs_email', email); localStorage.setItem('rs_role', 'user');
+          window.location.replace(ENTER_URL); return;
         }
-
-        if (!r.ok) {
-          // 501 = backend chưa cấu hình Supabase → rơi về chế độ chỉ-localStorage như bản cũ.
-          if (r.status === 501) {
-            localStorage.setItem('rs_username', name);
-            localStorage.setItem('rs_role', 'user');
-            window.location.replace('/ads');
-            return;
-          }
-          throw new Error(data.error || `HTTP ${r.status}`);
-        }
-
-        // Login thành công (đã duyệt) — lưu token + profile.
-        localStorage.setItem('rs_token', data.token);
-        localStorage.setItem('rs_username', data.user.username);
-        localStorage.setItem('rs_role', data.user.role);
-        localStorage.setItem('rs_user_id', data.user.id);
-        window.location.replace('/ads');
-      } catch (e) {
-        err.textContent = e.message || 'Không đăng nhập được.';
-        err.className = 'status err';
-        btn.disabled = false; btn.textContent = 'Đăng nhập →';
+        if (data.token) { saveAndEnter(data); return; }
+        if (data.needsRegistration) { $('regEmail').value = email; $('regName').focus(); show('reg'); return; }
+        if (data.pending) { startWaiting(email); return; }
+        setMsg(data.error || 'Không đăng nhập được.', 'err');
+      } catch (err) {
+        setMsg('Lỗi kết nối máy chủ.', 'err');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Tiếp tục →';
       }
     });
+
+    // Bước 2: gửi hồ sơ đăng ký
+    regForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = $('regEmail').value;
+      const fullName = ($('regName').value || '').trim();
+      const position = ($('regPos').value || '').trim();
+      const bu = ($('regBu').value || '').trim();
+      setMsg('');
+      if (!fullName || !position || !bu) { setMsg('Phải nhập đủ Tên, Vị trí và BU.', 'err'); return; }
+      const btn = regForm.querySelector('button.primary');
+      btn.disabled = true; btn.textContent = 'Đang gửi…';
+      try {
+        const r = await fetch('/api/auth/register', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, fullName, position, bu }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (data.pending) { startWaiting(email); return; }
+        setMsg(data.error || 'Không gửi được yêu cầu.', 'err');
+      } catch (err) {
+        setMsg('Lỗi kết nối máy chủ.', 'err');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Gửi yêu cầu →';
+      }
+    });
+
+    $('regBack').addEventListener('click', () => { setMsg(''); show('email'); });
+    $('waitBack').addEventListener('click', () => { setMsg(''); show('email'); });
+
+    // Bước 3: chờ duyệt — poll /login đến khi có token (được duyệt) hoặc bị từ chối.
+    function startWaiting(email) {
+      $('waitEmail').textContent = email;
+      setMsg('');
+      show('wait');
+      const poll = async () => {
+        try {
+          const { data } = await callLogin(email);
+          if (data.token) { clearInterval(pollTimer); pollTimer = null; setMsg('Đã được duyệt! Đang vào…', 'ok'); saveAndEnter(data); return; }
+          if (data.error && !data.pending) { // bị từ chối / khoá
+            clearInterval(pollTimer); pollTimer = null;
+            setMsg(data.error, 'err'); show('email');
+          }
+          // còn pending → tiếp tục chờ
+        } catch (err) { /* mạng chập chờn — thử lại lần sau */ }
+      };
+      pollTimer = setInterval(poll, POLL_MS);
+    }
   </script>
 </body>
 </html>

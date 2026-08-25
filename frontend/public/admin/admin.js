@@ -11,7 +11,7 @@
   // ---- Gate ----
   const token = localStorage.getItem('rs_token');
   const role = localStorage.getItem('rs_role') || 'user';
-  const uname = localStorage.getItem('rs_username') || '';
+  const uname = localStorage.getItem('rs_display') || localStorage.getItem('rs_email') || '';
   if (!token && !uname) { window.location.replace('/login'); return; }
   if (role !== 'admin') { window.location.replace('/ads'); return; }
   $('whoami').textContent = uname ? `Xin chào ${uname}` : '';
@@ -22,7 +22,7 @@
     if (token) headers['Authorization'] = 'Bearer ' + token;
     const r = await fetch(url, Object.assign({}, options, { headers }));
     if (r.status === 401) {
-      ['rs_token', 'rs_username', 'rs_role', 'rs_user_id'].forEach((k) => localStorage.removeItem(k));
+      ['rs_token', 'rs_email', 'rs_display', 'rs_role', 'rs_user_id', 'rs_username'].forEach((k) => localStorage.removeItem(k));
       window.location.replace('/login');
       throw new Error('Phiên hết hạn');
     }
@@ -31,7 +31,7 @@
 
   // ---- Logout ----
   $('logoutBtn').addEventListener('click', () => {
-    ['rs_token', 'rs_username', 'rs_role', 'rs_user_id'].forEach((k) => localStorage.removeItem(k));
+    ['rs_token', 'rs_email', 'rs_display', 'rs_role', 'rs_user_id', 'rs_username'].forEach((k) => localStorage.removeItem(k));
     window.location.replace('/login');
   });
 
@@ -73,6 +73,17 @@
     return '<span class="badge on">✓ Đã duyệt</span>';
   }
 
+  // Ô "người dùng": Tên (đậm) + email (nhỏ). Tên trống → dùng email làm tên.
+  function whoCell(u) {
+    const name = u.full_name || u.email || '(không tên)';
+    const email = u.email || '';
+    return `<b>${esc(name)}</b>${email && email !== name ? `<div class="sub">${esc(email)}</div>` : ''}`;
+  }
+  // Vị trí · BU gộp 1 ô.
+  function roleBuCell(u) {
+    return esc([u.position, u.bu].filter(Boolean).join(' · ') || '—');
+  }
+
   async function loadUsers() {
     try {
       const r = await api('/api/admin/users');
@@ -93,7 +104,8 @@
       $('pendingCount').textContent = pending.length || '';
       $('pendingRows').innerHTML = pending.map((u) => `
         <tr data-id="${esc(u.id)}">
-          <td><b>${esc(u.username)}</b></td>
+          <td>${whoCell(u)}</td>
+          <td>${roleBuCell(u)}</td>
           <td>${fmtDate(u.created_at)}</td>
           <td>
             <button class="mini approve" data-act="approve">✓ Duyệt</button>
@@ -109,11 +121,11 @@
           : '';
         return `
         <tr data-id="${esc(u.id)}">
-          <td><b>${esc(u.username)}</b></td>
+          <td>${whoCell(u)}</td>
+          <td>${roleBuCell(u)}</td>
           <td><span class="badge ${u.role}">${u.role}</span></td>
           <td>${statusBadge(u.status)}</td>
           <td>${fmtDate(u.last_login_at)}</td>
-          <td>${fmtDate(u.created_at)}</td>
           <td>
             ${reapprove}
             <button class="mini" data-act="role" data-role="${u.role === 'admin' ? 'user' : 'admin'}">${u.role === 'admin' ? '↓ Hạ user' : '↑ Nâng admin'}</button>
@@ -166,21 +178,23 @@
   $('usersRows').addEventListener('click', onRowAction);
   $('pendingRows').addEventListener('click', onRowAction);
 
-  // Thêm user
+  // Thêm user (admin tạo tay → duyệt sẵn)
   $('addBtn').addEventListener('click', async () => {
-    const username = ($('newUsername').value || '').trim().toLowerCase();
+    const email = ($('newEmail').value || '').trim().toLowerCase();
+    const fullName = ($('newName').value || '').trim();
+    const position = ($('newPos').value || '').trim();
+    const bu = ($('newBu').value || '').trim();
     const role = $('newRole').value;
-    if (!username) { setStatus('Nhập username.', 'err'); return; }
-    if (!/^[a-z0-9._-]+$/.test(username)) { setStatus('Username chỉ dùng chữ/số/. _ -', 'err'); return; }
+    if (!email) { setStatus('Nhập email.', 'err'); return; }
     try {
       const r = await api('/api/admin/users', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, role }),
+        body: JSON.stringify({ email, fullName, position, bu, role }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
-      $('newUsername').value = '';
-      setStatus(`Đã thêm "${username}" (${role}).`, 'ok');
+      ['newEmail', 'newName', 'newPos', 'newBu'].forEach((id) => { $(id).value = ''; });
+      setStatus(`Đã thêm "${email}" (${role}).`, 'ok');
       loadUsers();
     } catch (e) {
       setStatus(e.message, 'err');

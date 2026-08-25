@@ -33,7 +33,7 @@
  * nhập → redirect. Đặt Ở ĐẦU FILE để không code nào chạy trước khi có user.
  * ===========================================================================
  */
-if (!localStorage.getItem('rs_token') && !localStorage.getItem('rs_username')) {
+if (!localStorage.getItem('rs_token') && !localStorage.getItem('rs_email')) {
   window.top.location.replace('/login');
   return;
 }
@@ -50,7 +50,7 @@ window.rsAuthFetch = async function (url, options = {}) {
   const r = await fetch(url, Object.assign({}, options, { headers }));
   // 401 = token hết hạn hoặc sai → về login.
   if (r.status === 401) {
-    ['rs_token', 'rs_username', 'rs_role', 'rs_user_id'].forEach((k) => localStorage.removeItem(k));
+    ['rs_token', 'rs_email', 'rs_display', 'rs_role', 'rs_user_id', 'rs_username'].forEach((k) => localStorage.removeItem(k));
     window.top.location.replace('/login');
     throw new Error('Phiên đã hết hạn');
   }
