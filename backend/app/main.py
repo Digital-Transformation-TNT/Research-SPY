@@ -33,6 +33,7 @@ import sys
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -43,9 +44,34 @@ from lib.core.http import close_client
 
 from .api import ads, imagesearch, keywords, media, opportunity
 
+# Mục Trend Signal Hub. Import ĐƯỢC PHÉP TRƯỢT: gói này kéo theo pandas/pytrends/anthropic,
+# và một máy thiếu chúng thì cả backend chết theo — mất luôn Quảng cáo, Từ khoá, Tìm bằng ảnh
+# vốn chẳng liên quan gì. Trượt thì ghi lại lý do và dựng một đường chẩn đoán ở dưới, để
+# trang Hub báo đúng nguyên nhân thay vì lặng lẽ hiện dữ liệu mẫu.
+try:
+    from hub.main import router as hub_router, init_hub
+
+    HUB_ERROR = ""
+except Exception as _e:  # noqa: BLE001
+    hub_router = None
+    init_hub = None
+    HUB_ERROR = f"{type(_e).__name__}: {_e}"
+
+
+log = logging.getLogger("research-spy")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if init_hub is not None:
+        # Dựng bảng + nạp dữ liệu cho mục Trend Signal Hub. Chạy đồng bộ trong lifespan là
+        # cố ý: lần đầu nó bung ~9.8MB snapshot ra 33k dòng, và nếu để nền thì request đầu
+        # tiên gặp DB rỗng — trang sẽ hiện dữ liệu mẫu nhúng cứng mà không báo gì.
+        try:
+            info = init_hub()
+            log.info("Hub san sang: %s dong (%s), db=%s", info["rows"], info["source"], info["db"])
+        except Exception as e:  # noqa: BLE001
+            log.exception("Hub khong khoi tao duoc: %s", e)
     yield
     # Chromium không chết theo tiến trình cha trên Windows; không đóng là để lại tiến trình mồ côi.
     await close_all_sessions()
@@ -76,6 +102,20 @@ app.include_router(imagesearch.router)
 app.include_router(keywords.router)
 app.include_router(media.router)
 app.include_router(opportunity.router)
+
+if hub_router is not None:
+    app.include_router(hub_router)
+else:
+
+    @app.get("/api/hub/health")
+    async def hub_health_failed() -> dict[str, str]:
+        """Hub không import được. Nói thẳng lý do thay vì trả 404.
+
+        404 ở đây là cái bẫy tệ nhất có thể: `trend-signal-hub.html` coi mọi phản hồi không
+        `ok` là "backend chết" và rơi về bộ dữ liệu mẫu nhúng cứng trong file. Trang khi đó
+        đầy ắp số liệu trông rất thật — không có một dấu hiệu nào cho biết chúng là số giả.
+        """
+        return {"status": "error", "reason": HUB_ERROR}
 
 
 @app.get("/api/health")

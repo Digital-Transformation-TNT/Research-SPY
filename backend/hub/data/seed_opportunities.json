@@ -1,0 +1,153 @@
+{
+  "_meta": {
+    "source": "SEED snapshot mô phỏng tín hiệu Etsy + Amazon + Google Trends. Thay bằng ingest thật khi thi.",
+    "captured_at": "2026-08-19T00:00:00Z",
+    "sources": ["etsy_open_api", "amazon_helium10_export", "google_trends"]
+  },
+  "opportunities": [
+    {
+      "id": "memorial-acrylic-plaque",
+      "niche": "Memorial",
+      "keyword": "memorial gift acrylic",
+      "sample_title": "Personalized Memorial Plaque Acrylic In Loving Memory Sympathy Gift",
+      "peak_months": [11, 12, 1],
+      "signals": {
+        "etsy": {"search_volume": 41000, "active_listings": 3200, "sellers_with_sales": 640, "favorites_30d": 18500, "avg_price_usd": 27.5, "top_listing_reviews": 210},
+        "amazon": {"search_volume": 22000, "active_listings": 900, "avg_price_usd": 31.0, "est_monthly_units": 3400}
+      },
+      "trend_key": "memorial_gift"
+    },
+    {
+      "id": "pet-memorial-ornament",
+      "niche": "Pet",
+      "keyword": "pet memorial ornament",
+      "sample_title": "Custom Pet Memorial Ornament Dog Loss Gift Acrylic Photo Keepsake",
+      "peak_months": [11, 12],
+      "signals": {
+        "etsy": {"search_volume": 33500, "active_listings": 2100, "sellers_with_sales": 410, "favorites_30d": 22100, "avg_price_usd": 19.9, "top_listing_reviews": 158},
+        "amazon": {"search_volume": 15000, "active_listings": 520, "avg_price_usd": 22.5, "est_monthly_units": 2600}
+      },
+      "trend_key": "pet_memorial"
+    },
+    {
+      "id": "grandpa-fathersday-ornament",
+      "niche": "Family / Father's Day",
+      "keyword": "personalized grandpa gift",
+      "sample_title": "Personalized Grandpa Gift For Father's Day From Granddaughter Ornament",
+      "peak_months": [5, 6],
+      "signals": {
+        "etsy": {"search_volume": 52000, "active_listings": 5400, "sellers_with_sales": 980, "favorites_30d": 26000, "avg_price_usd": 17.5, "top_listing_reviews": 320},
+        "amazon": {"search_volume": 28000, "active_listings": 1400, "avg_price_usd": 19.9, "est_monthly_units": 4100}
+      },
+      "trend_key": "grandpa_gift"
+    },
+    {
+      "id": "gardening-suncatcher",
+      "niche": "Gardening",
+      "keyword": "personalized garden suncatcher",
+      "sample_title": "Personalized Garden Suncatcher Custom Name Gift For Gardener Mom",
+      "peak_months": [3, 4, 5],
+      "signals": {
+        "etsy": {"search_volume": 12800, "active_listings": 520, "sellers_with_sales": 95, "favorites_30d": 7400, "avg_price_usd": 18.9, "top_listing_reviews": 64},
+        "amazon": {"search_volume": 5200, "active_listings": 130, "avg_price_usd": 21.0, "est_monthly_units": 720}
+      },
+      "trend_key": "garden_gift"
+    },
+    {
+      "id": "wedding-cutting-board",
+      "niche": "Wedding",
+      "keyword": "engraved cutting board wedding",
+      "sample_title": "Personalized Cutting Board Wedding Gift Engraved Bamboo Anniversary",
+      "peak_months": [5, 6, 7, 8],
+      "signals": {
+        "etsy": {"search_volume": 38000, "active_listings": 6100, "sellers_with_sales": 1200, "favorites_30d": 14200, "avg_price_usd": 34.9, "top_listing_reviews": 410},
+        "amazon": {"search_volume": 19500, "active_listings": 1600, "avg_price_usd": 37.5, "est_monthly_units": 2900}
+      },
+      "trend_key": "wedding_gift"
+    },
+    {
+      "id": "baby-night-light",
+      "niche": "Baby / Nursery",
+      "keyword": "personalized baby night light",
+      "sample_title": "Personalized Baby Night Light Nursery Custom Name LED Acrylic Gift",
+      "peak_months": [1, 2, 3, 11, 12],
+      "signals": {
+        "etsy": {"search_volume": 21000, "active_listings": 1400, "sellers_with_sales": 260, "favorites_30d": 16800, "avg_price_usd": 28.9, "top_listing_reviews": 120},
+        "amazon": {"search_volume": 17000, "active_listings": 700, "avg_price_usd": 31.9, "est_monthly_units": 2200}
+      },
+      "trend_key": "baby_gift"
+    },
+    {
+      "id": "couple-blanket",
+      "niche": "Couple / Anniversary",
+      "keyword": "personalized couple blanket",
+      "sample_title": "Personalized Couple Blanket Anniversary Gift Custom Photo Fleece",
+      "peak_months": [2, 12],
+      "signals": {
+        "etsy": {"search_volume": 29500, "active_listings": 3800, "sellers_with_sales": 720, "favorites_30d": 15100, "avg_price_usd": 39.9, "top_listing_reviews": 280},
+        "amazon": {"search_volume": 24000, "active_listings": 1300, "avg_price_usd": 42.9, "est_monthly_units": 3100}
+      },
+      "trend_key": "couple_gift"
+    },
+    {
+      "id": "teacher-keychain",
+      "niche": "Teacher Appreciation",
+      "keyword": "teacher appreciation keychain",
+      "sample_title": "Personalized Teacher Keychain Thank You Gift Custom Name Acrylic",
+      "peak_months": [5, 8, 9],
+      "signals": {
+        "etsy": {"search_volume": 9800, "active_listings": 480, "sellers_with_sales": 88, "favorites_30d": 5200, "avg_price_usd": 11.9, "top_listing_reviews": 45},
+        "amazon": {"search_volume": 4100, "active_listings": 110, "avg_price_usd": 13.5, "est_monthly_units": 560}
+      },
+      "trend_key": "teacher_gift"
+    },
+    {
+      "id": "family-doormat",
+      "niche": "Housewarming",
+      "keyword": "personalized family doormat",
+      "sample_title": "Personalized Family Name Doormat Housewarming Gift Custom Welcome Mat",
+      "peak_months": [4, 5, 9, 10],
+      "signals": {
+        "etsy": {"search_volume": 26000, "active_listings": 4200, "sellers_with_sales": 810, "favorites_30d": 11800, "avg_price_usd": 32.9, "top_listing_reviews": 190},
+        "amazon": {"search_volume": 20000, "active_listings": 1500, "avg_price_usd": 35.0, "est_monthly_units": 2700}
+      },
+      "trend_key": "doormat_gift"
+    },
+    {
+      "id": "dog-dad-tumbler",
+      "niche": "Pet",
+      "keyword": "dog dad tumbler personalized",
+      "sample_title": "Personalized Dog Dad Tumbler Custom Name 20oz Insulated Gift",
+      "peak_months": [5, 6, 12],
+      "signals": {
+        "etsy": {"search_volume": 15600, "active_listings": 980, "sellers_with_sales": 175, "favorites_30d": 9100, "avg_price_usd": 26.9, "top_listing_reviews": 88},
+        "amazon": {"search_volume": 11000, "active_listings": 460, "avg_price_usd": 28.9, "est_monthly_units": 1500}
+      },
+      "trend_key": "dog_dad"
+    },
+    {
+      "id": "birth-flower-mug",
+      "niche": "Birthday",
+      "keyword": "birth flower mug personalized",
+      "sample_title": "Personalized Birth Flower Mug Custom Name Birthday Gift Ceramic",
+      "peak_months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "signals": {
+        "etsy": {"search_volume": 44000, "active_listings": 2600, "sellers_with_sales": 470, "favorites_30d": 31000, "avg_price_usd": 15.9, "top_listing_reviews": 240},
+        "amazon": {"search_volume": 18000, "active_listings": 720, "avg_price_usd": 17.5, "est_monthly_units": 3300}
+      },
+      "trend_key": "birth_flower"
+    },
+    {
+      "id": "memorial-photo-canvas",
+      "niche": "Memorial",
+      "keyword": "memorial photo canvas",
+      "sample_title": "Custom Memorial Photo Canvas In Loving Memory Wall Art Sympathy Gift",
+      "peak_months": [11, 12, 1],
+      "signals": {
+        "etsy": {"search_volume": 17500, "active_listings": 1100, "sellers_with_sales": 210, "favorites_30d": 8900, "avg_price_usd": 36.9, "top_listing_reviews": 95},
+        "amazon": {"search_volume": 9000, "active_listings": 380, "avg_price_usd": 39.9, "est_monthly_units": 1200}
+      },
+      "trend_key": "memorial_gift"
+    }
+  ]
+}

@@ -1,0 +1,1604 @@
+{
+  "_meta": {
+    "source": "Menu Catalog THẬT của printway.io (ảnh user cung cấp 2026-08-22).",
+    "version": "printway-catalog-2.0",
+    "note": "Đã chuẩn hoá KHỚP 1-1 với menu Catalog trên printway.io. categories/product_types/materials/occasions/niches = đúng những gì web hiển thị. `official:true` = có trên menu web. `_econ:'unknown'` = product type có trên web nhưng CHƯA có số kinh tế (difficulty/cost/price/margin) — KHÔNG được bịa, phải hiển thị 'chưa đủ dữ liệu'. materials_extended/occasions_extended = giá trị KHÔNG có trên menu nhưng cần để map dữ liệu crawl (vd Cotton, Polyester, Christmas); báo cáo chính thức chỉ dùng danh sách chính.",
+    "margin_formula": "(avg_sell_price - base_cost - ship - price*9.5%) / avg_sell_price, ±0.06. ship = phí CỐ ĐỊNH theo món: <$2 cost→$2.00 · <$5→$3.20 · <$9→$4.50 · ≥$9→$6.00 · quần áo→$4.50. fee 9.5% = Etsy 6.5% + payment 3%.",
+    "margin_source": "estimated (chỉ cho product type có _econ != 'unknown')"
+  },
+  "categories": [
+    "Home and Living",
+    "Accessories",
+    "Men's Clothing",
+    "Women's Clothing",
+    "Kid's Clothing"
+  ],
+  "materials": [
+    "Acrylic",
+    "Glass",
+    "Wood",
+    "Ceramic",
+    "Leather",
+    "Wood and Acrylic",
+    "Metal",
+    "Aluminum"
+  ],
+  "occasions": [
+    "Valentine Day",
+    "St Patricks Day",
+    "Easter",
+    "Mother's Day",
+    "Father's Day",
+    "America 250",
+    "Graduation",
+    "Back-to-school"
+  ],
+  "product_types": [
+    {
+      "id": "home_and_living__cards",
+      "product_type": "Cards",
+      "category": "Home and Living",
+      "materials": [
+        "Paper"
+      ],
+      "aliases": [
+        "card",
+        "greeting card",
+        "holiday card",
+        "christmas card"
+      ],
+      "personalization": [
+        "name",
+        "text",
+        "photo"
+      ],
+      "production_difficulty": 1,
+      "margin_low": 0.37,
+      "margin_high": 0.49,
+      "base_cost_usd": 0.8,
+      "avg_sell_price_usd": 5.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "home_and_living__ornaments",
+      "product_type": "Ornaments",
+      "category": "Home and Living",
+      "materials": [
+        "Acrylic",
+        "Wood",
+        "Ceramic",
+        "Metal",
+        "Glass"
+      ],
+      "aliases": [
+        "ornament",
+        "christmas ornament",
+        "bauble",
+        "personalized ornament",
+        "photo ornament",
+        "family ornament",
+        "memorial ornament",
+        "pet ornament"
+      ],
+      "personalization": [
+        "name",
+        "photo",
+        "date",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.47,
+      "margin_high": 0.59,
+      "base_cost_usd": 3.1,
+      "avg_sell_price_usd": 16.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "home_and_living__lights",
+      "product_type": "Lights",
+      "category": "Home and Living",
+      "materials": [
+        "Acrylic",
+        "Wood and Acrylic"
+      ],
+      "aliases": [
+        "night light",
+        "led light",
+        "lamp",
+        "3d light",
+        "acrylic light"
+      ],
+      "personalization": [
+        "name",
+        "photo",
+        "text"
+      ],
+      "production_difficulty": 3,
+      "margin_low": 0.5,
+      "margin_high": 0.62,
+      "base_cost_usd": 5.5,
+      "avg_sell_price_usd": 28.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "home_and_living__mugs",
+      "product_type": "Mugs",
+      "category": "Home and Living",
+      "materials": [
+        "Ceramic"
+      ],
+      "aliases": [
+        "mug",
+        "coffee mug",
+        "photo mug",
+        "11oz mug",
+        "15oz mug",
+        "tea cup"
+      ],
+      "personalization": [
+        "name",
+        "photo",
+        "text"
+      ],
+      "production_difficulty": 1,
+      "margin_low": 0.47,
+      "margin_high": 0.59,
+      "base_cost_usd": 2.4,
+      "avg_sell_price_usd": 14.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "home_and_living__tumblers",
+      "product_type": "Tumblers",
+      "category": "Home and Living",
+      "materials": [
+        "Stainless Steel",
+        "Metal"
+      ],
+      "aliases": [
+        "tumbler",
+        "20oz tumbler",
+        "insulated tumbler",
+        "travel mug",
+        "40oz tumbler"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.44,
+      "margin_high": 0.56,
+      "base_cost_usd": 6.8,
+      "avg_sell_price_usd": 27.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "home_and_living__water_bottles",
+      "product_type": "Water Bottles",
+      "category": "Home and Living",
+      "materials": [
+        "Stainless Steel",
+        "Aluminum"
+      ],
+      "aliases": [
+        "water bottle",
+        "sport bottle",
+        "flask",
+        "drink bottle"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.42,
+      "margin_high": 0.54,
+      "base_cost_usd": 6.0,
+      "avg_sell_price_usd": 24.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "home_and_living__blankets",
+      "product_type": "Blankets",
+      "category": "Home and Living",
+      "materials": [
+        "Fleece",
+        "Polyester"
+      ],
+      "aliases": [
+        "blanket",
+        "fleece blanket",
+        "sherpa blanket",
+        "photo blanket",
+        "throw",
+        "woven blanket"
+      ],
+      "personalization": [
+        "photo",
+        "name",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.46,
+      "margin_high": 0.58,
+      "base_cost_usd": 9.5,
+      "avg_sell_price_usd": 39.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "home_and_living__beddings",
+      "product_type": "Beddings",
+      "category": "Home and Living",
+      "materials": [
+        "Cotton",
+        "Polyester"
+      ],
+      "aliases": [
+        "bedding",
+        "duvet",
+        "quilt",
+        "comforter",
+        "bed set"
+      ],
+      "personalization": [
+        "photo",
+        "name"
+      ],
+      "production_difficulty": 3,
+      "margin_low": 0.48,
+      "margin_high": 0.6,
+      "base_cost_usd": 14.0,
+      "avg_sell_price_usd": 54.9,
+      "capacity": "partner",
+      "official": true
+    },
+    {
+      "id": "home_and_living__pillows_and_cases",
+      "product_type": "Pillows & Cases",
+      "category": "Home and Living",
+      "materials": [
+        "Polyester",
+        "Cotton"
+      ],
+      "aliases": [
+        "pillow",
+        "cushion",
+        "pillow case",
+        "throw pillow"
+      ],
+      "personalization": [
+        "photo",
+        "name",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.51,
+      "margin_high": 0.63,
+      "base_cost_usd": 4.5,
+      "avg_sell_price_usd": 22.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "home_and_living__home_decor",
+      "product_type": "Home Decor",
+      "category": "Home and Living",
+      "materials": [
+        "Wood",
+        "Acrylic",
+        "Metal",
+        "Ceramic"
+      ],
+      "aliases": [
+        "home decor",
+        "decor",
+        "decorative",
+        "shelf decor",
+        "table decor"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.52,
+      "margin_high": 0.64,
+      "base_cost_usd": 4.0,
+      "avg_sell_price_usd": 21.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "home_and_living__suncatchers",
+      "product_type": "Suncatchers",
+      "category": "Home and Living",
+      "materials": [
+        "Acrylic",
+        "Glass"
+      ],
+      "aliases": [
+        "suncatcher",
+        "sun catcher",
+        "window hanging",
+        "garden suncatcher"
+      ],
+      "personalization": [
+        "name",
+        "text",
+        "date"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.48,
+      "margin_high": 0.6,
+      "base_cost_usd": 3.4,
+      "avg_sell_price_usd": 17.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "home_and_living__signs_and_plaques",
+      "product_type": "Signs & Plaques",
+      "category": "Home and Living",
+      "materials": [
+        "Wood",
+        "Acrylic",
+        "Metal"
+      ],
+      "aliases": [
+        "sign",
+        "plaque",
+        "wooden sign",
+        "family sign",
+        "established sign",
+        "acrylic plaque",
+        "memorial plaque",
+        "keepsake plaque",
+        "name sign"
+      ],
+      "personalization": [
+        "name",
+        "text",
+        "date"
+      ],
+      "production_difficulty": 3,
+      "margin_low": 0.49,
+      "margin_high": 0.61,
+      "base_cost_usd": 5.0,
+      "avg_sell_price_usd": 26.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "home_and_living__wall_arts",
+      "product_type": "Wall Arts",
+      "category": "Home and Living",
+      "materials": [
+        "Canvas",
+        "Wood",
+        "Acrylic",
+        "Metal"
+      ],
+      "aliases": [
+        "wall art",
+        "canvas",
+        "canvas print",
+        "poster",
+        "photo canvas",
+        "wall decor",
+        "framed print"
+      ],
+      "personalization": [
+        "photo",
+        "name",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.52,
+      "margin_high": 0.64,
+      "base_cost_usd": 7.0,
+      "avg_sell_price_usd": 34.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "home_and_living__picture_frames_and_displays",
+      "product_type": "Picture Frames & Displays",
+      "category": "Home and Living",
+      "materials": [
+        "Wood",
+        "Acrylic",
+        "Glass"
+      ],
+      "aliases": [
+        "picture frame",
+        "photo frame",
+        "frame",
+        "display"
+      ],
+      "personalization": [
+        "photo",
+        "name",
+        "date"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.51,
+      "margin_high": 0.63,
+      "base_cost_usd": 4.8,
+      "avg_sell_price_usd": 23.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "home_and_living__calendar",
+      "product_type": "Calendar",
+      "category": "Home and Living",
+      "materials": [
+        "Paper"
+      ],
+      "aliases": [
+        "calendar",
+        "wall calendar",
+        "desk calendar"
+      ],
+      "personalization": [
+        "photo",
+        "name"
+      ],
+      "production_difficulty": 1,
+      "margin_low": 0.52,
+      "margin_high": 0.64,
+      "base_cost_usd": 2.0,
+      "avg_sell_price_usd": 15.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "home_and_living__keepsakes",
+      "product_type": "Keepsakes",
+      "category": "Home and Living",
+      "materials": [
+        "Acrylic",
+        "Wood",
+        "Glass"
+      ],
+      "aliases": [
+        "keepsake",
+        "memorial keepsake",
+        "sympathy gift",
+        "memorial gift",
+        "in loving memory"
+      ],
+      "personalization": [
+        "name",
+        "photo",
+        "date",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.54,
+      "margin_high": 0.67,
+      "base_cost_usd": 4.0,
+      "avg_sell_price_usd": 24.0,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "home_and_living__stockings_and_holders",
+      "product_type": "Stockings & Holders",
+      "category": "Home and Living",
+      "materials": [
+        "Polyester",
+        "Fabric",
+        "Metal"
+      ],
+      "aliases": [
+        "stocking",
+        "christmas stocking",
+        "stocking holder"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.46,
+      "margin_high": 0.58,
+      "base_cost_usd": 4.5,
+      "avg_sell_price_usd": 19.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "home_and_living__toys_and_games",
+      "product_type": "Toys & Games",
+      "category": "Home and Living",
+      "materials": [
+        "Wood",
+        "Acrylic"
+      ],
+      "aliases": [
+        "toy",
+        "game",
+        "puzzle",
+        "kids game",
+        "board game"
+      ],
+      "personalization": [
+        "name",
+        "photo"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.43,
+      "margin_high": 0.55,
+      "base_cost_usd": 5.0,
+      "avg_sell_price_usd": 22.9,
+      "capacity": "partner",
+      "official": true
+    },
+    {
+      "id": "home_and_living__bathroom",
+      "product_type": "Bathroom",
+      "category": "Home and Living",
+      "materials": [
+        "Polyester",
+        "Ceramic"
+      ],
+      "aliases": [
+        "bath mat",
+        "shower curtain",
+        "bathroom set",
+        "soap dispenser"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.45,
+      "margin_high": 0.57,
+      "base_cost_usd": 6.0,
+      "avg_sell_price_usd": 26.9,
+      "capacity": "partner",
+      "official": true
+    },
+    {
+      "id": "home_and_living__floor_and_rugs",
+      "product_type": "Floor & Rugs",
+      "category": "Home and Living",
+      "materials": [
+        "Polyester",
+        "Rubber"
+      ],
+      "aliases": [
+        "rug",
+        "area rug",
+        "floor mat"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 3,
+      "margin_low": 0.49,
+      "margin_high": 0.61,
+      "base_cost_usd": 10.0,
+      "avg_sell_price_usd": 44.9,
+      "capacity": "partner",
+      "official": true
+    },
+    {
+      "id": "home_and_living__outdoor_and_gardening",
+      "product_type": "Outdoor & Gardening",
+      "category": "Home and Living",
+      "materials": [
+        "Coir",
+        "Rubber",
+        "Polyester",
+        "Metal"
+      ],
+      "aliases": [
+        "doormat",
+        "door mat",
+        "garden flag",
+        "yard sign",
+        "welcome mat",
+        "garden stake",
+        "house flag"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.48,
+      "margin_high": 0.6,
+      "base_cost_usd": 6.0,
+      "avg_sell_price_usd": 28.9,
+      "capacity": "partner",
+      "official": true
+    },
+    {
+      "id": "home_and_living__pet_supplies",
+      "product_type": "Pet Supplies",
+      "category": "Home and Living",
+      "materials": [
+        "Ceramic",
+        "Metal",
+        "Fabric"
+      ],
+      "aliases": [
+        "pet bowl",
+        "pet tag",
+        "pet bandana",
+        "dog tag",
+        "cat tag",
+        "pet mat"
+      ],
+      "personalization": [
+        "name",
+        "photo"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.49,
+      "margin_high": 0.61,
+      "base_cost_usd": 3.5,
+      "avg_sell_price_usd": 18.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "home_and_living__kitchen_and_dining",
+      "product_type": "Kitchen & Dining",
+      "category": "Home and Living",
+      "materials": [
+        "Wood",
+        "Bamboo",
+        "Ceramic",
+        "Metal"
+      ],
+      "aliases": [
+        "cutting board",
+        "chopping board",
+        "charcuterie board",
+        "apron",
+        "coaster",
+        "placemat",
+        "bottle opener"
+      ],
+      "personalization": [
+        "name",
+        "text",
+        "date"
+      ],
+      "production_difficulty": 3,
+      "margin_low": 0.49,
+      "margin_high": 0.61,
+      "base_cost_usd": 8.0,
+      "avg_sell_price_usd": 34.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "accessories__keychains",
+      "product_type": "Keychains",
+      "category": "Accessories",
+      "materials": [
+        "Acrylic",
+        "Wood",
+        "Leather",
+        "Metal"
+      ],
+      "aliases": [
+        "keychain",
+        "key chain",
+        "keyring",
+        "photo keychain"
+      ],
+      "personalization": [
+        "name",
+        "photo",
+        "text"
+      ],
+      "production_difficulty": 1,
+      "margin_low": 0.54,
+      "margin_high": 0.66,
+      "base_cost_usd": 1.6,
+      "avg_sell_price_usd": 11.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "accessories__bookmarks",
+      "product_type": "Bookmarks",
+      "category": "Accessories",
+      "materials": [
+        "Acrylic",
+        "Wood",
+        "Metal",
+        "Leather"
+      ],
+      "aliases": [
+        "bookmark",
+        "book mark"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 1,
+      "margin_low": 0.52,
+      "margin_high": 0.64,
+      "base_cost_usd": 1.2,
+      "avg_sell_price_usd": 9.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "accessories__car_accessories",
+      "product_type": "Car accessories",
+      "category": "Accessories",
+      "materials": [
+        "Acrylic",
+        "Metal",
+        "Leather"
+      ],
+      "aliases": [
+        "car accessory",
+        "air freshener",
+        "car charm",
+        "license plate",
+        "car ornament"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.46,
+      "margin_high": 0.58,
+      "base_cost_usd": 2.5,
+      "avg_sell_price_usd": 14.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "accessories__beauty_accessories",
+      "product_type": "Beauty Accessories",
+      "category": "Accessories",
+      "materials": [
+        "Metal",
+        "Leather"
+      ],
+      "aliases": [
+        "makeup bag",
+        "cosmetic bag",
+        "compact mirror",
+        "makeup mirror"
+      ],
+      "personalization": [
+        "name"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.48,
+      "margin_high": 0.6,
+      "base_cost_usd": 3.0,
+      "avg_sell_price_usd": 16.9,
+      "capacity": "partner",
+      "official": true
+    },
+    {
+      "product_type": "Packaging",
+      "category": "Accessories",
+      "materials": [],
+      "aliases": [],
+      "personalization": [],
+      "production_difficulty": null,
+      "margin_low": null,
+      "margin_high": null,
+      "base_cost_usd": null,
+      "avg_sell_price_usd": null,
+      "capacity": null,
+      "_econ": "unknown",
+      "id": "accessories__packaging",
+      "official": true
+    },
+    {
+      "id": "accessories__bags",
+      "product_type": "Bags",
+      "category": "Accessories",
+      "materials": [
+        "Cotton",
+        "Polyester",
+        "Leather"
+      ],
+      "aliases": [
+        "tote bag",
+        "bag",
+        "canvas bag",
+        "makeup bag",
+        "backpack"
+      ],
+      "personalization": [
+        "name",
+        "photo",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.48,
+      "margin_high": 0.6,
+      "base_cost_usd": 4.0,
+      "avg_sell_price_usd": 19.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "accessories__hats",
+      "product_type": "Hats",
+      "category": "Accessories",
+      "materials": [
+        "Cotton",
+        "Polyester"
+      ],
+      "aliases": [
+        "hat",
+        "cap",
+        "beanie",
+        "trucker hat",
+        "dad hat"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.49,
+      "margin_high": 0.61,
+      "base_cost_usd": 4.5,
+      "avg_sell_price_usd": 21.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "accessories__shoes",
+      "product_type": "Shoes",
+      "category": "Accessories",
+      "materials": [
+        "Fabric",
+        "Rubber"
+      ],
+      "aliases": [
+        "shoes",
+        "sneakers",
+        "slippers",
+        "sandals"
+      ],
+      "personalization": [
+        "name",
+        "photo"
+      ],
+      "production_difficulty": 3,
+      "margin_low": 0.48,
+      "margin_high": 0.6,
+      "base_cost_usd": 12.0,
+      "avg_sell_price_usd": 49.9,
+      "capacity": "partner",
+      "official": true
+    },
+    {
+      "id": "accessories__office_and_stationery",
+      "product_type": "Office & Stationery",
+      "category": "Accessories",
+      "materials": [
+        "Paper",
+        "Acrylic",
+        "Metal"
+      ],
+      "aliases": [
+        "notebook",
+        "journal",
+        "pen",
+        "planner",
+        "desk name plate",
+        "sticky notes"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 1,
+      "margin_low": 0.47,
+      "margin_high": 0.59,
+      "base_cost_usd": 2.0,
+      "avg_sell_price_usd": 13.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "accessories__phone_accessories",
+      "product_type": "Phone Accessories",
+      "category": "Accessories",
+      "materials": [
+        "Acrylic",
+        "Leather",
+        "Metal"
+      ],
+      "aliases": [
+        "phone case",
+        "phone grip",
+        "popsocket",
+        "phone stand"
+      ],
+      "personalization": [
+        "name",
+        "photo",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.5,
+      "margin_high": 0.62,
+      "base_cost_usd": 3.0,
+      "avg_sell_price_usd": 17.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "accessories__sports",
+      "product_type": "Sports",
+      "category": "Accessories",
+      "materials": [
+        "Polyester",
+        "Metal"
+      ],
+      "aliases": [
+        "sports accessory",
+        "gym towel",
+        "golf accessory",
+        "sports bag"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.48,
+      "margin_high": 0.6,
+      "base_cost_usd": 4.0,
+      "avg_sell_price_usd": 19.9,
+      "capacity": "partner",
+      "official": true
+    },
+    {
+      "product_type": "Others",
+      "category": "Accessories",
+      "materials": [],
+      "aliases": [],
+      "personalization": [],
+      "production_difficulty": null,
+      "margin_low": null,
+      "margin_high": null,
+      "base_cost_usd": null,
+      "avg_sell_price_usd": null,
+      "capacity": null,
+      "_econ": "unknown",
+      "id": "accessories__others",
+      "official": true
+    },
+    {
+      "id": "mens_clothing__t_shirts",
+      "product_type": "T-shirts",
+      "category": "Men's Clothing",
+      "materials": [
+        "Cotton"
+      ],
+      "aliases": [
+        "t-shirt",
+        "tee",
+        "mens shirt",
+        "graphic tee",
+        "men t shirt"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 1,
+      "margin_low": 0.41,
+      "margin_high": 0.53,
+      "base_cost_usd": 5.0,
+      "avg_sell_price_usd": 21.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "mens_clothing__sweatshirts",
+      "product_type": "Sweatshirts",
+      "category": "Men's Clothing",
+      "materials": [
+        "Cotton",
+        "Polyester"
+      ],
+      "aliases": [
+        "sweatshirt",
+        "crewneck",
+        "mens sweatshirt"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.43,
+      "margin_high": 0.55,
+      "base_cost_usd": 9.0,
+      "avg_sell_price_usd": 32.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "mens_clothing__hoodies",
+      "product_type": "Hoodies",
+      "category": "Men's Clothing",
+      "materials": [
+        "Cotton",
+        "Polyester"
+      ],
+      "aliases": [
+        "hoodie",
+        "pullover hoodie",
+        "zip hoodie",
+        "mens hoodie"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.42,
+      "margin_high": 0.54,
+      "base_cost_usd": 11.0,
+      "avg_sell_price_usd": 36.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "product_type": "Tank-tops",
+      "category": "Men's Clothing",
+      "materials": [],
+      "aliases": [],
+      "personalization": [],
+      "production_difficulty": null,
+      "margin_low": null,
+      "margin_high": null,
+      "base_cost_usd": null,
+      "avg_sell_price_usd": null,
+      "capacity": null,
+      "_econ": "unknown",
+      "id": "mens_clothing__tank_tops",
+      "official": true
+    },
+    {
+      "id": "mens_clothing__polo_shirts",
+      "product_type": "Polo Shirts",
+      "category": "Men's Clothing",
+      "materials": [
+        "Cotton",
+        "Polyester"
+      ],
+      "aliases": [
+        "polo",
+        "polo shirt"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.43,
+      "margin_high": 0.55,
+      "base_cost_usd": 8.0,
+      "avg_sell_price_usd": 29.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "mens_clothing__jackets_and_coats",
+      "product_type": "Jackets & Coats",
+      "category": "Men's Clothing",
+      "materials": [
+        "Polyester"
+      ],
+      "aliases": [
+        "jacket",
+        "coat",
+        "bomber jacket",
+        "windbreaker"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 3,
+      "margin_low": 0.47,
+      "margin_high": 0.59,
+      "base_cost_usd": 16.0,
+      "avg_sell_price_usd": 54.9,
+      "capacity": "partner",
+      "official": true
+    },
+    {
+      "product_type": "Bottoms",
+      "category": "Men's Clothing",
+      "materials": [],
+      "aliases": [],
+      "personalization": [],
+      "production_difficulty": null,
+      "margin_low": null,
+      "margin_high": null,
+      "base_cost_usd": null,
+      "avg_sell_price_usd": null,
+      "capacity": null,
+      "_econ": "unknown",
+      "id": "mens_clothing__bottoms",
+      "official": true
+    },
+    {
+      "product_type": "Long Sleeve T-shirts",
+      "category": "Men's Clothing",
+      "materials": [],
+      "aliases": [],
+      "personalization": [],
+      "production_difficulty": null,
+      "margin_low": null,
+      "margin_high": null,
+      "base_cost_usd": null,
+      "avg_sell_price_usd": null,
+      "capacity": null,
+      "_econ": "unknown",
+      "id": "mens_clothing__long_sleeve_t_shirts",
+      "official": true
+    },
+    {
+      "id": "mens_clothing__mens_jersey",
+      "product_type": "Men's Jersey",
+      "category": "Men's Clothing",
+      "materials": [
+        "Polyester"
+      ],
+      "aliases": [
+        "jersey",
+        "sports jersey",
+        "football jersey",
+        "baseball jersey"
+      ],
+      "personalization": [
+        "name",
+        "text",
+        "number"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.43,
+      "margin_high": 0.55,
+      "base_cost_usd": 10.0,
+      "avg_sell_price_usd": 34.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "mens_clothing__hawaiian_shirt",
+      "product_type": "Hawaiian Shirt",
+      "category": "Men's Clothing",
+      "materials": [
+        "Polyester",
+        "Cotton"
+      ],
+      "aliases": [
+        "hawaiian shirt",
+        "aloha shirt",
+        "button up shirt"
+      ],
+      "personalization": [
+        "name",
+        "photo"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.43,
+      "margin_high": 0.55,
+      "base_cost_usd": 12.0,
+      "avg_sell_price_usd": 39.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "womens_clothing__dresses",
+      "product_type": "Dresses",
+      "category": "Women's Clothing",
+      "materials": [
+        "Polyester",
+        "Cotton"
+      ],
+      "aliases": [
+        "dress",
+        "summer dress",
+        "maxi dress"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 3,
+      "margin_low": 0.46,
+      "margin_high": 0.58,
+      "base_cost_usd": 12.0,
+      "avg_sell_price_usd": 42.9,
+      "capacity": "partner",
+      "official": true
+    },
+    {
+      "product_type": "Women's Tank-tops",
+      "category": "Women's Clothing",
+      "materials": [],
+      "aliases": [],
+      "personalization": [],
+      "production_difficulty": null,
+      "margin_low": null,
+      "margin_high": null,
+      "base_cost_usd": null,
+      "avg_sell_price_usd": null,
+      "capacity": null,
+      "_econ": "unknown",
+      "id": "womens_clothing__womens_tank_tops",
+      "official": true
+    },
+    {
+      "id": "womens_clothing__womens_sweatshirts",
+      "product_type": "Women's Sweatshirts",
+      "category": "Women's Clothing",
+      "materials": [
+        "Cotton",
+        "Polyester"
+      ],
+      "aliases": [
+        "womens sweatshirt",
+        "ladies crewneck"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.43,
+      "margin_high": 0.55,
+      "base_cost_usd": 9.0,
+      "avg_sell_price_usd": 32.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "womens_clothing__womens_hoodies",
+      "product_type": "Women's Hoodies",
+      "category": "Women's Clothing",
+      "materials": [
+        "Cotton",
+        "Polyester"
+      ],
+      "aliases": [
+        "womens hoodie",
+        "ladies hoodie"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.42,
+      "margin_high": 0.54,
+      "base_cost_usd": 11.0,
+      "avg_sell_price_usd": 36.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "product_type": "Women's Jackets & Coats",
+      "category": "Women's Clothing",
+      "materials": [],
+      "aliases": [],
+      "personalization": [],
+      "production_difficulty": null,
+      "margin_low": null,
+      "margin_high": null,
+      "base_cost_usd": null,
+      "avg_sell_price_usd": null,
+      "capacity": null,
+      "_econ": "unknown",
+      "id": "womens_clothing__womens_jackets_and_coats",
+      "official": true
+    },
+    {
+      "product_type": "Women's Bottoms",
+      "category": "Women's Clothing",
+      "materials": [],
+      "aliases": [],
+      "personalization": [],
+      "production_difficulty": null,
+      "margin_low": null,
+      "margin_high": null,
+      "base_cost_usd": null,
+      "avg_sell_price_usd": null,
+      "capacity": null,
+      "_econ": "unknown",
+      "id": "womens_clothing__womens_bottoms",
+      "official": true
+    },
+    {
+      "product_type": "Women's Long Sleeve T-shirts",
+      "category": "Women's Clothing",
+      "materials": [],
+      "aliases": [],
+      "personalization": [],
+      "production_difficulty": null,
+      "margin_low": null,
+      "margin_high": null,
+      "base_cost_usd": null,
+      "avg_sell_price_usd": null,
+      "capacity": null,
+      "_econ": "unknown",
+      "id": "womens_clothing__womens_long_sleeve_t_shirts",
+      "official": true
+    },
+    {
+      "id": "womens_clothing__womens_t_shirts",
+      "product_type": "Women's T-shirts",
+      "category": "Women's Clothing",
+      "materials": [
+        "Cotton"
+      ],
+      "aliases": [
+        "womens t-shirt",
+        "ladies tee",
+        "women tee",
+        "womens shirt"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 1,
+      "margin_low": 0.41,
+      "margin_high": 0.53,
+      "base_cost_usd": 5.0,
+      "avg_sell_price_usd": 21.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "product_type": "Women's Jersey",
+      "category": "Women's Clothing",
+      "materials": [],
+      "aliases": [],
+      "personalization": [],
+      "production_difficulty": null,
+      "margin_low": null,
+      "margin_high": null,
+      "base_cost_usd": null,
+      "avg_sell_price_usd": null,
+      "capacity": null,
+      "_econ": "unknown",
+      "id": "womens_clothing__womens_jersey",
+      "official": true
+    },
+    {
+      "id": "womens_clothing__swimwear",
+      "product_type": "Swimwear",
+      "category": "Women's Clothing",
+      "materials": [
+        "Polyester"
+      ],
+      "aliases": [
+        "swimsuit",
+        "bikini",
+        "bathing suit",
+        "swimwear"
+      ],
+      "personalization": [
+        "name"
+      ],
+      "production_difficulty": 3,
+      "margin_low": 0.43,
+      "margin_high": 0.55,
+      "base_cost_usd": 8.0,
+      "avg_sell_price_usd": 29.9,
+      "capacity": "partner",
+      "official": true
+    },
+    {
+      "id": "kids_clothing__baby_bodysuits",
+      "product_type": "Baby bodysuits",
+      "category": "Kid's Clothing",
+      "materials": [
+        "Cotton"
+      ],
+      "aliases": [
+        "baby bodysuit",
+        "onesie",
+        "baby romper",
+        "baby grow"
+      ],
+      "personalization": [
+        "name",
+        "text",
+        "date"
+      ],
+      "production_difficulty": 1,
+      "margin_low": 0.4,
+      "margin_high": 0.52,
+      "base_cost_usd": 4.0,
+      "avg_sell_price_usd": 18.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "kids_clothing__kids_t_shirts",
+      "product_type": "Kid's T-shirts",
+      "category": "Kid's Clothing",
+      "materials": [
+        "Cotton"
+      ],
+      "aliases": [
+        "kids t-shirt",
+        "kids tee",
+        "youth tee",
+        "toddler shirt"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 1,
+      "margin_low": 0.37,
+      "margin_high": 0.49,
+      "base_cost_usd": 4.0,
+      "avg_sell_price_usd": 17.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "id": "kids_clothing__kids_hoodies",
+      "product_type": "Kid's Hoodies",
+      "category": "Kid's Clothing",
+      "materials": [
+        "Cotton",
+        "Polyester"
+      ],
+      "aliases": [
+        "kids hoodie",
+        "youth hoodie",
+        "toddler hoodie"
+      ],
+      "personalization": [
+        "name",
+        "text"
+      ],
+      "production_difficulty": 2,
+      "margin_low": 0.39,
+      "margin_high": 0.51,
+      "base_cost_usd": 9.0,
+      "avg_sell_price_usd": 29.9,
+      "capacity": "in_house",
+      "official": true
+    },
+    {
+      "product_type": "Kid's Jackets & Coats",
+      "category": "Kid's Clothing",
+      "materials": [],
+      "aliases": [],
+      "personalization": [],
+      "production_difficulty": null,
+      "margin_low": null,
+      "margin_high": null,
+      "base_cost_usd": null,
+      "avg_sell_price_usd": null,
+      "capacity": null,
+      "_econ": "unknown",
+      "id": "kids_clothing__kids_jackets_and_coats",
+      "official": true
+    },
+    {
+      "product_type": "Kid's Sweatshirts",
+      "category": "Kid's Clothing",
+      "materials": [],
+      "aliases": [],
+      "personalization": [],
+      "production_difficulty": null,
+      "margin_low": null,
+      "margin_high": null,
+      "base_cost_usd": null,
+      "avg_sell_price_usd": null,
+      "capacity": null,
+      "_econ": "unknown",
+      "id": "kids_clothing__kids_sweatshirts",
+      "official": true
+    },
+    {
+      "product_type": "Jersey",
+      "category": "Kid's Clothing",
+      "materials": [],
+      "aliases": [],
+      "personalization": [],
+      "production_difficulty": null,
+      "margin_low": null,
+      "margin_high": null,
+      "base_cost_usd": null,
+      "avg_sell_price_usd": null,
+      "capacity": null,
+      "_econ": "unknown",
+      "id": "kids_clothing__jersey",
+      "official": true
+    },
+    {
+      "product_type": "Kid Hawaiian Shirt",
+      "category": "Kid's Clothing",
+      "materials": [],
+      "aliases": [],
+      "personalization": [],
+      "production_difficulty": null,
+      "margin_low": null,
+      "margin_high": null,
+      "base_cost_usd": null,
+      "avg_sell_price_usd": null,
+      "capacity": null,
+      "_econ": "unknown",
+      "id": "kids_clothing__kid_hawaiian_shirt",
+      "official": true
+    }
+  ],
+  "materials_extended": [
+    "Stainless Steel",
+    "Canvas",
+    "Cotton",
+    "Polyester",
+    "Fleece",
+    "Bamboo",
+    "Paper",
+    "Coir",
+    "Rubber",
+    "Fabric"
+  ],
+  "occasions_extended": [
+    "Valentine's Day",
+    "Christmas",
+    "Halloween",
+    "Thanksgiving",
+    "Birthday",
+    "Wedding",
+    "Anniversary",
+    "Baby Shower",
+    "Memorial"
+  ],
+  "niches": [
+    "New Arrivals",
+    "Best Sellers",
+    "Back to School",
+    "Wedding",
+    "Newborn & Baby",
+    "Retirement",
+    "Sympathy & Memorial Gifts",
+    "Book Lovers",
+    "Pet Lovers",
+    "Camping & Fishing",
+    "Bird Watching",
+    "Graduation",
+    "Halloween",
+    "Christmas Collection",
+    "Mother's Day",
+    "Father's Day",
+    "America 250"
+  ]
+}
