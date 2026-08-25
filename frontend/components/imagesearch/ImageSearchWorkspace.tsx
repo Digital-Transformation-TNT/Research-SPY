@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { browserPost } from '@/lib/api'
-import { shopeePrices, type VnPriceResult, type VnTerm } from '@/lib/imagesearch/vnprice'
+import {
+  shopeePrices,
+  type VnCodePrice,
+  type VnPriceResult,
+  type VnTerm,
+} from '@/lib/imagesearch/vnprice'
 import type {
   ImageMatch,
   ImageSearchResult,
@@ -182,45 +187,30 @@ function SortBar({
 }
 
 /**
- * MỐC GIÁ VIỆT NAM — con số các bảng nguồn đem ra so.
+ * GIÁ BÁN Ở VIỆT NAM, TRA THEO TỪNG MÃ.
  *
- * Một mốc cho cả trang, không phải một giá cho mỗi dòng, và đó là điều bản đầu tiên hiểu sai.
- * Một bảng chào hàng 1688 lấy về bằng ảnh KHÔNG phải hai bốn dòng của cùng một món: đếm trên
- * ảnh con chuột thì được 10 dòng chuột G304, 11 dòng model khác (G102, G305, T-WOLF) và 3
- * dòng miếng dán chuột. Dán một giá bán vào cả hai bốn dòng là gán giá con chuột cho miếng
- * dán — và vì miếng dán rẻ nhất nên nó cho ra con số TO NHẤT bảng, đúng thứ mắt nhìn vào
- * trước.
+ * Bản trước hiện BỘI SỐ so với một mốc giá duy nhất, và nó sai theo hai tầng. Tầng ngoài:
+ * một bảng 1688 lấy về bằng ảnh chứa nhiều model khác nhau (G304 lẫn G102), mà hai model ấy
+ * có hai mức giá khác hẳn ở Việt Nam — một mốc chung là gán giá model này cho model kia.
+ * Tầng trong, tệ hơn: chính cái mốc ấy cũng có thể neo nhầm vào một món rẻ tiền lọt lưới,
+ * và khi đó CẢ CỘT sai cùng lúc — đúng cảnh "×0,5" hiện trên mọi dòng G304.
  *
- * Nên thứ hiện ở cột phải là BỘI SỐ so với mốc, không phải "giá bán của dòng này".
+ * Nên giờ mỗi mã hỏi Shopee một lượt riêng, và mỗi dòng chỉ hiện giá CỦA MÃ NÓ MANG. Không
+ * còn phép nhân chia nào, không còn tỷ giá: một con số Shopee đang niêm yết, kèm đường dẫn
+ * để bấm vào kiểm.
+ *
+ * Mã không có mặt ở sàn Việt Nam thì cột để TRỐNG. Đó là trường hợp thường gặp nhất với hàng
+ * 1688 — mã xưởng thì người bán Việt không ai dùng — và im lặng mới là câu trả lời đúng.
  */
-type VnRef = {
-  /** Giá bán thấp nhất tìm được ở Việt Nam, đơn vị ₫. */
-  price: number
-  /** Mã đã dùng để tìm ra con số ấy. Rỗng khi tra bằng cụm chữ. */
-  code: string
-  term: string
-  /** Tỷ giá ¥ → ₫, đọc từ kết quả (gốc là `.env.local`). */
-  rate: number
-}
+type VnPriceMap = Record<string, VnCodePrice>
 
-/**
- * Bội số của một dòng so với mốc giá Việt Nam: bán ở VN gấp mấy lần giá nhập dòng này.
- *
- * `null` nghĩa là KHÔNG ĐƯỢC HIỆN SỐ, và có đúng hai trường hợp:
- *   - dòng là phụ kiện cho món khác (`isAccessory`) — bội số của nó vô nghĩa
- *   - dòng không có giá đọc được
- *
- * Quy đổi theo ký hiệu tiền của chính dòng đó chứ không theo tên bảng: `¥` thì nhân tỷ giá,
- * còn Alibaba.com và AliExpress vốn đã trả `₫` nên giữ nguyên. Đọc từ dữ liệu thay vì từ chỗ
- * gọi thì thêm một nguồn mới không phải sửa lại chỗ này.
- */
-function marginOf(row: ImageMatch, ref: VnRef): number | null {
-  if (row.isAccessory) return null
-  const value = row.priceValue
-  if (typeof value !== 'number' || value <= 0) return null
-  const vnd = priceUnit(row.price) === '¥' ? value * ref.rate : value
-  if (!vnd) return null
-  return ref.price / vnd
+/** Giá Việt Nam của dòng này: tìm mã đầu tiên trong tiêu đề mà bảng tra có số. */
+function vnPriceFor(row: ImageMatch, prices: VnPriceMap): VnCodePrice | null {
+  for (const code of row.titleCodes ?? []) {
+    const found = prices[code]
+    if (found && found.price !== null) return found
+  }
+  return null
 }
 
 /**
@@ -228,9 +218,9 @@ function marginOf(row: ImageMatch, ref: VnRef): number | null {
  * cái khác nhau chỉ là trường nào có mặt: 1688 có `sold`, Taobao có `note` ("300+人付款"),
  * Lens có `rating` và `inStock`. Nên hàng tự bày theo thứ nó cầm, không cần ba bản sao.
  */
-function Rows({ items, vnRef }: { items: ImageMatch[]; vnRef?: VnRef | null }) {
+function Rows({ items, vnPrices }: { items: ImageMatch[]; vnPrices?: VnPriceMap | null }) {
   return (
-      <div className="img-list" data-margin={!!vnRef}>
+      <div className="img-list" data-margin={!!vnPrices}>
         {items.map((item) => (
           <a
             className="img-row"
@@ -269,7 +259,7 @@ function Rows({ items, vnRef }: { items: ImageMatch[]; vnRef?: VnRef | null }) {
               {item.note && <span className="img-rating">{item.note}</span>}
               {item.inStock && <span className="img-stock">Còn hàng</span>}
             </span>
-            {vnRef && <MarginCell row={item} vnRef={vnRef} />}
+            {vnPrices && <VnCell row={item} prices={vnPrices} />}
           </a>
         ))}
       </div>
@@ -292,47 +282,87 @@ function codeHint(code: ProductCode): string {
 }
 
 /**
- * Ô bội số ở cột phải.
+ * Ô cột phải: giá đang bán ở Việt Nam của đúng model dòng này.
  *
- * BA TRẠNG THÁI, và cả ba đều phải nói ra được, vì im lặng ở đây đọc thành "không có lời".
+ * BA TRẠNG THÁI, và trạng thái thứ ba — TRỐNG — là trạng thái hay gặp nhất, nên nó phải là
+ * mặc định chứ không phải ngoại lệ:
  *
- *   phụ kiện       không có số — chỉ nhãn. Bội số của miếng dán so với giá con chuột là một
- *                  con số có thật về mặt số học và vô nghĩa về mặt buôn bán.
- *   model khác     có số, nhưng nhạt đi và kèm mã của chính dòng ấy ("G102"), để mắt biết
- *                  ngay đây không phải món đang tra.
- *   đúng model     số đậm. Đây là dòng trả lời câu hỏi.
- *
- * Bội số dưới 1 nghĩa là nhập vào còn đắt hơn bán ra — đổi màu đỏ, vì đó là câu trả lời quan
- * trọng nhất mà một bảng nguồn hàng có thể đưa ra, và nó dễ bị lướt qua nhất.
+ *   phụ kiện   nhãn nổi. Miếng dán "dùng cho chuột G304" mang mã G304 trong tiêu đề nhưng
+ *              nó không phải con chuột; dán giá con chuột lên đó là câu trả lời sai.
+ *   có giá     số Shopee đang niêm yết cho đúng mã ấy, bấm vào mở thẳng trang tìm.
+ *   trống      mã của dòng này không có ở sàn Việt Nam, hoặc dòng không có mã nào. Với hàng
+ *              1688 đây là chuyện thường: mã xưởng thì người bán Việt không ai dùng. Im lặng
+ *              là câu trả lời đúng — bịa ra một con số mới là hỏng.
  */
-function MarginCell({ row, vnRef }: { row: ImageMatch; vnRef: VnRef }) {
+function VnCell({ row, prices }: { row: ImageMatch; prices: VnPriceMap }) {
   if (row.isAccessory) {
     return (
-      <span className="img-margin" data-kind="accessory" title="Tiêu đề ghi “dùng cho…” — đây là phụ kiện cho món khác, không phải chính món đang tra. Bội số của nó không có nghĩa.">
+      <span
+        className="img-vn"
+        data-kind="accessory"
+        title="Tiêu đề ghi “dùng cho…” — đây là phụ kiện cho món khác, không phải chính món đang tra."
+      >
         phụ kiện
       </span>
     )
   }
 
-  const ratio = marginOf(row, vnRef)
-  if (ratio === null) return <span className="img-margin" data-kind="none" />
+  const found = vnPriceFor(row, prices)
+  if (!found || found.price === null) return <span className="img-vn" data-kind="none" />
 
-  // Dòng có mã riêng KHÁC mã đang tra thì đó là model khác — nói ra bằng chính mã của nó.
-  const own = (row.titleCodes ?? []).filter((code) => code !== vnRef.code)
-  const sameModel = !vnRef.code || (row.titleCodes ?? []).includes(vnRef.code)
-
+  // SPAN CHỨ KHÔNG PHẢI THẺ <a>: cả dòng `.img-row` vốn đã là một thẻ `<a>` trỏ sang 1688,
+  // và `<a>` lồng trong `<a>` là HTML sai — trình duyệt tự gỡ lồng, ra một cây DOM không ai
+  // đoán được. Chặn nổi bọt rồi tự mở tab thì vẫn bấm được mà cấu trúc vẫn đúng.
   return (
     <span
-      className="img-margin"
-      data-kind={ratio < 1 ? 'loss' : sameModel ? 'match' : 'other'}
-      title={
-        `Bán ở Việt Nam ${vnRef.price.toLocaleString('vi-VN')} ₫ ÷ giá dòng này` +
-        (priceUnit(row.price) === '¥' ? ` (¥1 ≈ ${vnRef.rate.toLocaleString('vi-VN')} ₫)` : '') +
-        (sameModel ? '' : ' — dòng này là model khác, so cho có ngữ cảnh thôi.')
-      }
+      className="img-vn"
+      data-kind="price"
+      role="link"
+      tabIndex={0}
+      onClick={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        window.open(found.url, '_blank', 'noopener')
+      }}
+      title={`Shopee: rẻ nhất ${found.price.toLocaleString('vi-VN')} ₫ trong ${found.hits} sản phẩm mang mã ${found.code}. Bấm để mở danh sách.`}
     >
-      <b>×{ratio.toLocaleString('vi-VN', { maximumFractionDigits: 1 })}</b>
-      {!sameModel && !!own.length && <small>{own[0]}</small>}
+      <b>{found.price.toLocaleString('vi-VN')} ₫</b>
+      <small>Shopee · {found.code}</small>
+    </span>
+  )
+}
+
+/**
+ * Câu chú giải cho cột phải, đặt ngay trên bảng.
+ *
+ * Nó tồn tại vì trạng thái hay gặp nhất của cột ấy là TRỐNG: bảng 1688 đầy mã xưởng, mà mã
+ * xưởng thì sàn Việt Nam không ai dùng. Một cột trống không lời giải đọc thành "công cụ
+ * hỏng"; nói thẳng "N612 · không có ở sàn Việt" thì nó thành một phát hiện — món này chưa ai
+ * bán ở Việt Nam dưới mã đó.
+ */
+function VnLegend({ items, prices }: { items: ImageMatch[]; prices: VnPriceMap }) {
+  const seen = new Set<string>()
+  for (const item of items) for (const code of item.titleCodes ?? []) seen.add(code)
+
+  const known = Object.values(prices).filter((entry) => seen.has(entry.code))
+  if (!known.length) return null
+
+  const co = known.filter((entry) => entry.price !== null)
+  const khong = known.filter((entry) => entry.price === null)
+
+  return (
+    <span className="img-ref">
+      Giá ở VN
+      {co.map((entry) => (
+        <b key={entry.code}>
+          {entry.code} {entry.price!.toLocaleString('vi-VN')} ₫
+        </b>
+      ))}
+      {!!khong.length && (
+        <small title="Hỏi Shopee rồi, không sản phẩm nào mang mã này — nhiều khả năng là mã xưởng, người bán Việt Nam tự đặt mã riêng.">
+          {khong.map((entry) => entry.code).join(', ')} · không có ở sàn Việt
+        </small>
+      )}
     </span>
   )
 }
@@ -340,11 +370,11 @@ function MarginCell({ row, vnRef }: { row: ImageMatch; vnRef: VnRef }) {
 function Section({
   title,
   items,
-  vnRef,
+  vnPrices,
 }: {
   title: string
   items: ImageMatch[]
-  vnRef?: VnRef | null
+  vnPrices?: VnPriceMap | null
 }) {
   const [sort, setSort] = useState<SortId>('default')
   if (!items.length) return null
@@ -352,23 +382,13 @@ function Section({
     <div className="panel">
       <h3 className="img-head">
         {title} <span className="img-count">{items.length}</span>
-        {/* MỐC GIÁ HIỆN NGAY TRÊN BẢNG, kèm cả tỷ giá. Cột phải chỉ là những con số nhân
-            chia từ hai giá trị này; giấu chúng đi thì "×3,9" không kiểm lại được, và một
-            con số không kiểm được là một con số phải tin bừa. */}
-        {vnRef && (
-          <span className="img-ref">
-            Bán ở VN <b>{vnRef.price.toLocaleString('vi-VN')} ₫</b>
-            <small>
-              {vnRef.term ? `“${vnRef.term}”` : ''}
-              {items.some((item) => priceUnit(item.price) === '¥')
-                ? ` · ¥1 ≈ ${vnRef.rate.toLocaleString('vi-VN')} ₫`
-                : ''}
-            </small>
-          </span>
-        )}
+        {/* Nói CỘT PHẢI LÀ GÌ, và nói ra cả những mã KHÔNG có ở Việt Nam. Cột trống chiếm
+            phần lớn bảng khi hàng là mã xưởng, và một cột trống không lời giải thích đọc
+            thành "công cụ hỏng" chứ không thành "sàn Việt Nam không có món này". */}
+        {vnPrices && <VnLegend items={items} prices={vnPrices} />}
         <SortBar items={items} value={sort} onChange={setSort} />
       </h3>
-      <Rows items={sortRows(items, sort)} vnRef={vnRef} />
+      <Rows items={sortRows(items, sort)} vnPrices={vnPrices} />
     </div>
   )
 }
@@ -441,82 +461,75 @@ function MarketSection({
 /**
  * BẢNG GIÁ ĐANG BÁN Ở VIỆT NAM — đầu kia của cả mục này.
  *
- * Bốn bảng nguồn Trung Quốc nói mua vào bao nhiêu; bảng này nói bán ra được bao nhiêu, và
- * khoảng giữa hai con số là toàn bộ phần biên còn lại. Đó là lý do nó đứng CUỐI: đọc từ trên
- * xuống là ra ngay câu trả lời.
+ * Bốn bảng nguồn Trung Quốc nói mua vào bao nhiêu; bảng này nói bán ra được bao nhiêu.
  *
- * PHẢI BẤM MỚI CHẠY, không tự chạy cùng lượt tìm ảnh. Nó mở tab Shopee trong trình duyệt của
- * người dùng và mất vài giây; làm ngầm mỗi lượt tìm là cướp trình duyệt của người ta cho một
- * câu hỏi họ chưa hỏi. Và nó chỉ có nghĩa khi đã biết tra bằng CỤM NÀO — mà cụm ấy lại đến từ
- * bảng mã ở trên, tức là sau lượt tìm ảnh.
+ * MỘT LƯỢT BẤM HỎI HẾT CÁC MÃ, không phải mỗi mã một lượt. Một tấm ảnh con chuột kéo về cả
+ * G304 lẫn G102, và ở Việt Nam hai mã ấy là hai mức giá khác hẳn nhau — người dùng cần cả
+ * hai để đọc bảng nguồn, chứ không phải bấm ba lần rồi tự nhớ. Hỏi xong thì cột phải của cả
+ * bốn bảng trên có số ngay.
  *
- * CHO CHỌN CỤM chứ không tự quyết: mã model cho kết quả sát nhất, nhưng nhiều món không có mã
- * và có món mã lại là mã xưởng (tra ra số không — đo 2026-08-19). Người dùng nhìn bảng mã ở
- * trên là biết nên thử cụm nào trước.
+ * VẪN PHẢI BẤM MỚI CHẠY. Mỗi mã là một lần mở tab Shopee trong trình duyệt của người dùng;
+ * làm ngầm sau mỗi lượt tìm ảnh là cướp trình duyệt của họ cho một câu hỏi chưa ai hỏi.
  */
 function VnPriceSection({
   terms,
-  rate,
-  onRef,
+  onPrices,
 }: {
   terms: VnTerm[]
-  rate: number
-  onRef: (ref: VnRef | null) => void
+  onPrices: (prices: VnPriceMap) => void
 }) {
-  const [picked, setPicked] = useState(0)
-  const [result, setResult] = useState<VnPriceResult | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [found, setFound] = useState<Record<string, VnPriceResult>>({})
+  const [picked, setPicked] = useState('')
+  const [loading, setLoading] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [sort, setSort] = useState<SortId>('price-asc')
 
-  const term = terms[picked]
-
   const run = useCallback(async () => {
-    if (!term) return
-    setLoading(true)
     setError(null)
-    setResult(null)
-    onRef(null)
+    setFound({})
+    onPrices({})
+    const ket: Record<string, VnPriceResult> = {}
+    const gia: VnPriceMap = {}
     try {
-      const found = await shopeePrices(term)
-      setResult(found)
-      // CHỈ BÁO LÊN KHI CÓ DÒNG THẬT SỰ KHỚP. Shopee luôn trả về một bảng đầy, nên một mốc
-      // dựng từ bảng không khớp sẽ đi thẳng vào cột bội số của cả bốn bảng nguồn — một con
-      // số sai nhân lên trăm chỗ.
-      const hit = found.rows
-        .filter((row) => row.codeHit && typeof row.priceValue === 'number')
-        .reduce<number | null>(
-          (low, row) => (low === null || row.priceValue! < low ? row.priceValue! : low),
-          null,
-        )
-      onRef(hit === null ? null : { price: hit, code: term.code, term: found.term, rate })
+      // TUẦN TỰ, không song song: ba tab Shopee bật cùng lúc là Shopee bắt đầu nghi bot —
+      // đã đo 2026-07-28, `captcha?scene=crawler_item`.
+      for (const term of terms) {
+        setLoading(term.query)
+        const one = await shopeePrices(term)
+        ket[term.query] = one
+        setFound({ ...ket })
+        if (!picked) setPicked(term.query)
+
+        if (term.code) {
+          const hits = one.rows.filter((row) => row.codeHit)
+          const low = hits.reduce<number | null>((best, row) => {
+            const value = row.priceValue
+            if (typeof value !== 'number') return best
+            return best === null || value < best ? value : best
+          }, null)
+          // GHI CẢ KHI KHÔNG CÓ GIÁ (`price: null`). Bỏ qua thì bảng trên không phân biệt
+          // được "chưa hỏi" với "hỏi rồi, sàn Việt không có" — mà hai câu ấy khác nhau hoàn
+          // toàn, và câu thứ hai mới là phát hiện.
+          gia[term.code] = {
+            code: term.code,
+            price: low,
+            hits: hits.length,
+            url: `https://shopee.vn/search?keyword=${encodeURIComponent(term.query)}&sortBy=price&order=asc`,
+          }
+          onPrices({ ...gia })
+        }
+      }
     } catch (e) {
       setError((e as Error).message)
     } finally {
-      setLoading(false)
+      setLoading('')
     }
-  }, [term, rate, onRef])
-
-  // ĐỔI CỤM LÀ XOÁ KẾT QUẢ CŨ. Không xoá thì chip sáng là cụm mới trong khi bảng bên dưới
-  // vẫn là kết quả của cụm cũ — người đọc không có cách nào biết mình đang nhìn cái nào.
-  const pick = useCallback(
-    (index: number) => {
-      setPicked(index)
-      setResult(null)
-      setError(null)
-      // Xoá luôn mốc ở các bảng trên: giữ lại thì cột bội số vẫn là của cụm cũ trong khi
-      // chip sáng đã là cụm mới.
-      onRef(null)
-    },
-    [onRef],
-  )
+  }, [terms, onPrices, picked])
 
   if (!terms.length) return null
 
-  const rows = result?.rows ?? []
-  // CHỈ DÒNG KHỚP mới được góp vào giá thấp nhất. Shopee không bao giờ trả bảng rỗng — tra
-  // một mã không ai dùng vẫn ra sáu chục món bán chạy khác hẳn — nên lấy min trên cả bảng là
-  // đọc giá của một món khác rồi gán cho món này.
+  const one = found[picked]
+  const rows = one?.rows ?? []
   const hits = rows.filter((row) => row.codeHit)
   const extras = rows.filter((row) => !row.codeHit)
   const cheapest = hits.reduce<number | null>((low, row) => {
@@ -524,6 +537,7 @@ function VnPriceSection({
     if (typeof value !== 'number') return low
     return low === null || value < low ? value : low
   }, null)
+  const daHoi = Object.keys(found).length
 
   return (
     <div className="panel">
@@ -533,82 +547,78 @@ function VnPriceSection({
       </h3>
 
       <div className="img-vn-run">
+        {/* Trước khi hỏi, chip chỉ là danh sách sắp hỏi. Sau khi hỏi, mỗi chip mang luôn câu
+            trả lời của nó — nên không phải bấm qua từng cái mới biết mã nào có hàng. */}
         <div className="chips">
-          {terms.map((option, index) => (
-            <button
-              type="button"
-              key={option.query}
-              className="chip"
-              data-on={picked === index}
-              onClick={() => pick(index)}
-            >
-              {option.query}
-            </button>
-          ))}
+          {terms.map((term) => {
+            const ket = found[term.query]
+            const co = ket ? ket.hits > 0 : null
+            return (
+              <button
+                type="button"
+                key={term.query}
+                className="chip"
+                data-on={picked === term.query}
+                disabled={!ket}
+                onClick={() => setPicked(term.query)}
+              >
+                {term.query}
+                {co === true && <b> ✓</b>}
+                {co === false && <b> ✕</b>}
+              </button>
+            )
+          })}
         </div>
-        <button className="btn" onClick={run} disabled={loading || !term}>
-          {loading ? 'Đang hỏi Shopee…' : 'Tra giá'}
+        <button className="btn" onClick={run} disabled={!!loading}>
+          {loading ? 'Đang hỏi Shopee…' : daHoi ? 'Tra lại' : 'Tra giá'}
         </button>
       </div>
 
-      {loading && (
+      {!!loading && (
         <p className="muted small">
           <span className="spinner" /> Extension đang mở tab Shopee bằng phiên đăng nhập của
-          bạn — khoảng 5 giây. Đừng đóng tab đó.
+          bạn — đang hỏi “{loading}”. Mỗi mã khoảng 5 giây, đừng đóng tab đó.
         </p>
       )}
 
       {error && <div className="notice bad">{error}</div>}
-      {result?.notice && <div className="notice warn">{result.notice}</div>}
+      {one?.notice && <div className="notice warn">{one.notice}</div>}
 
       {!!rows.length && !hits.length && (
-        /* KHÔNG IN GIÁ NÀO KHI KHÔNG CÓ DÒNG NÀO KHỚP, và nói thẳng bảng dưới là gì.
-           Shopee luôn trả về một bảng đầy: tra "PH16271" — mã xưởng không người bán Việt nào
-           dùng — vẫn ra dây sạc, đồ chơi lắp ráp, cáp Type-C. Bảng ấy vẫn hiện (biết đâu có
-           thứ đáng xem), nhưng nó không được đội lốt câu trả lời. */
+        /* KHÔNG IN GIÁ NÀO KHI KHÔNG DÒNG NÀO KHỚP, và nói thẳng bảng dưới là gì. Shopee
+           luôn trả về một bảng đầy: tra "PH16271" — mã xưởng không người bán Việt nào dùng —
+           vẫn ra dây sạc, đồ chơi lắp ráp, cáp Type-C. Bảng ấy vẫn hiện (biết đâu có thứ đáng
+           xem), nhưng nó không được đội lốt câu trả lời. */
         <div className="notice warn">
-          Shopee không có sản phẩm nào mang mã <b>{terms[picked]?.code || result?.term}</b>.
-          Bảng dưới là thứ Shopee tự gợi ý cho cụm này, KHÔNG phải món đang tra — nên không có
-          giá thấp nhất nào để nói.
-          {!!terms[picked]?.code && ' Mã này nhiều khả năng là mã xưởng: người bán Việt Nam ' +
-            'không dịch tiêu đề 1688, họ viết tiêu đề mới và tự đặt mã riêng. Thử cụm khác ở trên.'}
+          Shopee không có sản phẩm nào mang mã <b>{one?.term}</b>. Bảng dưới là thứ Shopee tự
+          gợi ý cho cụm này, KHÔNG phải món đang tra — nên không có giá thấp nhất nào để nói.
+          Mã này nhiều khả năng là mã xưởng: người bán Việt Nam không dịch tiêu đề 1688, họ
+          viết tiêu đề mới và tự đặt mã riêng.
         </div>
       )}
 
       {!!hits.length && (
-        <>
-          {/* Con số duy nhất người ta mở bảng này để tìm, nên nó to và đứng trước bảng. Kèm
-              cỡ mẫu vì "thấp nhất trong 12 món KHỚP" là một câu khác hẳn "thấp nhất toàn
-              Shopee" — bảng lấy theo sắp xếp Bán chạy, không quét hết sàn. */}
-          <p className="img-cheapest">
-            Thấp nhất <b>{hits.find((r) => r.priceValue === cheapest)?.price}</b>
-            <span className="muted small">
-              {' '}
-              trong {hits.length} sản phẩm khớp “{result?.term}”
-              {rows.length > hits.length && ` · ${rows.length - hits.length} món Shopee gợi ý thêm xếp bên dưới`}
-            </span>
-          </p>
-        </>
+        <p className="img-cheapest">
+          Thấp nhất <b>{hits.find((r) => r.priceValue === cheapest)?.price}</b>
+          <span className="muted small">
+            {' '}
+            trong {hits.length} sản phẩm khớp “{one?.term}”
+            {rows.length > hits.length &&
+              ` · ${rows.length - hits.length} món Shopee gợi ý thêm xếp bên dưới`}
+          </span>
+        </p>
       )}
 
       {!!hits.length && <Rows items={sortRows(hits, sort)} />}
 
       {/* HAI BẢNG TÁCH HẲN, không phải một bảng xếp hạng. Gộp chung thì bấm "Giá thấp" là
-          dòng gợi ý rẻ tiền nhảy lên đầu, nằm ngay dưới câu "Thấp nhất 415.000 đ" — hai con
-          số cạnh nhau, không con số nào giải thích được con số kia.
-
-          Vẫn hiện đủ chứ không vứt: đôi khi người bán viết mã sai chính tả, và đôi khi món
-          gợi ý mới đúng là món đáng xem. Nhưng chúng phải nằm dưới một cái nhãn nói rõ chúng
-          là gì. */}
+          món gợi ý rẻ tiền nhảy lên đầu, nằm ngay dưới câu "Thấp nhất 415.000 đ" — hai con
+          số cạnh nhau, không con số nào giải thích được con số kia. */}
       {!!extras.length && (
         <>
           <p className="img-extra-head">
             Shopee gợi ý thêm <span className="img-count">{extras.length}</span>
-            <span className="muted small">
-              {' '}
-              — không mang mã {terms[picked]?.code ? `“${terms[picked].code}”` : 'đang tra'}, nên
-              không tính vào giá thấp nhất
-            </span>
+            <span className="muted small"> — không mang mã đang tra, nên không tính vào giá thấp nhất</span>
           </p>
           <Rows items={sortRows(extras, sort)} />
         </>
@@ -643,13 +653,14 @@ export default function ImageSearchWorkspace() {
   const [multi, setMulti] = useState(false)
 
   /*
-   * MỐC GIÁ VIỆT NAM sống ở đây chứ không ở trong bảng tra giá, vì bốn bảng nguồn nằm TRÊN
-   * bảng ấy lại là nơi cần nó. Bấm "Tra giá" xong là cột bội số của cả bốn bảng có số.
+   * GIÁ VIỆT NAM THEO TỪNG MÃ sống ở đây chứ không ở trong bảng tra giá, vì bốn bảng nguồn
+   * nằm TRÊN bảng ấy lại là nơi cần nó. Bấm "Tra giá" một lượt là cột phải của cả bốn bảng
+   * có số, mỗi dòng hiện giá của đúng mã nó mang.
    *
-   * `null` là trạng thái mặc định và cũng là trạng thái sau mỗi lượt tìm ảnh mới: mốc cũ
-   * thuộc về tấm ảnh cũ, để lại thì cột bội số nói về một sản phẩm khác.
+   * Rỗng là trạng thái mặc định và cũng là trạng thái sau mỗi lượt tìm ảnh mới: giá cũ thuộc
+   * về tấm ảnh cũ, để lại thì cột phải nói về một sản phẩm khác.
    */
-  const [vnRef, setVnRef] = useState<VnRef | null>(null)
+  const [vnPrices, setVnPrices] = useState<Record<string, VnCodePrice>>({})
 
   /*
    * ĐỌC KHI ĐÃ GẮN VÀO TRANG, không đọc trong hàm khởi tạo state. Trang này được dựng sẵn ở
@@ -728,7 +739,7 @@ export default function ImageSearchWorkspace() {
     setPreview(URL.createObjectURL(incoming))
     setResult(null)
     setError(null)
-    setVnRef(null)
+    setVnPrices({})
   }, [])
 
   const run = useCallback(async () => {
@@ -799,6 +810,8 @@ export default function ImageSearchWorkspace() {
    * Cụm chữ không mã đứng cuối, cho những món vốn không có mã nào — với chúng thì cụm chữ là
    * đường duy nhất, và lúc ấy `rowMatches` rơi về `phraseHit` mà backend đã chấm.
    */
+  const daTra = Object.keys(vnPrices).length ? vnPrices : null
+
   const product = identity?.product ?? ''
   const vnTerms = [
     ...codes.slice(0, 3).map((entry) => ({
@@ -1033,21 +1046,20 @@ export default function ImageSearchWorkspace() {
 
           Cố ý KHÔNG trộn vào một bảng — ¥29 của xưởng, ¥145 của shop Taobao và 989.000đ của
           Shopee đặt cạnh nhau sẽ trông như so sánh trực tiếp được. */}
-      <Section title="Nguồn hàng 1688" items={sourcing} vnRef={vnRef} />
-      <Section title="Bán buôn quốc tế · Alibaba.com" items={globalSourcing} vnRef={vnRef} />
-      <Section title="Bán lẻ ở Trung Quốc" items={chinaRetail} vnRef={vnRef} />
-      <Section title="Khách tự đặt về · AliExpress" items={globalRetail} vnRef={vnRef} />
+      {/* `vnPrices` rỗng thì KHÔNG truyền xuống — cột phải chưa mọc ra. Truyền một bảng
+          rỗng vào thì bảng có thêm một cột trống trơn từ trước khi ai bấm tra giá, và một
+          cột trống không lời giải đọc thành lỗi vẽ. */}
+      <Section title="Nguồn hàng 1688" items={sourcing} vnPrices={daTra} />
+      <Section title="Bán buôn quốc tế · Alibaba.com" items={globalSourcing} vnPrices={daTra} />
+      <Section title="Bán lẻ ở Trung Quốc" items={chinaRetail} vnPrices={daTra} />
+      <Section title="Khách tự đặt về · AliExpress" items={globalRetail} vnPrices={daTra} />
       <MarketSection title="Nơi đang bán" items={matches} platforms={platforms} />
       {/* ĐỨNG CUỐI vì nó là mắt xích cuối của chuỗi ra quyết định ở trên: giá bán thật tại
           chợ đích. Bảng "Nơi đang bán" của Lens nói AI đang bán, bảng này nói BAO NHIÊU —
           hai câu khác nhau, và Lens gần như không trả lời được câu thứ hai (đo được 2/24
           thẻ có giá). */}
       {!!result && (
-        <VnPriceSection
-          terms={vnTerms}
-          rate={result.cnyVndRate || 0}
-          onRef={setVnRef}
-        />
+        <VnPriceSection terms={vnTerms} onPrices={setVnPrices} />
       )}
     </div>
   )

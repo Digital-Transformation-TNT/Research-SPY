@@ -47,6 +47,24 @@ export type VnRow = ImageMatch & {
   codeHit?: boolean
 }
 
+/**
+ * Giá bán ở Việt Nam của MỘT mã, sau khi đã hỏi Shopee.
+ *
+ * `price === null` KHÔNG phải lỗi mà là một câu trả lời có thật, và là câu hay gặp nhất với
+ * hàng lấy từ 1688: mã ấy là mã xưởng, sàn Việt Nam không ai dùng, nên không có gì để báo
+ * giá. Lúc đó giao diện phải im lặng chứ không được bịa ra một con số — đúng cái đã đo
+ * 2026-08-19 với `T15S` và `N612`.
+ */
+export type VnCodePrice = {
+  code: string
+  /** Giá thấp nhất trong các dòng THẬT SỰ mang mã này. `null` = sàn Việt Nam không có. */
+  price: number | null
+  /** Số dòng mang mã. 0 nghĩa là Shopee có trả bảng nhưng không dòng nào là món này. */
+  hits: number
+  /** Link mở Shopee đúng cụm đã tra, để người dùng tự kiểm. */
+  url: string
+}
+
 export type VnPriceResult = {
   /** Cụm đã dùng để tra. Hiện ra cho người dùng, vì nó quyết định kết quả nhiều hơn mọi thứ khác. */
   term: string

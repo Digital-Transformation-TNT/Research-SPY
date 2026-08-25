@@ -52,8 +52,6 @@ from .identify import identify
 from .lens import LensUnavailable, MAX_MATCHES, fetch_cards, parse_card
 from .taobao import TaobaoUnavailable, fetch_items
 from .platform import label_platforms, tally
-from lib.core.config import env_number
-
 from .types import ImageIdentity, ImageMatch, ImageSearchResult
 
 #: Nội dung một tấm ảnh không đổi, nên bản đọc của nó cũng vậy. Để rất lâu.
@@ -80,13 +78,6 @@ SOURCING_TTL_MS = 7 * 24 * 60 * 60 * 1000
 #: cửa sổ trình duyệt. Với nguồn khan hiếm nhất của cả hệ thống thì đó là lãng phí có thật.
 SOURCES = ("1688", "alibaba", "aliexpress", "taobao", "lens")
 
-#: Tỷ giá ¥ → ₫ mặc định, đổi được bằng `CNY_VND_RATE` trong `.env.local`.
-#:
-#: Là một SỐ CỐ ĐỊNH chứ không gọi API tỷ giá, và đó là lựa chọn có chủ ý: thêm một nguồn
-#: mạng nữa là thêm một thứ có thể chết, mà khi nó chết thì mọi bội số trên trang sai cùng
-#: lúc và không ai nhận ra. Con số này hiện thẳng lên giao diện nên người đọc luôn biết mình
-#: đang nhìn một giả định, và sửa nó mất đúng một dòng.
-DEFAULT_CNY_VND = 3700.0
 
 #: Chỉ nguồn RẺ được bật sẵn. Hai nguồn kia phải người dùng tự bật — mặc định bật một thứ có
 #: hạn mức là cách chắc chắn để tiêu hết hạn mức vào những lượt không ai cần tới nó.
@@ -350,7 +341,6 @@ async def search_by_image(
 
     return ImageSearchResult(
         country=country,
-        cny_vnd_rate=env_number("CNY_VND_RATE", DEFAULT_CNY_VND),
         identity=found_identity,
         matches=matches,
         platforms=tally(matches),
