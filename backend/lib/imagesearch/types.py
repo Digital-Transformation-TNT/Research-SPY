@@ -180,13 +180,6 @@ class ImageSearchResult(CamelModel):
     """
 
     country: str
-    #: Tỷ giá ¥ → ₫ để giao diện quy đổi giá 1688/Taobao khi so với giá bán ở Việt Nam.
-    #:
-    #: Đi kèm KẾT QUẢ chứ không nằm ở một endpoint cấu hình riêng, vì nó chỉ có nghĩa đúng
-    #: lúc có bảng để quy đổi — và vì giao diện phải hiện con số ấy ra cho người dùng thấy.
-    #: Một tỷ giá chết ngầm trong mã là cách chắc chắn để mọi bội số sai cùng lúc mà không ai
-    #: hay; hiện nó lên thì người đọc tự biết đây là giả định và sửa được ở `.env.local`.
-    cny_vnd_rate: float = 0.0
     identity: ImageIdentity | None = None
     matches: list[ImageMatch] = []
     #: Chào hàng 1688. Rỗng khi nguồn hỏng — không bao giờ là lý do để cả lượt tìm thất bại.

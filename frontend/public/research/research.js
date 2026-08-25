@@ -237,10 +237,19 @@ const PRICE_SCALE = 100000;
 
 // Cấu hình sàn: active = đã có adapter; regions = mảng nước (có region), [] = nội địa/toàn cầu
 // (không chọn region), 'any' = lọc mọi nước (Facebook). Region động theo sàn đang chọn.
+//
+// THỨ TỰ NƯỚC LÀ CÓ CHỦ Ý: Việt Nam trước, rồi Philippines, rồi phần còn lại. Đây là hai thị
+// trường đang làm thật, và thứ tự này không chỉ để đỡ phải tìm — nước ĐẦU TIÊN chính là nước
+// được chọn sẵn khi bấm vào một sàn lần đầu (xem chỗ chọn sàn ở `renderPlatforms`). Đảo thứ
+// tự là đảo luôn mặc định, nên đừng sắp lại theo bảng chữ cái cho "gọn".
 const PLATFORMS = {
-  shopee: { label: 'Shopee', active: true, regions: ['VN', 'TH', 'ID', 'MY', 'PH', 'SG', 'TW', 'BR', 'MX', 'CO', 'CL'] },
-  tiktok: { label: 'TikTok Shop', active: true, regions: ['PH', 'VN', 'TH', 'ID', 'MY', 'SG', 'US', 'GB'] },
-  facebook: { label: 'Facebook Ads', active: true, backend: true, content: true, regions: ['US', 'GB', 'DE', 'FR', 'BR', 'VN'] },
+  shopee: { label: 'Shopee', active: true, regions: ['VN', 'PH', 'TH', 'ID', 'MY', 'SG', 'TW', 'BR', 'MX', 'CO', 'CL'] },
+  tiktok: { label: 'TikTok Shop', active: true, regions: ['VN', 'PH', 'TH', 'ID', 'MY', 'SG', 'US', 'GB'] },
+  // Facebook nằm CHUNG hàng chọn sàn như mọi nguồn khác. Trước đây nó bị tách ra một tab
+  // riêng ("Content (FB Ads)") vì dữ liệu khác hẳn — quảng cáo đang chạy, không có giá,
+  // không có lượt bán. Nhưng `fetchBackend` vốn đã chuẩn hoá nó về đúng hình dạng sản phẩm
+  // và backend đã tự chấm điểm theo đời quảng cáo, nên nó chạy được ngay trong bảng chung.
+  facebook: { label: 'Facebook', active: true, backend: true, regions: ['VN', 'US', 'GB', 'DE', 'FR', 'BR'] },
   amazon: { label: 'Amazon', active: true, regions: ['US', 'GB', 'DE', 'JP', 'FR', 'IT', 'ES', 'CA'] },
   etsy: { label: 'Etsy', active: true, backend: true, regions: [] },
   taobao: { label: 'Taobao', active: true, experimental: true, regions: [] },
@@ -265,7 +274,7 @@ function curOf(p) { return p.currency || CURRENCY[p.region] || 'VND'; }
 function regionPlatforms() {
   return [...selectedPlatforms].filter((p) => {
     const cfg = PLATFORMS[p];
-    return cfg && !cfg.content && Array.isArray(cfg.regions) && cfg.regions.length;
+    return cfg && Array.isArray(cfg.regions) && cfg.regions.length;
   });
 }
 
@@ -274,7 +283,6 @@ function renderPlatforms() {
   if (!box) return;
   box.innerHTML = '';
   for (const [id, cfg] of Object.entries(PLATFORMS)) {
-    if (cfg.content) continue; // sàn content (FB) nằm ở tab Content, không hiện ở tab Sản phẩm
     const rg = cfg.regions === 'any' ? 'mọi nước' : (cfg.regions.length ? `${cfg.regions.length} nước` : 'nội địa/không region');
     const chip = document.createElement('button');
     chip.className = 'rgchip' + (cfg.active ? '' : ' dim');
@@ -880,11 +888,19 @@ async function research() {
   renderRegions();
 
   if (!all.length) {
+    // Câu cuối cùng phải nói về ĐÚNG những sàn vừa chạy. Bản trước ghi cứng "Shopee: kiểm tra
+    // đăng nhập; Amazon: có thể bị chặn" cho mọi trường hợp — chạy mỗi Facebook cũng hiện y
+    // như vậy, tức là chỉ người dùng đi sửa hai thứ không liên quan gì tới lượt tìm của họ.
+    const daChay = [...new Set(jobs.map((j) => j.pf))];
+    const ten = daChay.map((pf) => (PLATFORMS[pf] && PLATFORMS[pf].label) || pf).join(', ');
+    const goiY = [];
+    if (daChay.some((pf) => LOGIN[pf])) goiY.push('sàn cần đăng nhập thì kiểm lại phiên');
+    if (daChay.includes('amazon')) goiY.push('Amazon có thể đang bị chặn tạm/captcha');
     const msg = backendDown
       ? 'Không gọi được backend — Etsy/Facebook cần nó. Kiểm cửa sổ backend còn chạy không, rồi tải lại trang.'
       : notices.length
         ? notices.join(' · ') // hiện lý do thật từ backend (vd Etsy chưa có key)
-        : 'Không có kết quả — Shopee: kiểm tra đăng nhập; Amazon: có thể bị chặn tạm/captcha.';
+        : `Không có kết quả từ ${ten}${goiY.length ? ' — ' + goiY.join('; ') : ''}.`;
     setStatus(msg, 'err');
     $('table').style.display = 'none';
     return;
@@ -1129,150 +1145,6 @@ if (_kw) $('kw').value = _kw;
 refreshLogin(); // KHÔNG tự research — chờ user bấm
 
 // ===== TAB CONTENT (Facebook Ads) + TAB TÌM BẰNG ẢNH =====
-// Thanh nav 3 tab đã bỏ (Sản phẩm & Content gộp về 1 tab Sản phẩm). showTab giữ lại để mã cũ
-// không vỡ; chỉ đổi display của các div (button đã không còn — không toggle class 'on' nữa).
-function showTab(which) {
-  $('tabProduct').style.display = which === 'product' ? '' : 'none';
-  $('tabContent').style.display = which === 'content' ? '' : 'none';
-  $('tabImage').style.display = which === 'image' ? '' : 'none';
-  if (which === 'image') updateISel();
-}
-function setCStatus(msg, kind) { $('cstatusText').textContent = msg; $('cstatus').className = 'status' + (kind ? ' ' + kind : ''); }
-
-function renderContent(list) {
-  const grid = $('contentGrid');
-  grid.innerHTML = '';
-  for (const p of list) {
-    const days = p.daysActive != null ? `<span>${p.daysActive} ngày chạy</span>` : '';
-    const sc = p.score ? `<span class="cscore">${p.score.total}đ</span>` : '';
-    const el = document.createElement('div');
-    el.className = 'ccard';
-    el.innerHTML =
-      `<div class="media">${p.image ? `<img src="${p.image}" loading="lazy" alt="">` : ''}</div>` +
-      `<div class="cbody">` +
-      `<div class="cadv">${esc(p.shop || '—')}</div>` +
-      `<div class="ccopy">${esc(p.name || '')}</div>` +
-      `<div class="cmeta">${sc}${days}</div>` +
-      `<a class="clink" href="${esc(p.link)}" target="_blank" rel="noreferrer">Xem quảng cáo ↗</a>` +
-      `</div>`;
-    grid.appendChild(el);
-  }
-}
-
-async function contentResearch() {
-  const kw = $('ckw').value.trim();
-  const region = $('cregion').value;
-  const count = Number($('ccount').value);
-  if (!kw) { setCStatus('Nhập keyword.', 'err'); return; }
-  $('cgo').disabled = true;
-  setCStatus(`Đang tìm content quảng cáo cho "${kw}" (${region})… (FB lần đầu chậm)`);
-  const r = await fetchBackend('facebook', kw, region, count);
-  $('cgo').disabled = false;
-  if (r.backendDown) { setCStatus('Không gọi được backend — kiểm cửa sổ backend còn chạy không, rồi tải lại trang.', 'err'); $('contentGrid').innerHTML = ''; return; }
-  if (!r.products.length) { setCStatus(r.notice || 'Không có quảng cáo nào khớp từ khoá.', 'err'); $('contentGrid').innerHTML = ''; return; }
-  const list = r.products.slice().sort((a, b) => ((b.score && b.score.total) || 0) - ((a.score && a.score.total) || 0));
-  setCStatus(`${list.length} quảng cáo · Facebook ${region}${r.notice ? ' · ' + r.notice : ''}`, 'ok');
-  renderContent(list);
-}
-
-$('cgo').addEventListener('click', contentResearch);
-$('ckw').addEventListener('keydown', (e) => { if (e.key === 'Enter') contentResearch(); });
-
-// ===== TAB TÌM BẰNG ẢNH — tìm cùng sản phẩm trên các sàn, xếp theo giá rẻ nhất =====
-let imgData = null; // dataURL ảnh đã chọn (để gửi lên adapter khi wire)
-let irows = [];
-function setIStatus(msg, kind) { $('istatusText').textContent = msg; $('istatus').className = 'status' + (kind ? ' ' + kind : ''); }
-function updateISel() {
-  const pfs = [...selectedPlatforms].filter((p) => PLATFORMS[p]?.active).map((p) => PLATFORMS[p].label);
-  const regs = [...new Set([...selectedRegions].map((k) => k.split(':')[1]))];
-  $('iselSummary').textContent = `Sàn: ${pfs.join(', ') || '—'} · Region: ${regs.join(', ') || '—'}`;
-}
-function setImg(blob) {
-  const rd = new FileReader();
-  rd.onload = () => {
-    imgData = rd.result;
-    $('imgPreview').src = imgData; $('imgPreview').style.display = '';
-    $('imgClear').style.display = ''; $('imgDrop').textContent = 'Đã chọn ảnh — bấm để đổi ảnh khác';
-  };
-  rd.readAsDataURL(blob);
-}
-
-// Dispatcher image-search theo sàn. CHƯA WIRE: mỗi sàn cần bắt API upload+search-by-image riêng
-// (Shopee: Cách A in-tab; 1688/Taobao: login/TMAPI) hoặc dùng Google Lens/SerpApi (backend, mọi web).
-async function imageSearchFor(pf, region, img) {
-  const label = `${PLATFORMS[pf]?.label || pf}${region && region !== '_' ? ' ' + region : ''}`;
-  return { products: [], notice: `${label}: image search chưa wire` };
-}
-
-async function imageResearch() {
-  if (!imgData) { setIStatus('Chọn hoặc dán 1 ảnh sản phẩm trước.', 'err'); return; }
-  const activePf = [...selectedPlatforms].filter((p) => PLATFORMS[p]?.active);
-  if (!activePf.length) { setIStatus('Chọn ít nhất 1 sàn ở tab Sản phẩm.', 'err'); return; }
-  const jobs = [];
-  for (const pf of activePf) {
-    const cfg = PLATFORMS[pf];
-    const hasReg = Array.isArray(cfg.regions) && cfg.regions.length;
-    const pfRegions = hasReg ? cfg.regions.filter((c) => selectedRegions.has(`${pf}:${c}`)) : ['_'];
-    for (const region of pfRegions) jobs.push({ pf, region });
-  }
-  if (!jobs.length) { setIStatus('Không có (sàn × region) hợp lệ.', 'err'); return; }
-
-  $('imgGo').disabled = true;
-  setIStatus(`Đang tìm nguồn theo ảnh (${jobs.length} sàn × region)…`);
-  const all = [];
-  const notices = [];
-  for (const j of jobs) {
-    const r = await imageSearchFor(j.pf, j.region, imgData);
-    if (r.notice) notices.push(r.notice);
-    for (const p of (r.products || [])) { if (!p.score) p.score = score(p); all.push(p); }
-  }
-  $('imgGo').disabled = false;
-
-  irows = all.sort((a, b) => (a.price == null ? Infinity : a.price) - (b.price == null ? Infinity : b.price)); // rẻ nhất lên đầu
-  renderImage();
-  const note = notices.length ? ' · ' + [...new Set(notices)].join(' · ') : '';
-  setIStatus(all.length ? `${all.length} nguồn · xếp theo giá rẻ nhất${note}` : (notices.join(' · ') || 'Chưa có nguồn nào.'), all.length ? 'ok' : 'err');
-}
-
-function renderImage() {
-  $('irows').innerHTML = irows.map((p, i) =>
-    `<tr>` +
-    `<td class="num rank">${i + 1}</td>` +
-    `<td><div class="prod"><img class="thumb" src="${p.image}" data-full="${p.image}" loading="lazy" alt="" />` +
-    `<div><a class="name" href="${p.link}" target="_blank" rel="noreferrer">${esc(p.name)}</a>` +
-    `<div class="shop">${esc(p.shop)}</div></div></div></td>` +
-    `<td><span class="pill">${esc(p.platform)} ${FLAG[p.region] || ''}${p.region ? ' ' + esc(p.region) : ''}</span></td>` +
-    `<td class="num"><span class="price">${fmtPrice(p.price, curOf(p))}</span></td>` +
-    `<td><button class="sim" data-url="${esc(p.link)}">↗ Mở</button></td>` +
-    `</tr>`
-  ).join('');
-  $('itable').style.display = irows.length ? 'table' : 'none';
-}
-
-$('imgDrop').addEventListener('click', () => $('imgFile').click());
-$('imgFile').addEventListener('change', (e) => { const f = e.target.files[0]; if (f) setImg(f); });
-$('imgDrop').addEventListener('dragover', (e) => { e.preventDefault(); $('imgDrop').classList.add('drag'); });
-$('imgDrop').addEventListener('dragleave', () => $('imgDrop').classList.remove('drag'));
-$('imgDrop').addEventListener('drop', (e) => {
-  e.preventDefault(); $('imgDrop').classList.remove('drag');
-  const f = e.dataTransfer.files[0]; if (f && f.type.startsWith('image/')) setImg(f);
-});
-window.addEventListener('paste', (e) => {
-  if ($('tabImage').style.display === 'none') return; // chỉ nhận dán khi đang ở tab ảnh
-  for (const it of (e.clipboardData ? e.clipboardData.items : [])) {
-    if (it.type.startsWith('image/')) { setImg(it.getAsFile()); break; }
-  }
-});
-$('imgClear').addEventListener('click', () => {
-  imgData = null; $('imgPreview').style.display = 'none'; $('imgClear').style.display = 'none';
-  $('imgDrop').textContent = 'Kéo-thả ảnh vào đây · hoặc dán (Ctrl+V) · hoặc bấm chọn file';
-});
-$('irows').addEventListener('click', (e) => {
-  const b = e.target.closest('button.sim'); if (b && b.dataset.url) chrome.tabs.create({ url: b.dataset.url });
-});
-$('imgGo').addEventListener('click', imageResearch);
-$('iGoProduct').addEventListener('click', () => showTab('product'));
-
 // ===== MODAL VIDEO — "video quảng cáo khớp ẢNH sản phẩm" cho một dòng ở tab Sản phẩm =====
 // Gọi backend /api/ads/match-image: seed keyword (tên SP) lấy ứng viên Facebook/TikTok, rồi backend
 // so pHash poster video với ẢNH sản phẩm, chỉ trả video TRÙNG ảnh. Cần backend chạy.
@@ -1281,7 +1153,18 @@ let vidState = null; // { p, usedKw, fbAds, marketAds } — giữ FB/Sàn để 
 
 function proxyMedia(url) { return url ? `${BACKEND}/api/media?url=${encodeURIComponent(url)}` : ''; }
 function setVidStatus(msg, kind) { $('vidStatusText').textContent = msg; $('vidStatus').className = 'status' + (kind ? ' ' + kind : ''); }
-function closeVideoModal() { $('vidModal').classList.remove('on'); $('vidGrid').innerHTML = ''; vidState = null; }
+// Đóng cửa sổ là dọn SẠCH: lưới, hàng lọc, danh sách trong bộ nhớ, và cả lớp phủ phát nếu
+// đang mở. Bỏ sót cái nào thì lần mở sau sẽ thấy thoáng qua kết quả của sản phẩm trước.
+function closeVideoModal() {
+  closeTkPlayer();
+  $('vidModal').classList.remove('on');
+  $('vidGrid').innerHTML = '';
+  $('vidFilter').innerHTML = '';
+  vidAll = [];
+  vidShown = [];
+  vidPick = 'all';
+  vidState = null;
+}
 
 async function openVideoModal(p) {
   const my = ++vidToken;
@@ -1339,6 +1222,16 @@ async function openVideoModal(p) {
   // Lưu FB + Sàn + region GỐC (của SP) để đổi NƯỚC TikTok chỉ tải lại phần TikTok. `homeRegion`
   // dùng để quyết định mode: chọn khác nước SP → auto hashtag-only (đỡ cá nhân hoá theo account/IP).
   vidState = { p, usedKw, fbAds, marketAds, homeRegion: region };
+
+  // VẼ NGAY PHẦN ĐÃ CÓ, đừng chờ TikTok.
+  //
+  // Facebook về sau vài giây; TikTok thì phải mở tab, gõ chữ, cuộn — hàng chục giây, và còn
+  // một lượt lấy thống kê nữa phía sau. Chờ đủ cả hai rồi mới vẽ nghĩa là người dùng nhìn màn
+  // hình trống suốt quãng ấy, trong khi thứ họ hỏi ("có ai đang chạy quảng cáo món này không")
+  // thì Facebook đã trả lời xong rồi.
+  renderVideos(fbAds.concat(marketAds));
+  setVidStatus(`Facebook ${fbAds.length} · Sàn ${marketAds.length} — đang lấy TikTok…`);
+
   await loadModalTiktok(region);
 }
 
@@ -1402,6 +1295,7 @@ async function loadModalTiktok(region) {
     permalink: it.videoUrl, langMatch: it.langMatch || 'neutral', regionTag: region,
     likeCount: it.likeCount || null,
     commentCount: it.commentCount || null,
+    playCount: it.playCount || null,
     startedAt: it.createdAt || null,
     creatives: [{ kind: 'video', posterUrl: it.image || '' }],
   }));
@@ -1434,76 +1328,295 @@ async function loadModalTiktok(region) {
   const ccBreak = ccAds.length ? ` · CC ${flag}${ccAds.length}` : '';
   setVidStatus(`${all.length} video · "${usedKw}" · TikTok ${flag}${country} ${tkItems.length} · ${tkMode || modeLabel}${langBreak}${ccBreak} · FB ${st.fbAds.length} · Sàn ${st.marketAds.length}${tkNote}`, 'ok');
   renderVideos(all);
+  // Vẽ xong rồi mới đi lấy tim/bình luận/lượt xem — xem ghi chú ở `fillTiktokStats`. Không
+  // `await`: lưới đã dùng được ngay, số điền vào sau.
+  void fillTiktokStats(all, my);
+}
+
+/**
+ * Bổ sung tim / bình luận / chia sẻ / LƯỢT XEM cho các thẻ TikTok.
+ *
+ * ĐI QUA BACKEND, KHÔNG QUA EXTENSION. Backend đọc trang nhúng của chính TikTok bằng Chrome
+ * thật — không cần đăng nhập, không cần extension, và cache sáu giờ theo từng video nên lượt
+ * sau gần như tức thì (đo: 3 video mất 7,8 giây lần đầu, 1,8 giây lần sau).
+ *
+ * Bản trước giao việc này cho extension. Nó chạy được về lý thuyết nhưng KHÔNG kiểm được bằng
+ * máy — Chrome 151 bỏ `--load-extension` — nên mỗi lần hỏng chỉ còn cách đoán. Đường qua
+ * backend thì đo được từ đầu đến cuối, và đó là lý do đổi.
+ *
+ * Chạy SAU khi đã vẽ lưới và vẽ lại khi có số: người dùng thấy video ngay, số điền vào sau.
+ */
+async function fillTiktokStats(ads, token) {
+  // `== null` chứ không `!a.likeCount`: video có ĐÚNG 0 tim là một phép đo hợp lệ, dùng
+  // `!` thì nó rơi vào nhánh "chưa có" và bị đi hỏi lại ở mọi lượt vẽ.
+  const ids = ads.filter((a) => a.platform === 'tiktok' && a.id && a.likeCount == null).map((a) => a.id);
+  if (!ids.length) return;
+  let data;
+  try {
+    const r = await fetch(`${BACKEND}/api/ads/tiktok-stats?ids=${encodeURIComponent(ids.join(','))}`);
+    data = await r.json();
+    if (!r.ok) throw new Error((data && data.error) || `HTTP ${r.status}`);
+  } catch (e) {
+    // Không có số thì thôi, nhưng NÓI RA. Một hàng thống kê trống mà không lời giải đọc thành
+    // "video này không ai xem" — sai, và sai theo hướng làm người dùng bỏ qua video tốt.
+    if (token === vidToken) setVidStatus($('vidStatusText').textContent + ' · chưa lấy được lượt tim (backend không trả lời)', 'err');
+    return;
+  }
+  if (token !== vidToken) return; // lượt tìm khác đã chen vào — bỏ kết quả cũ
+
+  let co = 0;
+  for (const ad of ads) {
+    const st = data.stats && data.stats[ad.id];
+    if (!st) continue;
+    co++;
+    ad.likeCount = st.likeCount ?? ad.likeCount;
+    ad.commentCount = st.commentCount ?? ad.commentCount;
+    ad.shareCount = st.shareCount ?? ad.shareCount;
+    ad.playCount = st.playCount ?? ad.playCount;
+    ad.startedAt = ad.startedAt || st.createdAt || null;
+  }
+  if (co) renderVideos(ads);
+  if (co < ids.length) {
+    // Nói rõ thiếu bao nhiêu. Video riêng tư hoặc đã xoá thì đọc không ra, và đó là chuyện
+    // bình thường — nhưng im lặng thì người dùng tưởng công cụ hỏng.
+    setVidStatus(`${$('vidStatusText').textContent} · thống kê ${co}/${ids.length} video`, co ? 'ok' : 'err');
+  }
+}
+
+/**
+ * Nguồn của một thẻ, dùng cho hàng lọc. Gom "sàn" thành MỘT nhóm: Shopee, Taobao, 1688, Temu
+ * đều là video sản phẩm lấy từ trang bán hàng, người dùng đọc chúng như một loại.
+ */
+function vidSource(ad) {
+  const pf = String(ad.platform || '').toLowerCase();
+  if (pf === 'facebook' || pf === 'tiktok' || pf === 'douyin') return pf;
+  return 'market';
+}
+
+const VID_SOURCES = [
+  { id: 'all', label: 'Tất cả' },
+  { id: 'facebook', label: 'Facebook' },
+  { id: 'tiktok', label: 'TikTok' },
+  { id: 'douyin', label: 'Douyin' },
+  { id: 'market', label: 'Sàn' },
+];
+
+let vidAll = [];       // toàn bộ thẻ đang có, chưa lọc
+let vidShown = [];     // phần đang hiện — cũng là danh sách để bấm ‹ › trong lớp phủ
+let vidPick = 'all';
+
+/** Vẽ hàng lọc. Chip bằng 0 VẪN HIỆN — xem ghi chú CSS `.vfilter`. */
+function drawVidFilter() {
+  const box = $('vidFilter');
+  if (!box) return;
+  const dem = {};
+  for (const ad of vidAll) dem[vidSource(ad)] = (dem[vidSource(ad)] || 0) + 1;
+  box.innerHTML = VID_SOURCES
+    .map((s) => {
+      const n = s.id === 'all' ? vidAll.length : (dem[s.id] || 0);
+      return `<button data-src="${s.id}" data-on="${vidPick === s.id ? 1 : 0}">${s.label}<b>${n}</b></button>`;
+    })
+    .join('');
+}
+
+function drawVidGrid() {
+  const grid = $('vidGrid');
+  grid.innerHTML = '';
+  vidShown = vidPick === 'all' ? vidAll.slice() : vidAll.filter((a) => vidSource(a) === vidPick);
+  if (!vidShown.length) {
+    // Một CÂU, không phải một ô trống. Ô trống đọc thành "hỏng"; câu này nói rõ là nguồn ấy
+    // không có gì, và đó là một thông tin.
+    grid.innerHTML = `<p class="sub">Không có video nào từ nguồn này.</p>`;
+    return;
+  }
+  for (let i = 0; i < vidShown.length; i++) grid.appendChild(vidCard(vidShown[i], i));
+}
+
+/**
+ * Một con số thống kê CỦA CHÍNH VIDEO ẤY. Không cộng gộp gì cả — mỗi thẻ đọc đúng trường của
+ * mình.
+ *
+ * SỐ 0 VẪN HIỆN, chỉ trường VẮNG MẶT mới ẩn. Hai chuyện khác hẳn nhau và giao diện phải phân
+ * biệt được: "0 bình luận" là một phép đo — video ấy thật sự không ai bình luận, và đó là
+ * thông tin đáng giá khi chọn video để bắt chước. Còn trường vắng mặt nghĩa là đọc không ra
+ * (video riêng tư, đã xoá, hoặc hết hạn giờ), và bịa ra số 0 cho nó là nói dối.
+ *
+ * Rút gọn về K/M cho mọi cỡ: bốn ô số đứng cạnh nhau trong một thẻ hẹp, viết đủ "41.400.000"
+ * thì vỡ hàng. Số đầy đủ nằm trong phần chú khi rê chuột.
+ */
+function stat(icon, ten, v) {
+  if (typeof v !== 'number' || v < 0) return '';
+  return `<span title="${ten}: ${v.toLocaleString('vi-VN')}">${icon}<span class="n">${fmtCompact(v)}</span></span>`;
+}
+
+function vidCard(ad, idx) {
+  const creatives = ad.creatives || [];
+  const video = creatives.find((c) => c.kind === 'video' && c.url);
+  const poster = (video && video.posterUrl) ||
+    (creatives.find((c) => c.posterUrl) || {}).posterUrl ||
+    (creatives.find((c) => c.url) || {}).url || '';
+
+  // HÀNG THỐNG KÊ riêng, tách khỏi hàng nhãn. Đây là thứ người dùng quét mắt qua để chọn
+  // video đáng xem, nên nó không được lẫn vào giữa tên sàn và ngày tháng.
+  const stats =
+    stat('❤️', 'Lượt tim', ad.likeCount) +
+    stat('💬', 'Bình luận', ad.commentCount) +
+    stat('↗', 'Chia sẻ', ad.shareCount) +
+    stat('▶', 'Lượt xem', ad.playCount);
+  // Facebook không có tương tác nào (Ads Library không công bố — đo 2026-08-18), chỉ có số
+  // người theo dõi Trang. Nói rõ đó là follower chứ không phải like của bài.
+  const fbFollow = !stats && ad.pageLikeCount
+    ? `<span title="Người theo dõi Trang Facebook — KHÔNG phải tương tác của quảng cáo này">👥<span class="n">${fmtCompact(ad.pageLikeCount)}</span><span class="k">theo dõi</span></span>`
+    : '';
+
+  const days = ad.daysActive != null ? `<span title="Số ngày quảng cáo đã chạy">${ad.daysActive} ngày chạy</span>` : '';
+  const posted = ad.startedAt ? `<span title="Ngày đăng / bắt đầu chạy">📅 ${fmtRelDate(ad.startedAt)}</span>` : '';
+  const match = typeof ad.matchScore === 'number' ? `<span class="mbadge">🎯 ${ad.matchScore}% khớp ảnh</span>` : '';
+  const langBadge = (ad.langMatch === 'other' && ad.regionTag)
+    ? `<span class="mbadge langoff" title="Mô tả không phải tiếng ${COUNTRY[ad.regionTag] || ad.regionTag} — TikTok trả theo account/IP của bạn">⚠ khác ngôn ngữ</span>`
+    : '';
+
+  const isTk = ad.platform === 'tiktok' && ad.id;
+  let media;
+  if (isTk) {
+    media =
+      (poster ? `<img src="${esc(poster)}" loading="lazy" alt="" referrerpolicy="no-referrer">` : `<div class="tk-ph">TikTok</div>`) +
+      `<button class="play-overlay" data-idx="${idx}" aria-label="Phát video TikTok"><span>▶</span></button>`;
+  } else if (video) {
+    media = `<video controls preload="none" ${poster ? `poster="${esc(proxyMedia(poster))}"` : ''} src="${esc(proxyMedia(video.url))}"></video>`;
+  } else {
+    media = poster ? `<img src="${esc(proxyMedia(poster))}" loading="lazy" alt="">` : '';
+  }
+
+  const el = document.createElement('div');
+  el.className = 'ccard';
+  el.innerHTML =
+    `<div class="media">${match}${langBadge}${media}</div>` +
+    `<div class="cbody">` +
+    `<div class="cadv">${esc(ad.advertiser || '—')}</div>` +
+    `<div class="ccopy">${esc(ad.title || ad.body || '')}</div>` +
+    ((stats || fbFollow) ? `<div class="cstats">${stats}${fbFollow}</div>` : '') +
+    `<div class="cmeta"><span class="pill">${esc(PF_LABEL[ad.platform] || ad.platform)}</span>${posted}${days}</div>` +
+    (ad.permalink ? `<a class="clink" href="${esc(ad.permalink)}" target="_blank" rel="noreferrer">${isTk ? 'Mở trên TikTok ↗' : 'Xem quảng cáo ↗'}</a>` : '') +
+    `</div>`;
+  return el;
 }
 
 function renderVideos(ads) {
-  const grid = $('vidGrid');
-  grid.innerHTML = '';
-  for (const ad of ads) {
-    const creatives = ad.creatives || [];
-    const video = creatives.find((c) => c.kind === 'video' && c.url);
-    // Poster: ưu tiên poster của video phát được → poster của bất kỳ creative nào (TikTok chỉ có
-    // poster + permalink, không có url phát trực tiếp) → ảnh tĩnh.
-    const poster = (video && video.posterUrl) ||
-      (creatives.find((c) => c.posterUrl) || {}).posterUrl ||
-      (creatives.find((c) => c.url) || {}).url || '';
-    const days = ad.daysActive != null ? `<span title="Số ngày ad chạy trên Facebook">${ad.daysActive} ngày chạy</span>` : '';
-    // Tương tác video: ưu tiên likeCount (TikTok/Douyin video-level) → page_like_count (FB page).
-    // FB Ad Library KHÔNG expose like video, chỉ có follower của page.
-    let engage = '';
-    if (ad.likeCount) {
-      engage = `<span title="Lượt tim video">❤️ ${fmtCompact(ad.likeCount)}</span>`;
-      if (ad.commentCount) engage += `<span title="Bình luận">💬 ${fmtCompact(ad.commentCount)}</span>`;
-    } else if (ad.pageLikeCount) {
-      engage = `<span title="Followers của Facebook Page (không phải like video)">👥 ${fmtCompact(ad.pageLikeCount)}</span>`;
-    }
-    // Ngày đăng: TikTok/Douyin = create_time video; FB = ngày ad start chạy.
-    const posted = ad.startedAt ? `<span title="Ngày đăng / bắt đầu chạy">📅 ${fmtRelDate(ad.startedAt)}</span>` : '';
-    const match = typeof ad.matchScore === 'number' ? `<span class="mbadge">🎯 ${ad.matchScore}% khớp ảnh</span>` : '';
-    // Badge KHI video có mô tả khác ngôn ngữ nước đang chọn (TikTok cá nhân hoá theo account/IP).
-    // Không dìm/bỏ, chỉ nhắc user: "cái này lệch nước, coi cẩn thận".
-    const langBadge = (ad.langMatch === 'other' && ad.regionTag)
-      ? `<span class="mbadge langoff" title="Mô tả không phải tiếng ${COUNTRY[ad.regionTag] || ad.regionTag} — TikTok trả theo account/IP của bạn">⚠ khác ngôn ngữ</span>`
-      : '';
+  vidAll = ads || [];
+  // Nguồn đang lọc có thể vừa biến mất (đổi nước, đổi sản phẩm) — về "Tất cả" thay vì để
+  // người dùng nhìn một lưới trống mà không hiểu vì sao.
+  if (vidPick !== 'all' && !vidAll.some((a) => vidSource(a) === vidPick)) vidPick = 'all';
+  drawVidFilter();
+  drawVidGrid();
+}
 
-    // TikTok: KHÔNG có url phát trực tiếp → hiện poster + nút ▶; bấm ▶ sẽ nhúng player embed
-    // (tiktok.com/embed/v2/<id>) phát NGAY TẠI CHỖ. Poster load thẳng (no-referrer), không qua proxy.
-    const isTk = ad.platform === 'tiktok' && ad.id;
-    let media;
-    if (isTk) {
-      media =
-        (poster ? `<img src="${esc(poster)}" loading="lazy" alt="" referrerpolicy="no-referrer">` : `<div class="tk-ph">TikTok</div>`) +
-        `<button class="play-overlay" data-tkid="${esc(ad.id)}" aria-label="Phát video TikTok"><span>▶</span></button>`;
-    } else if (video) {
-      media = `<video controls preload="none" ${poster ? `poster="${esc(proxyMedia(poster))}"` : ''} src="${esc(proxyMedia(video.url))}"></video>`;
-    } else {
-      media = poster ? `<img src="${esc(proxyMedia(poster))}" loading="lazy" alt="">` : '';
-    }
+/*
+ * CỬA CHO MÁY CHẠY THỬ. Lộ đúng một hàm vẽ và danh sách đang hiện, không lộ gì để sửa dữ liệu.
+ *
+ * Có nó vì phần cửa sổ video chỉ chạy được khi extension đã bơm kết quả TikTok vào, mà Chrome
+ * 151 thì không cho nạp extension trong máy tự động — không có cửa này thì toàn bộ hàng lọc,
+ * hàng thống kê và lớp phủ phát KHÔNG kiểm được bằng máy, chỉ còn cách nhìn bằng mắt.
+ */
+window.__rsVid = {
+  render: renderVideos,
+  // Tự truyền mã lượt hiện tại: `fillTiktokStats` bỏ qua kết quả của lượt cũ, nên gọi
+  // trần từ ngoài sẽ luôn rơi vào nhánh ấy.
+  fill: (ads) => fillTiktokStats(ads, vidToken),
+  get shown() { return vidShown; },
+};
 
-    const el = document.createElement('div');
-    el.className = 'ccard';
-    el.innerHTML =
-      `<div class="media">${match}${langBadge}${media}</div>` +
-      `<div class="cbody">` +
-      `<div class="cadv">${esc(ad.advertiser || '—')}</div>` +
-      `<div class="ccopy">${esc(ad.title || ad.body || '')}</div>` +
-      `<div class="cmeta"><span class="pill">${esc(PF_LABEL[ad.platform] || ad.platform)}</span>${engage}${posted}${days}</div>` +
-      (ad.permalink ? `<a class="clink" href="${esc(ad.permalink)}" target="_blank" rel="noreferrer">${isTk ? 'Mở trên TikTok ↗' : 'Xem quảng cáo ↗'}</a>` : '') +
-      `</div>`;
-    grid.appendChild(el);
+$('vidFilter').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-src]');
+  if (!b) return;
+  vidPick = b.getAttribute('data-src');
+  drawVidFilter();
+  drawVidGrid();
+});
+
+// ===== LỚP PHỦ PHÁT VIDEO =====
+//
+// Bấm ▶ mở player ở một lớp phủ riêng, KHÔNG nhét iframe vào ô ảnh của thẻ. Ô ấy là hình vuông
+// cỡ ba trăm pixel, còn player TikTok là khung dọc có chiều cao tối thiểu — nhét vào đó thì nó
+// cắt cụt hoặc rơi về màn hình "Watch more exciting videos on TikTok".
+//
+// Đã đo: `embed/v2`, `embed` và `player/v1` đều trả 200, không có `X-Frame-Options` cũng không
+// có `frame-ancestors`. Nhúng chưa bao giờ bị chặn; chỉ là cái khung quá nhỏ.
+//
+// Lớp phủ mang theo THÔNG TIN VIDEO bên cạnh và hai nút ‹ › để đi tiếp — trước đây muốn biết
+// đang xem của ai, bao nhiêu tim, thì phải đóng ra tìm lại đúng cái thẻ vừa bấm.
+let tkAt = -1; // vị trí trong `vidShown` của video đang phát
+
+function tkInfoHTML(ad) {
+  const stats =
+    stat('❤️', 'Lượt tim', ad.likeCount) +
+    stat('💬', 'Bình luận', ad.commentCount) +
+    stat('↗', 'Chia sẻ', ad.shareCount) +
+    stat('▶', 'Lượt xem', ad.playCount);
+  return (
+    `<h3>${esc(ad.advertiser || '—')}</h3>` +
+    (stats ? `<div class="cstats">${stats}</div>` : '') +
+    `<div class="desc">${esc(ad.title || ad.body || '')}</div>` +
+    (ad.startedAt ? `<div class="sub">📅 ${fmtRelDate(ad.startedAt)}</div>` : '') +
+    (ad.permalink ? `<a href="${esc(ad.permalink)}" target="_blank" rel="noreferrer">Mở trên TikTok ↗</a>` : '')
+  );
+}
+
+function openTkPlayer(idx) {
+  const ad = vidShown[idx];
+  if (!ad || !ad.id) return;
+  tkAt = idx;
+  const khung = $('tkFrame');
+  khung.innerHTML = '';
+  const f = document.createElement('iframe');
+  f.src = `https://www.tiktok.com/embed/v2/${encodeURIComponent(ad.id)}`;
+  f.allow = 'autoplay; encrypted-media; fullscreen';
+  f.setAttribute('scrolling', 'no');
+  khung.appendChild(f);
+  $('tkInfo').innerHTML = tkInfoHTML(ad);
+
+  // Chỉ đi tới video TikTok khác — thẻ Facebook/Sàn không có player để nhảy sang.
+  const co = (d) => {
+    for (let i = idx + d; i >= 0 && i < vidShown.length; i += d) {
+      if (vidShown[i] && vidShown[i].platform === 'tiktok' && vidShown[i].id) return i;
+    }
+    return -1;
+  };
+  $('tkPrev').disabled = co(-1) < 0;
+  $('tkNext').disabled = co(1) < 0;
+  $('tkPlay').classList.add('on');
+}
+
+function tkStep(d) {
+  for (let i = tkAt + d; i >= 0 && i < vidShown.length; i += d) {
+    if (vidShown[i] && vidShown[i].platform === 'tiktok' && vidShown[i].id) { openTkPlayer(i); return; }
   }
 }
 
-// Bấm ▶ trên card TikTok → thay poster bằng player embed của TikTok (phát ngay tại chỗ).
-// Video nào TikTok cho nhúng thì phát được; video app-only/riêng tư thì player báo, đành mở app.
+function closeTkPlayer() {
+  $('tkPlay').classList.remove('on');
+  // XOÁ HẲN iframe chứ không chỉ ẩn: để nguyên thì video chạy tiếp và tiếng vẫn phát sau lưng
+  // một lớp phủ đã đóng — người dùng không có cách nào tắt ngoài việc tải lại trang.
+  $('tkFrame').innerHTML = '';
+  $('tkInfo').innerHTML = '';
+  tkAt = -1;
+}
+
 $('vidGrid').addEventListener('click', (e) => {
-  const btn = e.target.closest('.play-overlay[data-tkid]');
+  const btn = e.target.closest('.play-overlay[data-idx]');
   if (!btn) return;
-  const id = btn.getAttribute('data-tkid');
-  const box = btn.closest('.media');
-  if (box && id) {
-    box.innerHTML = `<iframe src="https://www.tiktok.com/embed/v2/${encodeURIComponent(id)}" style="width:100%;height:100%;border:0;background:#000" allow="autoplay; encrypted-media; fullscreen" scrolling="no"></iframe>`;
-  }
+  openTkPlayer(Number(btn.getAttribute('data-idx')));
+});
+$('tkPlayClose').addEventListener('click', closeTkPlayer);
+$('tkPrev').addEventListener('click', () => tkStep(-1));
+$('tkNext').addEventListener('click', () => tkStep(1));
+// Bấm ra nền tối cũng đóng — nhưng chỉ khi bấm đúng cái nền, không phải bấm trong player.
+$('tkPlay').addEventListener('click', (e) => { if (e.target === $('tkPlay')) closeTkPlayer(); });
+document.addEventListener('keydown', (e) => {
+  if (!$('tkPlay').classList.contains('on')) return;
+  if (e.key === 'Escape') closeTkPlayer();
+  else if (e.key === 'ArrowLeft') tkStep(-1);
+  else if (e.key === 'ArrowRight') tkStep(1);
 });
 
 $('vidClose').addEventListener('click', closeVideoModal);

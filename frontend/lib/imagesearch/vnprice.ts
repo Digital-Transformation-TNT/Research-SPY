@@ -27,6 +27,26 @@ import type { ImageMatch } from './types'
 const POOL = 60
 
 /**
+ * XẾP THEO ĐỘ LIÊN QUAN, KHÔNG THEO BÁN CHẠY. Đây là chỗ đã suýt làm hỏng cả tính năng.
+ *
+ * Mặc định của nguồn Shopee là `sort=sales`, và mặc định ấy đúng cho mục Quảng cáo: ở đó
+ * người ta đi tìm sản phẩm ĐANG BÁN ĐƯỢC. Ở đây thì ngược hẳn — ta đã biết mình cần món nào,
+ * chỉ cần biết nó giá bao nhiêu.
+ *
+ * Bằng chứng, đọc từ chính ảnh chụp Shopee cho "chuột g305": con G305 có 16 lượt bán, còn
+ * con G102 lẫn trong cùng bảng có 30k+. Xin sáu chục món BÁN CHẠY NHẤT thì con G305 bị hàng
+ * trăm con chuột khác đẩy ra ngoài trần, và công cụ kết luận "không có ở sàn Việt" trong khi
+ * nó nằm ngay trang một nếu xếp theo Liên Quan.
+ *
+ * Đó là kiểu hỏng tệ nhất mục này có thể mắc: một câu trả lời SAI mà trông y hệt một câu trả
+ * lời thật, và người dùng chỉ phát hiện được nếu tự đi tra tay.
+ *
+ * Cùng một giá trị phải đi vào CẢ pha 1 lẫn pha 2 — nó nằm trong khoá cache của
+ * `_client_cache_key`, lệch nhau là mỗi pha đọc một rổ khác.
+ */
+const SORT = 'relevancy'
+
+/**
  * Một cách tra: gõ gì vào Shopee, và chữ nào PHẢI có trong tiêu đề thì dòng đó mới tính.
  *
  * Hai thứ tách nhau vì chúng làm hai việc khác nhau. `query` cần đủ ngữ cảnh để Shopee hiểu
@@ -45,6 +65,57 @@ export type VnRow = ImageMatch & {
   phraseHit?: boolean
   /** Tiêu đề dòng này có mang đúng mã đang tra không. Xem `rowMatches`. */
   codeHit?: boolean
+  /** Mang mã nhưng bị gạch khỏi phép tính giá, và vì sao. Xem `chonGiaThapNhat`. */
+  vnSkip?: VnSkip
+}
+
+/**
+ * Giá bán ở Việt Nam của MỘT mã, sau khi đã hỏi Shopee.
+ *
+ * `price === null` KHÔNG phải lỗi mà là một câu trả lời có thật, và là câu hay gặp nhất với
+ * hàng lấy từ 1688: mã ấy là mã xưởng, sàn Việt Nam không ai dùng, nên không có gì để báo
+ * giá. Lúc đó giao diện phải im lặng chứ không được bịa ra một con số — đúng cái đã đo
+ * 2026-08-19 với `T15S` và `N612`.
+ */
+export type VnCodePrice = {
+  code: string
+  /** Giá thấp nhất trong các dòng THẬT SỰ mang mã này. `null` = sàn Việt Nam không có. */
+  price: number | null
+  /** Số dòng mang mã. 0 nghĩa là Shopee có trả bảng nhưng không dòng nào là món này. */
+  hits: number
+  /**
+   * Số dòng mang mã nhưng bị gạch khỏi phép tính giá vì là phụ kiện. Hiện ra cho người dùng:
+   * một con số kèm "(đã bỏ 3 dòng phụ kiện)" nói được vì sao nó khác con số họ thấy khi tự
+   * bấm vào Shopee sắp theo giá tăng dần. Không nói thì chênh lệch ấy đọc thành lỗi.
+   */
+  skipped: number
+  /**
+   * Chính những dòng đã bị bỏ, để người dùng SOI ĐƯỢC chứ không phải tin suông.
+   *
+   * Cột phải không có bảng Shopee để bày từng dòng — nó chỉ có chỗ cho một con số. Nên chúng
+   * nằm trong tooltip. Không giữ lại thì luật này thành một hộp đen: nó bỏ đi vài dòng, con
+   * số nhảy lên, và không có đường nào kiểm xem nó bỏ đúng hay bỏ nhầm.
+   */
+  skippedRows: { title: string; price: number | null; why: VnSkip }[]
+  /**
+   * Link tới ĐÚNG sản phẩm đang mang giá này. Đây là thứ cột giá bấm vào.
+   *
+   * `null` khi Shopee không trả link cho dòng ấy. Lúc đó mới rơi về `url` — mở lại trang tìm
+   * kiếm rồi bắt người ta tự dò lại đúng món vừa đọc được là một bước lùi, nên nó là đường
+   * dự phòng chứ không phải mặc định.
+   */
+  link: string | null
+  /** Tiêu đề của chính sản phẩm ấy, để tooltip nói rõ con số này là của món nào. */
+  title: string
+  /**
+   * Luật đã phải TẮT ở lượt này vì áp vào là hết sạch ứng viên. Rỗng = mọi luật đều chạy đủ.
+   *
+   * Hiện ra cho người dùng, vì nó nói con số này kém chắc hơn bình thường. Nuốt đi thì hai
+   * con số trông y hệt nhau trong khi độ tin khác hẳn.
+   */
+  noiLong: string[]
+  /** Link mở Shopee ở tab Liên Quan — đường dự phòng khi không có `link`. */
+  url: string
 }
 
 export type VnPriceResult = {
@@ -89,6 +160,17 @@ export function rowMatches(row: VnRow, term: VnTerm): boolean {
   // coi là khớp, vì ở đó không có bằng chứng ngược lại.
   return row.phraseHit !== false
 }
+
+/* Hai luật lọc phụ kiện tách sang `vnfilter.ts` để kiểm được trong Node trần — xem đầu
+ * file đó. Re-export ở đây để nơi gọi không phải biết chúng ở đâu. */
+export {
+  chonGiaThapNhat,
+  laPhuKienVn,
+  CUA_SO_LIEN_QUAN,
+  maTrongTieuDe,
+  type VnSkip,
+} from './vnfilter'
+import type { VnSkip } from './vnfilter'
 
 /**
  * Định dạng giá theo đúng kiểu bốn bảng kia đang dùng, để `priceValue` và nút sắp xếp làm
@@ -156,6 +238,8 @@ export async function shopeePrices(term: VnTerm, country = 'VN'): Promise<VnPric
     platforms: 'shopee',
     countries: country,
     limit: String(POOL),
+    // Tuỳ chọn riêng của nguồn đi theo dạng `<nguồn>.<khoá>` — xem `parse_ad_search_params`.
+    'shopee.sort': SORT,
   })
   const planned = await browserGet<AdSearchResult>(`/api/ads/search?${query}`)
 
@@ -182,6 +266,10 @@ export async function shopeePrices(term: VnTerm, country = 'VN'): Promise<VnPric
     platforms: ['shopee'],
     countries: [country],
     limit: POOL,
+    // PHẢI KHỚP pha 1: giá trị này nằm trong khoá cache của `_client_cache_key`, lệch nhau
+    // thì pha 2 ghi vào một rổ mà pha 1 không bao giờ đọc tới — cache hoá ra vô dụng mà
+    // không có dấu hiệu gì.
+    platformOptions: { shopee: { sort: SORT } },
     submissions,
   })
 

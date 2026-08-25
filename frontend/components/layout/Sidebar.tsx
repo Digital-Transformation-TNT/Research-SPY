@@ -39,6 +39,15 @@ const icons = {
       <path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z" />
     </svg>
   ),
+  signal: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4.9 19.1a10 10 0 0 1 0-14.2" />
+      <path d="M7.8 16.2a6 6 0 0 1 0-8.4" />
+      <path d="M16.2 7.8a6 6 0 0 1 0 8.4" />
+      <path d="M19.1 4.9a10 10 0 0 1 0 14.2" />
+      <circle cx="12" cy="12" r="2" />
+    </svg>
+  ),
   idea: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 18h6" />
@@ -55,16 +64,22 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
     label: 'Research',
     items: [
       {
-        href: '/ads',
-        label: 'Sản phẩm & Content',
-        hint: 'Top sản phẩm đa sàn, content quảng cáo đang chạy, và video theo sản phẩm',
-        icon: 'ads',
-      },
-      {
         href: '/keywords',
         label: 'Keyword',
         hint: 'Khám phá và mở rộng từ khoá đa nguồn',
         icon: 'keyword',
+      },
+      {
+        href: '/image',
+        label: 'Image Search',
+        hint: 'Tìm tên sản phẩm và nơi đang bán từ ảnh',
+        icon: 'image',
+      },
+      {
+        href: '/ads',
+        label: 'Sản phẩm',
+        hint: 'Top sản phẩm đa sàn theo từ khoá — kèm Facebook Ads và video theo sản phẩm',
+        icon: 'ads',
       },
       {
         href: '/opportunity',
@@ -72,11 +87,18 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
         hint: 'Khám phá món nên bán cùng trợ lý AI',
         icon: 'idea',
       },
+    ],
+  },
+  // Mục độc lập, có database riêng (`backend/hub_data.db`) và không dùng chung gì với nhóm
+  // Research ở trên, nên nó là một nhóm riêng chứ không nằm lẫn vào đó.
+  {
+    label: 'Tín hiệu thị trường',
+    items: [
       {
-        href: '/image',
-        label: 'Image Search',
-        hint: 'Tìm tên sản phẩm và nơi đang bán từ ảnh',
-        icon: 'image',
+        href: '/trend-signal',
+        label: 'Trend Signal Hub',
+        hint: 'Tín hiệu hôm nay từ Etsy, Amazon và Google Trends',
+        icon: 'signal',
       },
     ],
   },

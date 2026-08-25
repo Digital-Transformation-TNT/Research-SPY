@@ -75,6 +75,13 @@ desktop.ini
 # tệp nhị phân trong git thì mỗi lần đổi là một khối rác mới không diff được.
 *.pkl
 
+# SQLite của mục Trend Signal Hub (~80MB). Không commit: dựng lại được bằng cách bung
+# `backend/hub/data/snapshot/dataset.zip` (~9.8MB, CÓ trong repo) — `hub.main.init_hub()` tự
+# làm việc đó khi thấy DB rỗng. Một file nhị phân 80MB đổi mỗi đêm thì git không diff nổi.
+backend/hub_data.db
+backend/hub_data.db-journal
+backend/hub_data.db-wal
+
 # Model CLIP cho khớp ảnh (`backend/models/clip-vision.onnx`, ~350MB). Tải lúc chạy, không
 # commit — git không phải nơi chứa trọng số model, và thiếu nó thì luồng tự rơi về pHash.
 backend/models/

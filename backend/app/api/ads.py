@@ -8,6 +8,8 @@ này. Cả bốn route đều duyệt qua sổ đăng ký nguồn chứ không n
 from __future__ import annotations
 
 import asyncio
+import json
+import sys
 import time
 
 from fastapi import APIRouter, Request
@@ -18,6 +20,7 @@ from lib.ads.imagematch import DEFAULT_MAX_DISTANCE, match_ads_by_image
 from lib.ads.keyword_extract import extract_keywords, extract_video_terms, region_lang
 from lib.ads.platform import PlatformSearchInput
 from lib.ads.platforms import PLATFORM_DESCRIPTORS, PLATFORM_IDS, get_platform
+from lib.ads.tiktok_stats import fetch_stats
 from lib.ads.search import (
     MAX_LIMIT,
     ingest_client_results,
@@ -27,6 +30,7 @@ from lib.ads.search import (
 )
 from lib.ads.types import AdSearchResult, ClientSubmission, PlatformStatus
 from lib.core.cache import cache_get, cache_set, cache_stats
+from lib.core.config import env_string
 from lib.core.jscompat import or_default, to_number
 from lib.core.model import dump
 
@@ -37,6 +41,10 @@ router = APIRouter(prefix="/api/ads")
 #: Danh mục ngành hàng gần như không đổi, mà mỗi lần gọi lại ăn vào hạn ngạch request eo hẹp
 #: mà phần tìm kiếm thật đang cần.
 FILTERS_TTL_MS = 6 * 60 * 60 * 1000
+
+#: Tương tác video đổi chậm — một video hôm nay 35K tim thì ngày mai vẫn cỡ đó. Sáu giờ
+#: là đủ tươi để đọc mà vẫn cắt hẳn số lượt mở trang, thứ đắt nhất của đường này.
+TIKTOK_STATS_TTL_MS = 6 * 60 * 60 * 1000
 
 
 @router.get("/platforms")
@@ -134,6 +142,43 @@ async def video_keywords(request: Request) -> JSONResponse:
         if from_gemini:
             cache_set(key, keywords)
     return JSONResponse({"keywords": keywords, "region": region, "lang": region_lang(region)})
+
+
+@router.get("/tiktok-stats")
+async def tiktok_stats(request: Request) -> JSONResponse:
+    """
+    Tương tác của các video TikTok: tim, bình luận, chia sẻ, LƯỢT XEM, ngày đăng.
+
+    Tham số: `ids` — các id video ngăn bằng dấu phẩy.
+
+    Đọc từ trang nhúng của chính TikTok, không cần đăng nhập và không cần extension. Id nào
+    không đọc được thì VẮNG MẶT trong kết quả, không phải bằng không — xem `tiktok_stats.py`.
+
+    Cache theo từng id: cùng một video hay xuất hiện lại ở nhiều lượt tìm khác nhau, mà mỗi
+    lượt đọc là một lần mở trang thật.
+    """
+    query = multi_query(request)
+    raw = (query.get("ids", [""])[0] or "").strip()
+    ids = [x.strip() for x in raw.split(",") if x.strip().isdigit()]
+    if not ids:
+        return JSONResponse({"stats": {}})
+
+    stats: dict[str, dict[str, int]] = {}
+    con_thieu: list[str] = []
+    for vid in ids:
+        cached = cache_get(f"tkstat:{vid}")
+        if cached is not None:
+            stats[vid] = cached
+        else:
+            con_thieu.append(vid)
+
+    if con_thieu:
+        moi = await fetch_stats(con_thieu)
+        for vid, one in moi.items():
+            cache_set(f"tkstat:{vid}", one, TIKTOK_STATS_TTL_MS)
+            stats[vid] = one
+
+    return JSONResponse({"stats": stats, "asked": len(ids), "got": len(stats)})
 
 
 @router.get("/match-image")
@@ -240,7 +285,48 @@ async def ingest(request: Request) -> JSONResponse:
         return JSONResponse({"error": f"submissions sai định dạng: {error}"}, status_code=400)
 
     result = await ingest_client_results(params, submissions)
+    _ghi_mau_de_soi(params.keyword, result)
     return JSONResponse(dump(result))
+
+
+def _ghi_mau_de_soi(keyword: str, result) -> None:
+    """Ghi TIÊU ĐỀ + GIÁ của kết quả ra `.cache/ads-mau.json` khi bật `ADS_DUMP=1`.
+
+    VÌ SAO CẦN. Kết quả Shopee chỉ sống trong bộ nhớ rồi đi thẳng ra trình duyệt — không có
+    chỗ nào trên đĩa. Với mục Tìm bằng ảnh, chính những dòng này là thứ quyết định con số
+    "giá thấp nhất ở VN", và luật lọc phụ kiện phải chỉnh theo chúng. Không nhìn được chúng
+    thì mọi lần chỉnh đều là chỉnh mò — đã mò một lần và trượt.
+
+    MẶC ĐỊNH TẮT, và chỉ ghi tiêu đề + giá + link, không ghi cookie, header hay body thô.
+    Bật bằng `ADS_DUMP=1` trong `backend/.env.local`, chỉnh xong thì tắt đi.
+    """
+    # Đọc qua `env_string` chứ không phải `os.environ` trực tiếp — đó là chỗ duy nhất
+    # trong repo này biết `.env.local` nằm ở đâu và đã nạp chưa.
+    if env_string("ADS_DUMP") != "1":
+        return
+    try:
+        from lib.core.store import STORE_DIR
+
+        path = STORE_DIR / "ads-mau.json"
+        kho = {}
+        if path.exists():
+            kho = json.loads(path.read_text(encoding="utf-8"))
+        kho[keyword] = [
+            {
+                "title": ad.title or ad.body or "",
+                "price": ad.price,
+                "currency": ad.currency,
+                "sold": ad.sold_count,
+                "link": ad.permalink,
+            }
+            for ad in (result.ads or [])
+        ]
+        STORE_DIR.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(kho, ensure_ascii=False, indent=1), encoding="utf-8")
+    except Exception as e:  # noqa: BLE001
+        # Đây là công cụ chẩn đoán. Nó hỏng thì im lặng đi tiếp, tuyệt đối không được kéo
+        # theo lượt tìm thật của người dùng.
+        print(f"[ads-mau] khong ghi duoc: {e}", file=sys.stderr)
 
 
 @router.get("/health")

@@ -1,0 +1,30 @@
+{
+  "_meta": {
+    "note": "Bộ test chuẩn hóa Product Type theo catalog Printway thật. `expected` = Product Type chuẩn.",
+    "count": 22
+  },
+  "listings": [
+    {"title": "Personalized Family Christmas Ornament Acrylic Custom Photo", "expected": "Ornaments"},
+    {"title": "Custom Pet Memorial Ornament Dog Loss Keepsake", "expected": "Ornaments"},
+    {"title": "Rustic Wooden Family Established Sign Wall Decor Custom Name", "expected": "Signs & Plaques"},
+    {"title": "In Loving Memory Acrylic Plaque Memorial Sympathy Gift", "expected": "Signs & Plaques"},
+    {"title": "Personalized Photo Coffee Mug 11oz Custom Name Ceramic", "expected": "Mugs"},
+    {"title": "20oz Insulated Tumbler Dog Dad Custom Name Travel Cup", "expected": "Tumblers"},
+    {"title": "Custom Photo Blanket Sherpa Fleece Family Keepsake Throw", "expected": "Blankets"},
+    {"title": "3D Acrylic LED Night Light Nursery Baby Custom Name", "expected": "Lights"},
+    {"title": "Garden Suncatcher Window Hanging Custom Name Gardener Gift", "expected": "Suncatchers"},
+    {"title": "Personalized Acrylic Keychain Photo Keyring Gift For Mom", "expected": "Keychains"},
+    {"title": "Family Name Welcome Doormat Housewarming Custom Coir Mat", "expected": "Outdoor & Gardening"},
+    {"title": "Engraved Bamboo Cutting Board Wedding Anniversary Gift", "expected": "Kitchen & Dining"},
+    {"title": "Personalized Canvas Wall Art Family Portrait Photo Print", "expected": "Wall Arts"},
+    {"title": "Custom Garden Flag Yard House Personalized Name Outdoor", "expected": "Outdoor & Gardening"},
+    {"title": "Birth Flower Coffee Mug Personalized Birthday Ceramic Cup", "expected": "Mugs"},
+    {"title": "Personalized Stainless Steel Water Bottle Custom Name Sport", "expected": "Water Bottles"},
+    {"title": "Custom Photo Pillow Case Throw Cushion Personalized Gift", "expected": "Pillows & Cases"},
+    {"title": "Personalized Men's Hoodie Custom Name Pullover Cotton", "expected": "Men's Hoodies"},
+    {"title": "Custom Name Baby Bodysuit Onesie Newborn Gift Cotton", "expected": "Baby Bodysuits"},
+    {"title": "Personalized Tote Bag Canvas Custom Name Shopping Bag", "expected": "Bags"},
+    {"title": "Custom Photo Keepsake In Loving Memory Acrylic Memorial", "expected": "Keepsakes"},
+    {"title": "Personalized Ceramic Coffee Mug Grandma Gift Custom Photo", "expected": "Mugs"}
+  ]
+}

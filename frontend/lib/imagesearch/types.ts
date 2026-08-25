@@ -101,9 +101,6 @@ export type PlatformCount = {
 
 export type ImageSearchResult = {
   country: string
-  /** Tỷ giá ¥ → ₫ để quy đổi giá 1688/Taobao khi so với giá bán ở Việt Nam. Giao diện PHẢI
-   *  hiện con số này ra: nó là một giả định đọc từ `.env.local`, không phải một phép đo. */
-  cnyVndRate?: number
   identity?: ImageIdentity
   /** Ai đang BÁN LẺ ở thị trường đích, theo Google Lens. */
   matches?: ImageMatch[]

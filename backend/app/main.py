@@ -33,6 +33,7 @@ import sys
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -45,9 +46,34 @@ from lib.core.jwt_util import verify as verify_jwt, JWTError, is_configured as j
 
 from .api import admin, ads, analytics, auth, imagesearch, keywords, media, opportunity
 
+# Mục Trend Signal Hub. Import ĐƯỢC PHÉP TRƯỢT: gói này kéo theo pandas/pytrends/anthropic,
+# và một máy thiếu chúng thì cả backend chết theo — mất luôn Quảng cáo, Từ khoá, Tìm bằng ảnh
+# vốn chẳng liên quan gì. Trượt thì ghi lại lý do và dựng một đường chẩn đoán ở dưới, để
+# trang Hub báo đúng nguyên nhân thay vì lặng lẽ hiện dữ liệu mẫu.
+try:
+    from hub.main import router as hub_router, init_hub
+
+    HUB_ERROR = ""
+except Exception as _e:  # noqa: BLE001
+    hub_router = None
+    init_hub = None
+    HUB_ERROR = f"{type(_e).__name__}: {_e}"
+
+
+log = logging.getLogger("research-spy")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if init_hub is not None:
+        # Dựng bảng + nạp dữ liệu cho mục Trend Signal Hub. Chạy đồng bộ trong lifespan là
+        # cố ý: lần đầu nó bung ~9.8MB snapshot ra 33k dòng, và nếu để nền thì request đầu
+        # tiên gặp DB rỗng — trang sẽ hiện dữ liệu mẫu nhúng cứng mà không báo gì.
+        try:
+            info = init_hub()
+            log.info("Hub san sang: %s dong (%s), db=%s", info["rows"], info["source"], info["db"])
+        except Exception as e:  # noqa: BLE001
+            log.exception("Hub khong khoi tao duoc: %s", e)
     yield
     # Chromium không chết theo tiến trình cha trên Windows; không đóng là để lại tiến trình mồ côi.
     await close_all_sessions()
@@ -65,10 +91,19 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=".*",
-    # POST chỉ dành cho một đường duy nhất: tải ảnh lên ở mục Tìm bằng ảnh. Mọi route khác
-    # vẫn là GET, và giữ danh sách hẹp thế này để việc mở thêm động từ là một quyết định
-    # có chủ ý chứ không phải chuyện xảy ra âm thầm.
-    allow_methods=["GET", "POST"],
+    # Giữ danh sách hẹp để việc mở thêm động từ là một quyết định có chủ ý chứ không phải
+    # chuyện xảy ra âm thầm. Hiện có đúng bốn:
+    #   GET     hầu hết mọi đường
+    #   POST    tải ảnh ở mục Tìm bằng ảnh, đăng nhập, ghi analytics, tạo user
+    #   PATCH   sửa user ở trang Quản trị  (/api/admin/users/{id})
+    #   DELETE  xoá user ở trang Quản trị  (/api/admin/users/{id})
+    #
+    # PATCH/DELETE thêm vào cùng lúc với mục Quản trị. Qua rewrite của Next thì cùng origin
+    # nên CORS không tham gia và thiếu chúng cũng không lộ ra; nhưng đúng cái tình huống mà
+    # dòng CORS này sinh ra để phục vụ — trỏ trình duyệt thẳng vào cổng 8000, hoặc chạy Next
+    # ở máy khác — thì preflight sẽ chặn, và lỗi hiện ra là "CORS" chứ không nói gì về việc
+    # sửa/xoá user, nên rất mất công truy.
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["*"],
     expose_headers=["content-range", "accept-ranges", "content-length"],
 )
@@ -81,6 +116,20 @@ app.include_router(imagesearch.router)
 app.include_router(keywords.router)
 app.include_router(media.router)
 app.include_router(opportunity.router)
+
+if hub_router is not None:
+    app.include_router(hub_router)
+else:
+
+    @app.get("/api/hub/health")
+    async def hub_health_failed() -> dict[str, str]:
+        """Hub không import được. Nói thẳng lý do thay vì trả 404.
+
+        404 ở đây là cái bẫy tệ nhất có thể: `trend-signal-hub.html` coi mọi phản hồi không
+        `ok` là "backend chết" và rơi về bộ dữ liệu mẫu nhúng cứng trong file. Trang khi đó
+        đầy ắp số liệu trông rất thật — không có một dấu hiệu nào cho biết chúng là số giả.
+        """
+        return {"status": "error", "reason": HUB_ERROR}
 
 
 # ---------------------------------------------------------------------------

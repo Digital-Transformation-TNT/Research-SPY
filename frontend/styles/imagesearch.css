@@ -384,55 +384,26 @@
   color: var(--text-mute);
 }
 
-/* Hàng điều khiển của bảng "Giá đang bán ở Việt Nam": chọn cụm rồi bấm tra.
- *
- * Nút "Tra giá" tách khỏi dãy chip bằng `margin-left: auto` — chip là thứ để chọn, nút là
- * thứ để làm, và hai việc ấy không nên đứng lẫn vào nhau trong cùng một hàng.
- */
-.img-vn-run {
-  display: flex;
+/* Trạng thái của cột giá, đứng cạnh dãy mã sản phẩm. */
+.img-vn-status {
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-mute);
 }
 
-.img-vn-run .btn {
-  margin-left: auto;
+.img-vn-status[data-warn='true'] {
+  color: var(--warn);
 }
 
-/* Giá thấp nhất — con số duy nhất người ta mở bảng này để tìm, nên nó to hơn mọi dòng trong
- * bảng và dùng đúng màu thương hiệu như `.img-price`. */
-.img-cheapest {
-  margin: 0 0 12px;
-  font-size: 14px;
-}
-
-.img-cheapest b {
-  font-size: 19px;
-  font-weight: 700;
-  color: var(--brand);
-}
-
-/* Nhãn của bảng "Shopee gợi ý thêm".
+/* Ô cột phải: giá đang bán ở Việt Nam của đúng model dòng này.
  *
- * Nhạt hơn tiêu đề bảng chính một cách có chủ ý: nó phải đọc được nhưng không được trông
- * ngang hàng với phần trả lời. Cách trên 18px để mắt thấy rõ đây là một khối KHÁC, không
- * phải phần tiếp theo của bảng ở trên — đó là toàn bộ lý do hai bảng tách nhau.
+ * Trạng thái HAY GẶP NHẤT của cột này là TRỐNG — bảng 1688 đầy mã xưởng, mà mã xưởng thì
+ * sàn Việt Nam không ai dùng. Nên ô trống phải trông như một khoảng lặng bình thường, không
+ * phải như một chỗ hỏng: không viền, không nền, không dấu gạch.
  */
-.img-extra-head {
-  margin: 18px 0 10px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-dim);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-/* Ô bội số ở cột phải: bán ở Việt Nam gấp mấy lần giá nhập của dòng này. */
-.img-margin {
+.img-vn {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -440,42 +411,52 @@
   gap: 1px;
   font-variant-numeric: tabular-nums;
   font-size: 13px;
+  text-align: right;
 }
 
-.img-margin b {
+.img-vn[data-kind='price'] {
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+}
+
+.img-vn[data-kind='price'] b {
   font-weight: 700;
+  color: var(--brand);
 }
 
-.img-margin small {
-  font-size: 10.5px;
+.img-vn[data-kind='price'] small {
+  font-size: 10px;
   font-weight: 600;
   color: var(--text-mute);
 }
 
-/* Đúng model đang tra — đây là dòng trả lời câu hỏi, nên nó là ô duy nhất dùng màu thương hiệu. */
-.img-margin[data-kind='match'] b { color: var(--brand); }
-
-/* Model khác: vẫn hiện số vì nó là ngữ cảnh có ích ("model rẻ hơn thì biên bao nhiêu"),
-   nhưng nhạt hẳn đi để mắt không nhặt nhầm nó thành câu trả lời. */
-.img-margin[data-kind='other'] { opacity: 0.55; }
-
-/* Nhập vào còn đắt hơn bán ra. Đây là câu trả lời quan trọng nhất một bảng nguồn hàng đưa
-   ra được, và cũng là câu dễ lướt qua nhất — nên nó là thứ duy nhất trong bảng màu đỏ. */
-.img-margin[data-kind='loss'] b { color: var(--bad); }
-
-.img-margin[data-kind='accessory'] {
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--text-mute);
+.img-vn[data-kind='price']:hover b {
+  text-decoration: underline;
 }
 
-/* Mốc giá trên dòng tiêu đề bảng. Đứng trước nút sắp xếp vì nó là dữ kiện, không phải thao
-   tác — và vì cột bội số bên dưới chỉ là phép chia từ nó. */
+/* PHỤ KIỆN nổi hẳn lên. Đây là cảnh báo chứ không phải chú thích: dòng ấy mang mã của món
+ * đang tra trong tiêu đề ("miếng dán DÙNG CHO chuột G304") nên rất dễ bị đọc nhầm thành
+ * chính món ấy đang bán giá rẻ. Nền vàng cùng tông với `.notice.warn` của cả webtool. */
+.img-vn[data-kind='accessory'] {
+  align-self: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  border: 1px solid color-mix(in srgb, var(--warn) 26%, transparent);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Chú giải cột phải, trên dòng tiêu đề bảng: mã nào có giá, mã nào không có ở sàn Việt. */
 .img-ref {
   margin-left: auto;
   display: inline-flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 8px;
+  flex-wrap: wrap;
   font-size: 12px;
   font-weight: 500;
   color: var(--text-dim);
@@ -484,14 +465,18 @@
 .img-ref b {
   font-weight: 700;
   color: var(--brand);
+  font-variant-numeric: tabular-nums;
 }
 
 .img-ref small {
   font-size: 11px;
   color: var(--text-mute);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
 }
 
-/* Cạnh nhau thì mốc giá phải nhường lề tự động cho nút sắp xếp — chỉ một cái được đẩy. */
+/* Cạnh nhau thì chỉ một cái được đẩy sang phải. */
 .img-ref + .img-sort {
   margin-left: 0;
 }

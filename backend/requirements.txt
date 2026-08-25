@@ -30,3 +30,22 @@ onnxruntime==1.28.0
 # gãy — đã đo 2026-08-25). Cụ thể đang cài 2.31.0 nhưng đặt trần rộng để pip resolver có chỗ xoay.
 supabase>=2.15,<3
 PyJWT>=2.10,<3
+
+# ─── Mục Trend Signal Hub (`backend/hub/`) ───────────────────────────────────────
+# Đo 2026-08-25 bằng cách chặn từng gói lúc import: gói DUY NHẤT mà `hub` cần ngay lúc nạp
+# module là pydantic-settings (hub/config.py). Thiếu nó thì `app/main.py` bắt lỗi, backend
+# vẫn lên, và `/api/hub/health` trả về lý do — ba mục còn lại không hề hấn gì.
+pydantic-settings==2.7.1
+
+# Bốn gói dưới đây đều được import LƯỜI, bên trong hàm, nên không ghim phiên bản: cứ có bản
+# nào trên máy là dùng bản đó. Máy đang chạy pandas 3.0.5 / anthropic 1.0.0 — cao hơn hẳn
+# bản mà dự án gốc ghim (2.2.3 / 0.42.0) — và Hub chạy đúng, nên ghim ngược xuống chỉ tổ
+# hạ cấp những gói mà phần còn lại của máy đang dùng.
+#   anthropic        trợ lý AI trong Hub          — thiếu: Hub chạy heuristic, vẫn ra số
+#   beautifulsoup4   cào Amazon (hub/workers)     — thiếu: riêng đường cào Amazon nằm im
+#   pytrends         đường dự phòng Google Trends — thiếu: đường chính (gói `gtrends` ở gốc
+#                                                   repo, Chrome thật) vẫn chạy
+#   pandas           dự án gốc ghim, nhưng không chỗ nào trong `hub/` import tới
+anthropic
+beautifulsoup4
+pytrends

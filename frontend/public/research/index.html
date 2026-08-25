@@ -50,7 +50,6 @@
     button.primary:not(:disabled):active { transform: translateY(0); }
     button.link { background: transparent; border-color: var(--disc); color: var(--disc); font-weight: 600; }
     button.link:hover { background: color-mix(in srgb, var(--disc) 8%, transparent); }
-    .hint { font-size: 11.5px; color: var(--muted); margin-top: 8px; }
 
     /* ---- Bước có số, soi gương mục Image Search (`styles/imagesearch.css`) ----
        Giữ hai bên giống nhau là có chủ đích: người dùng đi qua lại giữa hai mục suốt, nên
@@ -114,8 +113,6 @@
     button.sim { padding: 6px 10px; font-size: 12px; border-radius: var(--radius-sm); background: var(--panel); border: 1px solid var(--line); color: var(--fg); cursor: pointer; white-space: nowrap; }
     button.sim:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
-    .row2 { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; margin-top: 12px; }
-    .lbl { font-size: 12px; color: var(--muted); font-weight: 700; letter-spacing: .01em; }
     /* Chip chọn sàn / chọn nước — cùng một dáng với `.img-source` của mục Image Search. */
     .rgchip {
       font: inherit; font-size: 13.5px; font-weight: 600; padding: 9px 16px;
@@ -155,11 +152,6 @@
        thấy ở bước 1. `renderRegions` quyết định có gắn nhãn hay không. */
     .rglabel { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; width: 100%; }
 
-    .tabs { display: flex; gap: 6px; }
-    .tab { font: inherit; padding: 9px 18px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--muted); cursor: pointer; font-weight: 650; }
-    .tab:hover { color: var(--fg); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
-    .tab.on { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: var(--shadow-sm); }
-    .tab.on:hover { color: #fff; }
     .ctrls { padding: 16px 24px 18px; border-bottom: 1px solid var(--line-soft); background: color-mix(in srgb, var(--panel) 55%, transparent); }
 
     .cgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
@@ -168,18 +160,46 @@
     .ccard .media { position: relative; aspect-ratio: 1 / 1; background: var(--panel); }
     .ccard .media img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .ccard .play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 30px; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,.7); pointer-events: none; }
+
+    /* NÚT ▶ TRÊN THẺ TIKTOK.
+     *
+     * Lớp này được dùng trong `renderVideos` từ đầu nhưng CHƯA BAO GIỜ có một dòng CSS nào —
+     * ở cả bản extension gốc lẫn bản đã gộp. Hậu quả: nó là một `<button>` trần nằm trong
+     * dòng chảy, đứng SAU thẻ `<img>` trong một ô có `aspect-ratio: 1/1`. Ảnh đã chiếm hết
+     * chiều cao, nên cái nút đội ảnh tràn khỏi ô và đè lên tên tác giả với phần mô tả — đúng
+     * cảnh "dính dính" trong ảnh chụp.
+     *
+     * `inset: 0` cho cả ô ảnh thành vùng bấm: thẻ nhỏ, một nút tròn 44px giữa ảnh là đích khó
+     * trúng, mà toàn bộ ảnh thì không thể trượt. */
+    .ccard .play-overlay {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      border: 0; padding: 0; background: transparent; cursor: pointer;
+      color: #fff; font: inherit;
+    }
+    .ccard .play-overlay span {
+      display: flex; align-items: center; justify-content: center;
+      width: 46px; height: 46px; border-radius: 50%;
+      background: rgba(0,0,0,.55); backdrop-filter: blur(2px);
+      font-size: 19px; padding-left: 3px; /* tam giác ▶ lệch trái theo mắt, đẩy sang cho cân */
+      box-shadow: 0 2px 10px rgba(0,0,0,.4);
+      transition: background-color .14s var(--ease), transform .14s var(--ease);
+    }
+    .ccard .play-overlay:hover span { background: var(--accent); transform: scale(1.08); }
     .ccard .cbody { padding: 10px 11px; display: flex; flex-direction: column; gap: 4px; }
     .ccard .cadv { font-weight: 650; font-size: 13px; }
-    .ccard .ccopy { font-size: 12px; color: var(--muted); max-height: 3.3em; overflow: hidden; line-height: 1.35; }
+    /* Cắt theo SỐ DÒNG, không theo chiều cao. `max-height: 3.3em` cắt ngang thân chữ ở dòng
+       thứ tư — nhìn ra đúng cảnh chữ bị "dính" vào nhau, và không có dấu … nào cho biết
+       là còn nữa. `line-clamp` dừng gọn ở hết dòng thứ ba và tự thêm dấu ba chấm. */
+    .ccard .ccopy {
+      font-size: 12px; color: var(--muted); line-height: 1.35;
+      display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3;
+      overflow: hidden;
+    }
     .ccard .cmeta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
-    .ccard .cscore { font-weight: 800; color: var(--good); }
     .ccard a.clink { font-size: 12px; color: var(--accent); text-decoration: none; margin-top: 3px; }
     .ccard a.clink:hover { text-decoration: underline; }
 
-    /* Tab Tìm bằng ảnh */
-    .imgdrop { border: 1.5px dashed var(--line); border-radius: 10px; padding: 16px 22px; color: var(--muted); cursor: pointer; text-align: center; flex: 1; min-width: 240px; }
-    .imgdrop.drag { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
-    .imgprev { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); }
 
     #zoom { position: fixed; display: none; z-index: 50; pointer-events: none; padding: 6px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 40px -8px rgba(0,0,0,.4); }
     #zoom img { display: block; width: 320px; height: 320px; object-fit: contain; border-radius: 7px; }
@@ -203,16 +223,78 @@
     .vidhead button:hover { border-color: var(--accent); color: var(--accent); }
     .vidbody { padding: 14px 18px 20px; }
     .ccard .media video { width: 100%; height: 100%; object-fit: cover; display: block; background: #000; }
+
+    /* Hàng lọc theo nguồn, ngay trên lưới thẻ. Chip có SỐ ĐẾM và chip bằng 0 VẪN HIỆN —
+       "TikTok 0" là một câu trả lời có thật, khác hẳn với việc thiếu hẳn chip TikTok, thứ
+       người ta đọc thành "công cụ không tra TikTok". Cùng luật đã dùng ở mục Image Search. */
+    .vfilter { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .vfilter button {
+      font: inherit; font-size: 12.5px; font-weight: 650; padding: 6px 13px;
+      border: 1px solid var(--line); border-radius: 999px; background: var(--bg);
+      color: var(--muted); cursor: pointer;
+    }
+    .vfilter button:hover { border-color: var(--accent); color: var(--accent); }
+    .vfilter button[data-on="1"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .vfilter button b { font-weight: 700; opacity: .75; margin-left: 3px; }
+    .vfilter button[data-on="1"] b { opacity: 1; }
+
+    /* Hàng thống kê của thẻ: tim · bình luận · chia sẻ · lượt xem. Số dùng chữ số đều bề
+       ngang để các thẻ cạnh nhau thẳng cột, đọc lướt được. */
+    .cstats { display: flex; gap: 11px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--fg); font-variant-numeric: tabular-nums; }
+    .cstats span { display: inline-flex; align-items: center; gap: 3px; }
+    .cstats .n { font-weight: 700; }
+    .cstats .k { opacity: .6; font-size: 11px; }
+
+    /* LỚP PHỦ PHÁT VIDEO TIKTOK.
+     *
+     * Trước đây bấm ▶ là nhét thẳng iframe player vào ô ảnh của thẻ. Ô ấy có
+     * `aspect-ratio: 1/1` — một hình VUÔNG cỡ ba trăm pixel — trong khi player của TikTok là
+     * khung DỌC và có chiều cao tối thiểu; nhét vào đó thì nó cắt cụt hoặc rơi về màn hình
+     * "Watch more exciting videos on TikTok", tức là bấm xong vẫn không xem được gì.
+     *
+     * Nên player mở ra một lớp phủ riêng, đúng tỷ lệ 9:16 và cao gần hết màn hình. Đây cũng
+     * là chỗ TikTok tự hiện lượt tim / bình luận / chia sẻ của video ấy. */
+    /* CAO HƠN `.vidmodal` (60): player mở ĐÈ LÊN cửa sổ video, không phải nằm dưới nó. Bằng
+       nhau thì cửa sổ video vẽ sau nên nằm trên, và nút ✕ của player bấm không tới. */
+    .tkplay { position: fixed; inset: 0; background: rgba(0,0,0,.82); display: none; align-items: center; justify-content: center; z-index: 70; }
+    .tkplay.on { display: flex; }
+    /* Player BÊN TRÁI, thông tin video BÊN PHẢI. Trước đây lớp phủ chỉ có mỗi khung phát, nên
+       muốn biết đang xem video của ai, bao nhiêu tim, mô tả gì thì phải đóng lại rồi tìm lại
+       đúng cái thẻ vừa bấm. Đặt cạnh nhau thì vừa xem vừa đọc được. */
+    /* `flex-start` chứ không `stretch`: ô thông tin thường chỉ vài dòng, kéo cao bằng player
+       thì thành một mảng trắng to hơn cả phần chữ trong nó. */
+    .tkplay .wrap { display: flex; gap: 18px; align-items: flex-start; max-width: 96vw; }
+    .tkplay iframe { width: min(46vh, 88vw); height: min(88vh, 178vw); border: 0; border-radius: 12px; background: #000; flex: none; }
+    .tkplay .info {
+      width: 320px; max-height: min(88vh, 178vw); overflow-y: auto; background: var(--bg);
+      border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;
+    }
+    .tkplay .info h3 { margin: 0; font-size: 15px; }
+    .tkplay .info .desc { font-size: 13px; color: var(--muted); line-height: 1.45; }
+    .tkplay .info .cstats { font-size: 13px; }
+    .tkplay .info a { color: var(--accent); font-size: 13px; text-decoration: none; }
+    .tkplay .info a:hover { text-decoration: underline; }
+    .tkplay .close { position: absolute; top: 16px; right: 20px; font-size: 26px; line-height: 1; background: none; border: 0; color: #fff; cursor: pointer; padding: 6px 10px; }
+    /* Chuyển video ngay trong lớp phủ — không phải đóng ra rồi bấm thẻ khác. Cũng nhận ← →. */
+    .tkplay .nav { position: absolute; top: 50%; transform: translateY(-50%); font-size: 30px; background: rgba(0,0,0,.45); border: 0; color: #fff; cursor: pointer; padding: 14px 12px; border-radius: 10px; }
+    .tkplay .nav:hover { background: var(--accent); }
+    .tkplay .nav.prev { left: 14px; }
+    .tkplay .nav.next { right: 14px; }
+    .tkplay .nav[disabled] { opacity: .25; cursor: default; }
+    .tkplay .nav[disabled]:hover { background: rgba(0,0,0,.45); }
+    @media (max-width: 900px) { .tkplay .info { display: none; } }
     .mbadge { position: absolute; left: 8px; top: 8px; z-index: 1; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 7px; }
     .mbadge.langoff { left: auto; right: 8px; background: #b45309; }
   </style>
 </head>
 <body>
   <header>
-    <div class="brand"><h1>🛰️ Research-SPY</h1><span class="tag">Sản phẩm &amp; Content theo từ khoá</span></div>
+    <div class="brand"><h1>🛰️ Research-SPY</h1><span class="tag">Top sản phẩm đa sàn theo từ khoá</span></div>
   </header>
 
   <!-- ===== TAB SẢN PHẨM ===== -->
+  <!-- Lớp bọc còn lại từ thời trang này có ba tab. Giờ chỉ còn một mục nên không ai
+       bật/tắt nó nữa; giữ lại vì gỡ ra là thụt lại cả trăm dòng mà không đổi gì. -->
   <div id="tabProduct">
     <div class="ctrls">
       <div class="step">
@@ -286,69 +368,20 @@
   </div>
 
   <!-- ===== TAB CONTENT (Facebook Ads) ===== -->
-  <div id="tabContent" style="display:none">
-    <div class="ctrls">
-      <div class="controls">
-        <input id="ckw" placeholder="Keyword" style="flex:1; min-width:260px" />
-        <select id="cregion" title="Quốc gia Facebook Ad Library">
-          <option value="US">🇺🇸 US</option>
-          <option value="GB">🇬🇧 GB</option>
-          <option value="DE">🇩🇪 DE</option>
-          <option value="FR">🇫🇷 FR</option>
-          <option value="BR">🇧🇷 BR</option>
-          <option value="VN" selected>🇻🇳 VN</option>
-        </select>
-        <select id="ccount" title="Số quảng cáo">
-          <option value="20">20</option>
-          <option value="40" selected>40</option>
-          <option value="60">60</option>
-        </select>
-        <button id="cgo" class="primary">Tìm content</button>
-      </div>
-      <div class="hint">Content = quảng cáo đang chạy (Facebook Ad Library): creative + advertiser + ngày chạy. Không cần extension.</div>
-    </div>
-    <div class="status" id="cstatus"><span id="cstatusText">Nhập keyword để tìm content quảng cáo đang chạy.</span></div>
-    <div class="wrap"><div id="contentGrid" class="cgrid"></div></div>
-  </div>
-
   <!-- ===== TAB TÌM BẰNG ẢNH ===== -->
-  <div id="tabImage" style="display:none">
-    <div class="ctrls">
-      <div class="row2">
-        <span class="lbl">① Ảnh sản phẩm</span>
-        <div id="imgDrop" class="imgdrop">Kéo-thả ảnh vào đây · hoặc dán (Ctrl+V) · hoặc bấm chọn file</div>
-        <input id="imgFile" type="file" accept="image/*" style="display:none" />
-        <img id="imgPreview" class="imgprev" style="display:none" alt="" />
-        <button id="imgClear" class="link" style="display:none; border-color:var(--muted); color:var(--muted)">Xoá ảnh</button>
-      </div>
-      <div class="row2">
-        <span class="lbl">② Sàn + region</span>
-        <span id="iselSummary" class="sub"></span>
-        <button id="iGoProduct" class="rgchip">↔ Đổi ở tab Sản phẩm</button>
-      </div>
-      <div class="controls" style="margin-top:12px">
-        <button id="imgGo" class="primary">Tìm nguồn theo ảnh</button>
-      </div>
-      <div class="hint">Upload ảnh 1 sản phẩm → tìm cùng sản phẩm trên các sàn đã chọn, xếp theo GIÁ rẻ nhất để tìm nguồn nhập/mua.</div>
-    </div>
-    <div class="status" id="istatus"><span id="istatusText">Chọn/dán ảnh sản phẩm rồi bấm “Tìm nguồn theo ảnh”.</span></div>
+  <!-- ===== MODAL: video quảng cáo khớp ảnh cho một sản phẩm ===== -->
+  <!-- Player mở đè lên TẤT CẢ, kể cả cửa sổ video — nên nó là anh em của cửa sổ ấy chứ không
+       nằm trong. Nằm trong thì nó bị kẹt trong khung cuộn của lưới thẻ. -->
+  <div id="tkPlay" class="tkplay">
+    <button id="tkPlayClose" class="close" aria-label="Đóng">✕</button>
+    <button id="tkPrev" class="nav prev" aria-label="Video trước">‹</button>
+    <button id="tkNext" class="nav next" aria-label="Video sau">›</button>
     <div class="wrap">
-      <table id="itable" style="display:none">
-        <thead>
-          <tr>
-            <th class="num plain">#</th>
-            <th>Sản phẩm</th>
-            <th>Sàn</th>
-            <th class="num">Giá</th>
-            <th class="plain">Mở</th>
-          </tr>
-        </thead>
-        <tbody id="irows"></tbody>
-      </table>
+      <div id="tkFrame"></div>
+      <div id="tkInfo" class="info"></div>
     </div>
   </div>
 
-  <!-- ===== MODAL: video quảng cáo khớp ảnh cho một sản phẩm ===== -->
   <div id="vidModal" class="vidmodal">
     <div class="vidpanel">
       <div class="vidhead">
@@ -363,7 +396,11 @@
         <button id="vidClose">✕ Đóng</button>
       </div>
       <div class="status" id="vidStatus"><span id="vidStatusText"></span></div>
-      <div class="vidbody"><div class="cgrid" id="vidGrid"></div></div>
+      <div class="vidbody">
+        <!-- Hàng lọc nguồn, dựng bằng JS vì số đếm chỉ biết sau khi có kết quả. -->
+        <div class="vfilter" id="vidFilter"></div>
+        <div class="cgrid" id="vidGrid"></div>
+      </div>
     </div>
   </div>
 
