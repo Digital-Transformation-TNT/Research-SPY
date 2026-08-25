@@ -15,6 +15,8 @@ export type DongCoGia = {
   title?: string
   priceValue?: number
   codeHit?: boolean
+  /** Link tới ĐÚNG sản phẩm đó trên sàn. Cột giá bấm thẳng vào đây. */
+  link?: string
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════════════
@@ -161,7 +163,15 @@ export function maTrongTieuDe(title: string): string[] {
 export function chonGiaThapNhat<T extends DongCoGia>(
   rows: T[],
   ma: string,
-): { price: number | null; rows: (T & { vnSkip: VnSkip })[]; used: number; skipped: number } {
+): {
+  price: number | null
+  /** Chính dòng đã cho ra `price`. Cột giá cần nó để bấm thẳng vào sản phẩm, không phải mở
+   *  lại một trang tìm kiếm rồi bắt người ta tự dò lại đúng món vừa đọc được. */
+  winner: (T & { vnSkip: VnSkip }) | null
+  rows: (T & { vnSkip: VnSkip })[]
+  used: number
+  skipped: number
+} {
   const mucTieu = (ma || '').toUpperCase()
 
   // Bước 1 — cửa sổ liên quan. Dòng ngoài cửa sổ KHÔNG bị gắn cờ: chúng không sai, chỉ là
@@ -201,15 +211,22 @@ export function chonGiaThapNhat<T extends DongCoGia>(
   })
 
   const dungDuoc = buoc3.filter((r) => r._xet && !r.vnSkip && typeof r.priceValue === 'number')
-  const price = dungDuoc.reduce<number | null>(
-    (best, row) => (best === null || (row.priceValue as number) < best ? (row.priceValue as number) : best),
+  // Giữ luôn DÒNG rẻ nhất chứ không chỉ con số: mất dòng thì mất cả link sản phẩm, và cột
+  // giá lại phải mở về trang tìm kiếm.
+  const re = dungDuoc.reduce<(typeof dungDuoc)[number] | null>(
+    (best, row) => (best === null || (row.priceValue as number) < (best.priceValue as number) ? row : best),
     null,
   )
 
   // `_xet` là chuyện nội bộ của hàm này, không để nó rò ra ngoài.
-  const sach = buoc3.map(({ _xet, ...rest }) => rest as T & { vnSkip: VnSkip })
+  const bo = (r: T & { vnSkip: VnSkip; _xet: boolean }): T & { vnSkip: VnSkip } => {
+    const { _xet, ...rest } = r
+    return rest as T & { vnSkip: VnSkip }
+  }
+  const sach = buoc3.map(bo)
   return {
-    price,
+    price: re ? (re.priceValue as number) : null,
+    winner: re ? bo(re) : null,
     rows: sach,
     used: dungDuoc.length,
     skipped: sach.filter((r) => r.vnSkip).length,

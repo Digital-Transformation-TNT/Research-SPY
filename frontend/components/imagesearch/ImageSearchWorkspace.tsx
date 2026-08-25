@@ -336,7 +336,7 @@ function VnCell({ row, prices }: { row: ImageMatch; prices: VnPriceMap }) {
       onClick={(event) => {
         event.preventDefault()
         event.stopPropagation()
-        window.open(found.url, '_blank', 'noopener')
+        window.open(found.link || found.url, '_blank', 'noopener')
       }}
       title={vnTooltip(found)}
     >
@@ -360,6 +360,7 @@ function vnTooltip(found: VnCodePrice): string {
   const dong = [
     `Shopee: rẻ nhất ${found.price?.toLocaleString('vi-VN')} ₫ trong ${found.hits} sản phẩm mang mã ${found.code}.`,
   ]
+  if (found.title) dong.push('', found.title.slice(0, 90))
   if (found.skipped > 0) {
     dong.push('', `Đã bỏ ${found.skipped} dòng không phải món này:`)
     for (const row of found.skippedRows) {
@@ -374,7 +375,12 @@ function vnTooltip(found: VnCodePrice): string {
     }
     dong.push('', `Chỉ đọc ${CUA_SO_LIEN_QUAN} kết quả đầu của tab Liên Quan — phần đuôi là hàng vơ vét.`)
   }
-  dong.push('', 'Bấm để mở danh sách trên Shopee.')
+  dong.push(
+    '',
+    found.link
+      ? 'Bấm để mở THẲNG sản phẩm này trên Shopee.'
+      : 'Shopee không trả link cho dòng này — bấm sẽ mở lại danh sách tìm kiếm.',
+  )
   return dong.join('\n')
 }
 
@@ -663,7 +669,7 @@ export default function ImageSearchWorkspace() {
         const one = await shopeePrices(term)
         const hits = one.rows.filter((row) => row.codeHit)
         // Sàn giá: rẻ hơn cả giá sỉ tại xưởng Trung Quốc thì không phải cùng một món.
-        const { price: low, rows: daCham, skipped } = chonGiaThapNhat(one.rows, code)
+        const { price: low, winner, rows: daCham, skipped } = chonGiaThapNhat(one.rows, code)
         // GHI CẢ KHI KHÔNG CÓ GIÁ (`price: null`) — nhờ vậy chú giải phân biệt được "hỏi rồi,
         // sàn Việt không có" với "chưa hỏi tới". Hai câu ấy khác hẳn nhau.
         gia[code] = {
@@ -671,6 +677,8 @@ export default function ImageSearchWorkspace() {
           price: low,
           hits: hits.length,
           skipped,
+          link: winner?.link || null,
+          title: winner?.title || '',
           // Chỉ giữ vài dòng đầu: đây là tooltip, không phải bảng. Đủ để kiểm luật đoán đúng
           // hay sai, mà không biến một ô nhỏ thành bức tường chữ.
           skippedRows: daCham

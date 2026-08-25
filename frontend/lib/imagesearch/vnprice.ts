@@ -97,7 +97,17 @@ export type VnCodePrice = {
    * số nhảy lên, và không có đường nào kiểm xem nó bỏ đúng hay bỏ nhầm.
    */
   skippedRows: { title: string; price: number | null; why: VnSkip }[]
-  /** Link mở Shopee đúng cụm đã tra, để người dùng tự kiểm. */
+  /**
+   * Link tới ĐÚNG sản phẩm đang mang giá này. Đây là thứ cột giá bấm vào.
+   *
+   * `null` khi Shopee không trả link cho dòng ấy. Lúc đó mới rơi về `url` — mở lại trang tìm
+   * kiếm rồi bắt người ta tự dò lại đúng món vừa đọc được là một bước lùi, nên nó là đường
+   * dự phòng chứ không phải mặc định.
+   */
+  link: string | null
+  /** Tiêu đề của chính sản phẩm ấy, để tooltip nói rõ con số này là của món nào. */
+  title: string
+  /** Link mở Shopee ở tab Liên Quan — đường dự phòng khi không có `link`. */
   url: string
 }
 

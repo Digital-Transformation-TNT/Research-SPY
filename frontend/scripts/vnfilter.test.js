@@ -100,6 +100,13 @@ for (const c of canh) {
     `(bỏ ${r.skipped}, dùng ${r.used})`,
   )
   bao(trong, `${c.ma} nằm trong ${c.tu.toLocaleString('vi-VN')}–${c.den.toLocaleString('vi-VN')} ₫`)
+
+  // Cột giá bấm thẳng vào SẢN PHẨM, nên dòng thắng phải mang link — và phải là link sản
+  // phẩm thật, không phải một trang tìm kiếm.
+  const link = r.winner && r.winner.link
+  bao(!!link && /shopee\.vn\/product\//.test(link),
+      `${c.ma} có link thẳng tới sản phẩm`, String(link).slice(0, 52))
+  bao(r.winner && r.winner.priceValue === r.price, `${c.ma}: link khớp đúng dòng mang giá đó`)
 }
 
 // Ba thứ kéo giá xuống sai — mỗi thứ phải bị ĐÚNG một luật bắt, không phải tình cờ đúng.
