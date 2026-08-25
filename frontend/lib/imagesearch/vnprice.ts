@@ -27,6 +27,26 @@ import type { ImageMatch } from './types'
 const POOL = 60
 
 /**
+ * XẾP THEO ĐỘ LIÊN QUAN, KHÔNG THEO BÁN CHẠY. Đây là chỗ đã suýt làm hỏng cả tính năng.
+ *
+ * Mặc định của nguồn Shopee là `sort=sales`, và mặc định ấy đúng cho mục Quảng cáo: ở đó
+ * người ta đi tìm sản phẩm ĐANG BÁN ĐƯỢC. Ở đây thì ngược hẳn — ta đã biết mình cần món nào,
+ * chỉ cần biết nó giá bao nhiêu.
+ *
+ * Bằng chứng, đọc từ chính ảnh chụp Shopee cho "chuột g305": con G305 có 16 lượt bán, còn
+ * con G102 lẫn trong cùng bảng có 30k+. Xin sáu chục món BÁN CHẠY NHẤT thì con G305 bị hàng
+ * trăm con chuột khác đẩy ra ngoài trần, và công cụ kết luận "không có ở sàn Việt" trong khi
+ * nó nằm ngay trang một nếu xếp theo Liên Quan.
+ *
+ * Đó là kiểu hỏng tệ nhất mục này có thể mắc: một câu trả lời SAI mà trông y hệt một câu trả
+ * lời thật, và người dùng chỉ phát hiện được nếu tự đi tra tay.
+ *
+ * Cùng một giá trị phải đi vào CẢ pha 1 lẫn pha 2 — nó nằm trong khoá cache của
+ * `_client_cache_key`, lệch nhau là mỗi pha đọc một rổ khác.
+ */
+const SORT = 'relevancy'
+
+/**
  * Một cách tra: gõ gì vào Shopee, và chữ nào PHẢI có trong tiêu đề thì dòng đó mới tính.
  *
  * Hai thứ tách nhau vì chúng làm hai việc khác nhau. `query` cần đủ ngữ cảnh để Shopee hiểu
@@ -174,6 +194,8 @@ export async function shopeePrices(term: VnTerm, country = 'VN'): Promise<VnPric
     platforms: 'shopee',
     countries: country,
     limit: String(POOL),
+    // Tuỳ chọn riêng của nguồn đi theo dạng `<nguồn>.<khoá>` — xem `parse_ad_search_params`.
+    'shopee.sort': SORT,
   })
   const planned = await browserGet<AdSearchResult>(`/api/ads/search?${query}`)
 
@@ -200,6 +222,10 @@ export async function shopeePrices(term: VnTerm, country = 'VN'): Promise<VnPric
     platforms: ['shopee'],
     countries: [country],
     limit: POOL,
+    // PHẢI KHỚP pha 1: giá trị này nằm trong khoá cache của `_client_cache_key`, lệch nhau
+    // thì pha 2 ghi vào một rổ mà pha 1 không bao giờ đọc tới — cache hoá ra vô dụng mà
+    // không có dấu hiệu gì.
+    platformOptions: { shopee: { sort: SORT } },
     submissions,
   })
 
