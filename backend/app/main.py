@@ -36,13 +36,15 @@ if sys.platform == "win32":
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from lib.core.browser import close_all_sessions
 from lib.core.http import close_client
+from lib.core.jwt_util import verify as verify_jwt, JWTError, is_configured as jwt_ready
 
-from .api import ads, imagesearch, keywords, media, opportunity
+from .api import admin, ads, analytics, auth, imagesearch, keywords, media, opportunity
 
 # Mục Trend Signal Hub. Import ĐƯỢC PHÉP TRƯỢT: gói này kéo theo pandas/pytrends/anthropic,
 # và một máy thiếu chúng thì cả backend chết theo — mất luôn Quảng cáo, Từ khoá, Tìm bằng ảnh
@@ -89,14 +91,26 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=".*",
-    # POST chỉ dành cho một đường duy nhất: tải ảnh lên ở mục Tìm bằng ảnh. Mọi route khác
-    # vẫn là GET, và giữ danh sách hẹp thế này để việc mở thêm động từ là một quyết định
-    # có chủ ý chứ không phải chuyện xảy ra âm thầm.
-    allow_methods=["GET", "POST"],
+    # Giữ danh sách hẹp để việc mở thêm động từ là một quyết định có chủ ý chứ không phải
+    # chuyện xảy ra âm thầm. Hiện có đúng bốn:
+    #   GET     hầu hết mọi đường
+    #   POST    tải ảnh ở mục Tìm bằng ảnh, đăng nhập, ghi analytics, tạo user
+    #   PATCH   sửa user ở trang Quản trị  (/api/admin/users/{id})
+    #   DELETE  xoá user ở trang Quản trị  (/api/admin/users/{id})
+    #
+    # PATCH/DELETE thêm vào cùng lúc với mục Quản trị. Qua rewrite của Next thì cùng origin
+    # nên CORS không tham gia và thiếu chúng cũng không lộ ra; nhưng đúng cái tình huống mà
+    # dòng CORS này sinh ra để phục vụ — trỏ trình duyệt thẳng vào cổng 8000, hoặc chạy Next
+    # ở máy khác — thì preflight sẽ chặn, và lỗi hiện ra là "CORS" chứ không nói gì về việc
+    # sửa/xoá user, nên rất mất công truy.
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["*"],
     expose_headers=["content-range", "accept-ranges", "content-length"],
 )
 
+app.include_router(auth.router)
+app.include_router(admin.router)
+app.include_router(analytics.router)
 app.include_router(ads.router)
 app.include_router(imagesearch.router)
 app.include_router(keywords.router)
@@ -116,6 +130,44 @@ else:
         đầy ắp số liệu trông rất thật — không có một dấu hiệu nào cho biết chúng là số giả.
         """
         return {"status": "error", "reason": HUB_ERROR}
+
+
+# ---------------------------------------------------------------------------
+# JWT middleware — OPTIONAL AUTH, không bắt buộc.
+#
+# QUAN TRỌNG: đây KHÔNG phải cổng chặn cứng. Nếu có `Authorization: Bearer <token>` hợp lệ thì
+# gắn user vào request.state; không có token thì VẪN cho qua (request.state.user không được set).
+#
+# Vì sao không chặn cứng mọi /api/*: các route dữ liệu sẵn có (ads/search, keywords, media,
+# imagesearch, opportunity) được gọi bằng plain fetch KHÔNG kèm token — chặn cứng sẽ 401 toàn bộ
+# và làm hỏng app kể cả người đã đăng nhập. Việc ENFORCE quyền là trách nhiệm của TỪNG endpoint
+# nhạy cảm: admin.py gọi `_require_admin` (401 nếu thiếu user, 403 nếu không phải admin), auth/me
+# tự trả 401 nếu chưa có user. Data routes vẫn mở như trước khi có auth.
+#
+# Token sai (không phải thiếu) → 401 ngay, để client biết vé hỏng mà đăng nhập lại thay vì âm thầm
+# chạy như ẩn danh.
+# ---------------------------------------------------------------------------
+
+
+@app.middleware("http")
+async def jwt_middleware(request: Request, call_next):
+    if not jwt_ready():
+        return await call_next(request)
+    auth_header = request.headers.get("authorization") or ""
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header[7:].strip()
+        try:
+            payload = verify_jwt(token)
+        except JWTError as e:
+            # Có gửi token nhưng hỏng/hết hạn → báo 401 để client đăng nhập lại.
+            return JSONResponse({"error": str(e)}, status_code=401)
+        request.state.user = {
+            "id": payload["sub"],
+            "username": payload["username"],
+            "role": payload["role"],
+        }
+    # Không có header Bearer → đi tiếp ẩn danh. Endpoint nhạy cảm tự enforce.
+    return await call_next(request)
 
 
 @app.get("/api/health")

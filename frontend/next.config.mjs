@@ -46,9 +46,21 @@ const DIST_DIR = process.env.NEXT_DIST_DIR ?? '.next'
 const nextConfig = {
   distDir: DIST_DIR,
   eslint: { ignoreDuringBuilds: true },
+  // Tắt huy hiệu "N" của Next ở góc màn hình lúc chạy dev — nó đè lên chân sidebar. Chỉ hiện ở
+  // dev, bản production build vốn không có; tắt cho gọn khi demo/dev.
+  devIndicators: false,
   experimental: { proxyTimeout: PROXY_TIMEOUT_MS },
   async rewrites() {
-    return [{ source: '/api/:path*', destination: `${BACKEND_URL}/api/:path*` }]
+    return [
+      { source: '/api/:path*', destination: `${BACKEND_URL}/api/:path*` },
+      // Trang đăng nhập + quản trị là HTML tĩnh trong `public/` (đầy đủ style riêng, KHÔNG có
+      // sidebar). Rewrite để URL sạch `/login` và `/admin` serve thẳng file `index.html` tương
+      // ứng — không phải gõ `.html`, không dính chuẩn-hoá-trailing-slash của Next (vốn biến
+      // `/login/` thành `/login` rồi 404 vì không có route). Research thì khác: nó là route thật
+      // `/ads` (app/ads/page.tsx) vì cần khung sidebar bọc ngoài.
+      { source: '/login', destination: '/login/index.html' },
+      { source: '/admin', destination: '/admin/index.html' },
+    ]
   },
 }
 

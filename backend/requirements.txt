@@ -22,6 +22,15 @@ Pillow==12.3.0
 # repo — xem `lib/ads/clipmatch.py` để biết chỗ đặt `backend/models/clip-vision.onnx`.
 onnxruntime==1.28.0
 
+# Tài khoản người dùng + phân tích: cả 2 chỉ dùng khi khai SUPABASE_URL. Không khai → module
+# tự tắt, giao diện admin/đăng nhập hoạt động ở chế độ chỉ-localStorage như trước. Đây là hai
+# gói TỰ CHỌN — quăng khỏi requirements.txt sẽ làm hỏng tính năng nhưng KHÔNG làm hỏng crawl.
+#
+# supabase>=2.15 để tương thích httpx 0.28.1 (bản cũ 2.9.1 kéo httpx xuống 0.27, làm google-genai
+# gãy — đã đo 2026-08-25). Cụ thể đang cài 2.31.0 nhưng đặt trần rộng để pip resolver có chỗ xoay.
+supabase>=2.15,<3
+PyJWT>=2.10,<3
+
 # ─── Mục Trend Signal Hub (`backend/hub/`) ───────────────────────────────────────
 # Đo 2026-08-25 bằng cách chặn từng gói lúc import: gói DUY NHẤT mà `hub` cần ngay lúc nạp
 # module là pydantic-settings (hub/config.py). Thiếu nó thì `app/main.py` bắt lỗi, backend
