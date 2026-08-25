@@ -18,6 +18,7 @@ from lib.ads.imagematch import DEFAULT_MAX_DISTANCE, match_ads_by_image
 from lib.ads.keyword_extract import extract_keywords, extract_video_terms, region_lang
 from lib.ads.platform import PlatformSearchInput
 from lib.ads.platforms import PLATFORM_DESCRIPTORS, PLATFORM_IDS, get_platform
+from lib.ads.tiktok_stats import fetch_stats
 from lib.ads.search import (
     MAX_LIMIT,
     ingest_client_results,
@@ -37,6 +38,10 @@ router = APIRouter(prefix="/api/ads")
 #: Danh mục ngành hàng gần như không đổi, mà mỗi lần gọi lại ăn vào hạn ngạch request eo hẹp
 #: mà phần tìm kiếm thật đang cần.
 FILTERS_TTL_MS = 6 * 60 * 60 * 1000
+
+#: Tương tác video đổi chậm — một video hôm nay 35K tim thì ngày mai vẫn cỡ đó. Sáu giờ
+#: là đủ tươi để đọc mà vẫn cắt hẳn số lượt mở trang, thứ đắt nhất của đường này.
+TIKTOK_STATS_TTL_MS = 6 * 60 * 60 * 1000
 
 
 @router.get("/platforms")
@@ -134,6 +139,43 @@ async def video_keywords(request: Request) -> JSONResponse:
         if from_gemini:
             cache_set(key, keywords)
     return JSONResponse({"keywords": keywords, "region": region, "lang": region_lang(region)})
+
+
+@router.get("/tiktok-stats")
+async def tiktok_stats(request: Request) -> JSONResponse:
+    """
+    Tương tác của các video TikTok: tim, bình luận, chia sẻ, LƯỢT XEM, ngày đăng.
+
+    Tham số: `ids` — các id video ngăn bằng dấu phẩy.
+
+    Đọc từ trang nhúng của chính TikTok, không cần đăng nhập và không cần extension. Id nào
+    không đọc được thì VẮNG MẶT trong kết quả, không phải bằng không — xem `tiktok_stats.py`.
+
+    Cache theo từng id: cùng một video hay xuất hiện lại ở nhiều lượt tìm khác nhau, mà mỗi
+    lượt đọc là một lần mở trang thật.
+    """
+    query = multi_query(request)
+    raw = (query.get("ids", [""])[0] or "").strip()
+    ids = [x.strip() for x in raw.split(",") if x.strip().isdigit()]
+    if not ids:
+        return JSONResponse({"stats": {}})
+
+    stats: dict[str, dict[str, int]] = {}
+    con_thieu: list[str] = []
+    for vid in ids:
+        cached = cache_get(f"tkstat:{vid}")
+        if cached is not None:
+            stats[vid] = cached
+        else:
+            con_thieu.append(vid)
+
+    if con_thieu:
+        moi = await fetch_stats(con_thieu)
+        for vid, one in moi.items():
+            cache_set(f"tkstat:{vid}", one, TIKTOK_STATS_TTL_MS)
+            stats[vid] = one
+
+    return JSONResponse({"stats": stats, "asked": len(ids), "got": len(stats)})
 
 
 @router.get("/match-image")

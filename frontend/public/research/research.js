@@ -1284,34 +1284,51 @@ async function loadModalTiktok(region) {
 }
 
 /**
- * Bổ sung tim / bình luận / chia sẻ / LƯỢT XEM cho các thẻ TikTok, đọc từ trang nhúng.
+ * Bổ sung tim / bình luận / chia sẻ / LƯỢT XEM cho các thẻ TikTok.
  *
- * Chạy SAU khi đã vẽ lưới, và vẽ lại khi có số — chứ không chờ nó rồi mới vẽ. Mỗi video là
- * một lượt tải trang nhúng nên cả loạt mất vài chục giây; bắt người dùng ngồi nhìn màn hình
- * trống chừng ấy để đổi lấy mấy con số phụ là một cái giá sai.
+ * ĐI QUA BACKEND, KHÔNG QUA EXTENSION. Backend đọc trang nhúng của chính TikTok bằng Chrome
+ * thật — không cần đăng nhập, không cần extension, và cache sáu giờ theo từng video nên lượt
+ * sau gần như tức thì (đo: 3 video mất 7,8 giây lần đầu, 1,8 giây lần sau).
  *
- * Vì sao không lấy từ API search: `parseTiktokTexts` chỉ có số khi page-hook chộp được
- * response của `/api/search/general/full/`, mà TikTok trả rỗng khá thường xuyên — lúc ấy thẻ
- * mất sạch số mà không có dấu hiệu gì. Trang nhúng thì luôn có, và không cần đăng nhập: đo
- * 2026-08-25 trên trình duyệt CHƯA đăng nhập, đúng lúc trang search đang báo "Đã xảy ra lỗi",
- * `embed/v2` vẫn trả về digg 35100 · comment 5495 · share 1467 · play 159000.
+ * Bản trước giao việc này cho extension. Nó chạy được về lý thuyết nhưng KHÔNG kiểm được bằng
+ * máy — Chrome 151 bỏ `--load-extension` — nên mỗi lần hỏng chỉ còn cách đoán. Đường qua
+ * backend thì đo được từ đầu đến cuối, và đó là lý do đổi.
+ *
+ * Chạy SAU khi đã vẽ lưới và vẽ lại khi có số: người dùng thấy video ngay, số điền vào sau.
  */
 async function fillTiktokStats(ads, token) {
   const ids = ads.filter((a) => a.platform === 'tiktok' && a.id && !a.likeCount).map((a) => a.id);
   if (!ids.length) return;
-  const res = await new Promise((r) => chrome.runtime.sendMessage({ type: 'RS_TIKTOK_STATS', ids }, (x) => r(x)));
-  if (!res || !res.ok || token !== vidToken) return; // lượt tìm khác đã chen vào — bỏ kết quả cũ
+  let data;
+  try {
+    const r = await fetch(`${BACKEND}/api/ads/tiktok-stats?ids=${encodeURIComponent(ids.join(','))}`);
+    data = await r.json();
+    if (!r.ok) throw new Error((data && data.error) || `HTTP ${r.status}`);
+  } catch (e) {
+    // Không có số thì thôi, nhưng NÓI RA. Một hàng thống kê trống mà không lời giải đọc thành
+    // "video này không ai xem" — sai, và sai theo hướng làm người dùng bỏ qua video tốt.
+    if (token === vidToken) setVidStatus($('vidStatusText').textContent + ' · chưa lấy được lượt tim (backend không trả lời)', 'err');
+    return;
+  }
+  if (token !== vidToken) return; // lượt tìm khác đã chen vào — bỏ kết quả cũ
+
   let co = 0;
   for (const ad of ads) {
-    const st = res.stats && res.stats[ad.id];
+    const st = data.stats && data.stats[ad.id];
     if (!st) continue;
     co++;
     ad.likeCount = st.likeCount ?? ad.likeCount;
     ad.commentCount = st.commentCount ?? ad.commentCount;
+    ad.shareCount = st.shareCount ?? ad.shareCount;
     ad.playCount = st.playCount ?? ad.playCount;
     ad.startedAt = ad.startedAt || st.createdAt || null;
   }
   if (co) renderVideos(ads);
+  if (co < ids.length) {
+    // Nói rõ thiếu bao nhiêu. Video riêng tư hoặc đã xoá thì đọc không ra, và đó là chuyện
+    // bình thường — nhưng im lặng thì người dùng tưởng công cụ hỏng.
+    setVidStatus(`${$('vidStatusText').textContent} · thống kê ${co}/${ids.length} video`, co ? 'ok' : 'err');
+  }
 }
 
 /**
@@ -1439,7 +1456,13 @@ function renderVideos(ads) {
  * 151 thì không cho nạp extension trong máy tự động — không có cửa này thì toàn bộ hàng lọc,
  * hàng thống kê và lớp phủ phát KHÔNG kiểm được bằng máy, chỉ còn cách nhìn bằng mắt.
  */
-window.__rsVid = { render: renderVideos, get shown() { return vidShown; } };
+window.__rsVid = {
+  render: renderVideos,
+  // Tự truyền mã lượt hiện tại: `fillTiktokStats` bỏ qua kết quả của lượt cũ, nên gọi
+  // trần từ ngoài sẽ luôn rơi vào nhánh ấy.
+  fill: (ads) => fillTiktokStats(ads, vidToken),
+  get shown() { return vidShown; },
+};
 
 $('vidFilter').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-src]');

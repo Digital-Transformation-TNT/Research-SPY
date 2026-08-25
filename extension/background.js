@@ -578,90 +578,6 @@ function parseDouyinTexts(texts, count) {
   return out;
 }
 
-// ===== THỐNG KÊ VIDEO TIKTOK — đọc từ TRANG NHÚNG, không cần đăng nhập =====
-//
-// Vì sao không lấy từ API search: `parseTiktokTexts` chỉ có số khi `page-hook.js` chộp được
-// response của `/api/search/general/full/`. Lượt nào TikTok trả rỗng — và nó trả rỗng thường
-// xuyên — thì thẻ mất sạch tim/bình luận mà không có dấu hiệu gì.
-//
-// Trang nhúng thì luôn có. Đo ngày 2026-08-25 trên một trình duyệt CHƯA đăng nhập, đúng lúc
-// trang search của TikTok còn đang trả về "Đã xảy ra lỗi":
-//
-//     tiktok.com/embed/v2/6718335390845095173
-//       diggCount 35100 · commentCount 5495 · shareCount 1467 · playCount 159000
-//       createTime 1564234358
-//
-// `playCount` là thứ API search không cho: LƯỢT XEM. Đó là con số nói thẳng nhất video nào
-// thật sự chạy.
-//
-// PHẢI LÀ MỘT LƯỢT ĐIỀU HƯỚNG THẬT, không `fetch` được: đã thử `fetch('/embed/v2/<id>')` ngay
-// trong một trang tiktok.com — trả về 323KB nhưng KHÔNG có trường nào. TikTok chỉ dựng sẵn dữ
-// liệu cho request điều hướng (`Sec-Fetch-Mode: navigate`), mà mấy header ấy thì `fetch` không
-// đặt được. Nên đây là một tab, điều hướng lần lượt.
-//
-// Vì mỗi video tốn một lượt tải trang, có TRẦN cứng: tối đa `MAX_STATS` video và một hạn giờ
-// chung. Hết giờ thì trả về những gì đã có — nửa bảng có số vẫn hơn là chờ mãi rồi trắng tay.
-const MAX_STATS = 12;
-const STATS_BUDGET_MS = 60000;
-
-let tkStatsTabId = null;
-
-async function tiktokStatsTab() {
-  if (tkStatsTabId != null) {
-    try { const t = await chrome.tabs.get(tkStatsTabId); if (t) return t; } catch (e) { tkStatsTabId = null; }
-  }
-  const t = await chrome.tabs.create({ url: 'about:blank', active: false });
-  tkStatsTabId = t.id;
-  return t;
-}
-
-// Đọc các trường thống kê ra khỏi HTML trang nhúng. Chạy trong MAIN world của chính tab đó.
-const TK_STATS_JS = () => {
-  const html = document.documentElement ? document.documentElement.innerHTML : '';
-  const lay = (k) => {
-    // Hai dấu chéo: chuỗi JS nuốt một cái, `RegExp` nhận `\s` và `\d` như mong muốn.
-    const m = html.match(new RegExp('"' + k + '":\\s*"?(\\d+)'));
-    return m ? Number(m[1]) : null;
-  };
-  return {
-    likeCount: lay('diggCount'),
-    commentCount: lay('commentCount'),
-    shareCount: lay('shareCount'),
-    playCount: lay('playCount'),
-    createdAt: lay('createTime'),
-  };
-};
-
-async function tiktokStats(ids) {
-  const out = {};
-  const danh = (Array.isArray(ids) ? ids : []).filter(Boolean).slice(0, MAX_STATS);
-  if (!danh.length) return { stats: out, asked: 0 };
-  const deadline = Date.now() + STATS_BUDGET_MS;
-  let tab;
-  try { tab = await tiktokStatsTab(); } catch (e) { return { stats: out, asked: 0, error: String(e) }; }
-
-  for (const id of danh) {
-    if (Date.now() >= deadline) break;
-    try {
-      await chrome.tabs.update(tab.id, { url: 'https://www.tiktok.com/embed/v2/' + encodeURIComponent(id), active: false });
-      // Trang nhúng dựng sẵn dữ liệu ngay trong HTML, nên chỉ cần chờ nó vẽ xong — hỏi lại
-      // vài nhịp thay vì ngủ một giấc cố định.
-      for (let i = 0; i < 14 && Date.now() < deadline; i++) {
-        await sleep(400);
-        let r = null;
-        try {
-          const res = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: TK_STATS_JS });
-          r = res && res[0] && res[0].result;
-        } catch (e) { /* trang chưa sẵn sàng */ }
-        if (r && r.likeCount != null) { out[id] = r; break; }
-      }
-    } catch (e) { /* video riêng tư / đã xoá → bỏ qua, đi tiếp */ }
-  }
-  try { await chrome.tabs.remove(tab.id); } catch (e) {}
-  tkStatsTabId = null;
-  return { stats: out, asked: danh.length };
-}
-
 // Dò MẢNG sản phẩm trong JSON bất kỳ: mảng có ≥3 phần tử "trông giống sản phẩm" (theo `looksItem`).
 function rsDeepFindArray(root, looksItem) {
   let best = null;
@@ -1488,11 +1404,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   if (msg.type === 'RS_TIKTOK') {
     searchTiktok(msg.keyword, msg.count, msg.keywords, msg.region, msg.mode, msg.anchor).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: false, error: String(e) }));
-    return true;
-  }
-
-  if (msg.type === 'RS_TIKTOK_STATS') {
-    tiktokStats(msg.ids).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, stats: {}, asked: 0, error: String(e) }));
     return true;
   }
 
