@@ -1297,7 +1297,9 @@ async function loadModalTiktok(region) {
  * Chạy SAU khi đã vẽ lưới và vẽ lại khi có số: người dùng thấy video ngay, số điền vào sau.
  */
 async function fillTiktokStats(ads, token) {
-  const ids = ads.filter((a) => a.platform === 'tiktok' && a.id && !a.likeCount).map((a) => a.id);
+  // `== null` chứ không `!a.likeCount`: video có ĐÚNG 0 tim là một phép đo hợp lệ, dùng
+  // `!` thì nó rơi vào nhánh "chưa có" và bị đi hỏi lại ở mọi lượt vẽ.
+  const ids = ads.filter((a) => a.platform === 'tiktok' && a.id && a.likeCount == null).map((a) => a.id);
   if (!ids.length) return;
   let data;
   try {
@@ -1381,23 +1383,20 @@ function drawVidGrid() {
 }
 
 /**
- * Một con số thống kê CỦA CHÍNH VIDEO ẤY, chỉ hiện khi có. Số 0 và số vắng mặt là hai chuyện
- * khác nhau: video thật sự không ai bình luận thì TikTok trả về 0 và ta ẩn đi; video đọc không
- * ra thì trường ấy vắng mặt.
+ * Một con số thống kê CỦA CHÍNH VIDEO ẤY. Không cộng gộp gì cả — mỗi thẻ đọc đúng trường của
+ * mình.
  *
- * DƯỚI MƯỜI NGHÌN THÌ HIỆN SỐ ĐẦY ĐỦ. `fmtCompact` rút gọn từ 1.000 trở lên, nên 5.495 và
- * 5.512 đều thành "5,5K" — hai video khác nhau trông y hệt, mà mục đích của cả hàng này lại
- * đúng là để so chúng với nhau. TikTok cũng hiện đủ số ở khoảng ấy (5495, 1467) và chỉ rút gọn
- * từ chục nghìn trở lên (35.1K).
+ * SỐ 0 VẪN HIỆN, chỉ trường VẮNG MẶT mới ẩn. Hai chuyện khác hẳn nhau và giao diện phải phân
+ * biệt được: "0 bình luận" là một phép đo — video ấy thật sự không ai bình luận, và đó là
+ * thông tin đáng giá khi chọn video để bắt chước. Còn trường vắng mặt nghĩa là đọc không ra
+ * (video riêng tư, đã xoá, hoặc hết hạn giờ), và bịa ra số 0 cho nó là nói dối.
  *
- * Trên mười nghìn thì rút gọn: bốn ô số đứng cạnh nhau trong một thẻ hẹp, "41.400.000" làm vỡ
- * hàng — và ở cỡ ấy thì vài nghìn hơn kém không đổi quyết định của ai. Số đầy đủ vẫn còn
- * nguyên trong phần chú khi rê chuột.
+ * Rút gọn về K/M cho mọi cỡ: bốn ô số đứng cạnh nhau trong một thẻ hẹp, viết đủ "41.400.000"
+ * thì vỡ hàng. Số đầy đủ nằm trong phần chú khi rê chuột.
  */
 function stat(icon, ten, v) {
-  if (typeof v !== 'number' || v <= 0) return '';
-  const hien = v < 10000 ? v.toLocaleString('vi-VN') : fmtCompact(v);
-  return `<span title="${ten}: ${v.toLocaleString('vi-VN')}">${icon}<span class="n">${hien}</span></span>`;
+  if (typeof v !== 'number' || v < 0) return '';
+  return `<span title="${ten}: ${v.toLocaleString('vi-VN')}">${icon}<span class="n">${fmtCompact(v)}</span></span>`;
 }
 
 function vidCard(ad, idx) {
