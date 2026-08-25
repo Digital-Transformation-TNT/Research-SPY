@@ -377,6 +377,36 @@
   color: var(--text-mute);
 }
 
+/* Hàng điều khiển của bảng "Giá đang bán ở Việt Nam": chọn cụm rồi bấm tra.
+ *
+ * Nút "Tra giá" tách khỏi dãy chip bằng `margin-left: auto` — chip là thứ để chọn, nút là
+ * thứ để làm, và hai việc ấy không nên đứng lẫn vào nhau trong cùng một hàng.
+ */
+.img-vn-run {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.img-vn-run .btn {
+  margin-left: auto;
+}
+
+/* Giá thấp nhất — con số duy nhất người ta mở bảng này để tìm, nên nó to hơn mọi dòng trong
+ * bảng và dùng đúng màu thương hiệu như `.img-price`. */
+.img-cheapest {
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+
+.img-cheapest b {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--brand);
+}
+
 /* Nút sắp xếp, nằm cuối dòng tiêu đề bảng.
  *
  * Dùng lại `.img-mode` của bước "Một sàn / Nhiều sàn" chứ không đẻ kiểu mới: vẫn đúng là

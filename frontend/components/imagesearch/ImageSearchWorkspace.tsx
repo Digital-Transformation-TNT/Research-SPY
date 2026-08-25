@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { browserPost } from '@/lib/api'
+import { shopeePrices, type VnPriceResult } from '@/lib/imagesearch/vnprice'
 import type {
   ImageMatch,
   ImageSearchResult,
@@ -326,6 +327,108 @@ function MarketSection({
   )
 }
 
+/**
+ * BẢNG GIÁ ĐANG BÁN Ở VIỆT NAM — đầu kia của cả mục này.
+ *
+ * Bốn bảng nguồn Trung Quốc nói mua vào bao nhiêu; bảng này nói bán ra được bao nhiêu, và
+ * khoảng giữa hai con số là toàn bộ phần biên còn lại. Đó là lý do nó đứng CUỐI: đọc từ trên
+ * xuống là ra ngay câu trả lời.
+ *
+ * PHẢI BẤM MỚI CHẠY, không tự chạy cùng lượt tìm ảnh. Nó mở tab Shopee trong trình duyệt của
+ * người dùng và mất vài giây; làm ngầm mỗi lượt tìm là cướp trình duyệt của người ta cho một
+ * câu hỏi họ chưa hỏi. Và nó chỉ có nghĩa khi đã biết tra bằng CỤM NÀO — mà cụm ấy lại đến từ
+ * bảng mã ở trên, tức là sau lượt tìm ảnh.
+ *
+ * CHO CHỌN CỤM chứ không tự quyết: mã model cho kết quả sát nhất, nhưng nhiều món không có mã
+ * và có món mã lại là mã xưởng (tra ra số không — đo 2026-08-19). Người dùng nhìn bảng mã ở
+ * trên là biết nên thử cụm nào trước.
+ */
+function VnPriceSection({ terms }: { terms: string[] }) {
+  const [term, setTerm] = useState(terms[0] ?? '')
+  const [result, setResult] = useState<VnPriceResult | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [sort, setSort] = useState<SortId>('price-asc')
+
+  const run = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    setResult(null)
+    try {
+      setResult(await shopeePrices(term))
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }, [term])
+
+  if (!terms.length) return null
+
+  const rows = result?.rows ?? []
+  // Giá thấp nhất là con số người ta mở bảng này để tìm, nên nó đứng riêng ở tiêu đề chứ
+  // không nằm lẫn trong bảng. Đọc từ `priceValue` — cùng con số thanh sắp xếp đang dùng.
+  const cheapest = rows.reduce<number | null>((low, row) => {
+    const value = row.priceValue
+    if (typeof value !== 'number') return low
+    return low === null || value < low ? value : low
+  }, null)
+
+  return (
+    <div className="panel">
+      <h3 className="img-head">
+        Giá đang bán ở Việt Nam <span className="img-count">Shopee</span>
+        {!!rows.length && <SortBar items={rows} value={sort} onChange={setSort} />}
+      </h3>
+
+      <div className="img-vn-run">
+        <div className="chips">
+          {terms.map((option) => (
+            <button
+              type="button"
+              key={option}
+              className="chip"
+              data-on={term === option}
+              onClick={() => setTerm(option)}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+        <button className="btn" onClick={run} disabled={loading || !term}>
+          {loading ? 'Đang hỏi Shopee…' : 'Tra giá'}
+        </button>
+      </div>
+
+      {loading && (
+        <p className="muted small">
+          <span className="spinner" /> Extension đang mở tab Shopee bằng phiên đăng nhập của
+          bạn — khoảng 5 giây. Đừng đóng tab đó.
+        </p>
+      )}
+
+      {error && <div className="notice bad">{error}</div>}
+      {result?.notice && <div className="notice warn">{result.notice}</div>}
+
+      {!!rows.length && (
+        <>
+          {/* Con số duy nhất người ta mở bảng này để tìm, nên nó to và đứng trước bảng. Kèm
+              cỡ mẫu vì "thấp nhất trong 47 món bán chạy" là một câu khác hẳn "thấp nhất trên
+              toàn Shopee" — bảng này lấy theo sắp xếp Bán chạy, không quét hết sàn. */}
+          <p className="img-cheapest">
+            Thấp nhất <b>{rows.find((r) => r.priceValue === cheapest)?.price}</b>
+            <span className="muted small">
+              {' '}
+              trong {rows.length} sản phẩm bán chạy khớp “{result?.term}”
+            </span>
+          </p>
+          <Rows items={sortRows(rows, sort)} />
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function ImageSearchWorkspace() {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -478,10 +581,15 @@ export default function ImageSearchWorkspace() {
   const zhTerms = identity?.terms?.zh ?? []
   const codes = result?.codes ?? []
 
+
   // Từ gốc mang sang tab Từ khoá: cụm vi ĐẦU TIÊN, và lùi về tên món khi không có cụm nào.
   // Cụm vi sát với thứ người ta gõ hơn tên món — "chuột máy tính logitech" thay vì "chuột
   // không dây" — nên nó cho bảng từ khoá tốt hơn.
   const seed = identity?.terms?.vi?.[0] || identity?.product || ''
+  // Cụm để tra giá Việt Nam: mã trước, rồi mới tới cụm chữ. Mã cho kết quả sát hơn hẳn —
+  // "BHD321" ra đúng một món, "máy sấy tóc" ra hàng nghìn. Giữ cả cụm chữ vì nhiều món
+  // không có mã nào, và lúc ấy cụm chữ là đường duy nhất.
+  const vnTerms = [...codes.slice(0, 3).map((code) => code.code), seed].filter(Boolean)
 
   return (
     <div onPaste={onPaste}>
@@ -713,6 +821,11 @@ export default function ImageSearchWorkspace() {
       <Section title="Bán lẻ ở Trung Quốc" items={chinaRetail} />
       <Section title="Khách tự đặt về · AliExpress" items={globalRetail} />
       <MarketSection title="Nơi đang bán" items={matches} platforms={platforms} />
+      {/* ĐỨNG CUỐI vì nó là mắt xích cuối của chuỗi ra quyết định ở trên: giá bán thật tại
+          chợ đích. Bảng "Nơi đang bán" của Lens nói AI đang bán, bảng này nói BAO NHIÊU —
+          hai câu khác nhau, và Lens gần như không trả lời được câu thứ hai (đo được 2/24
+          thẻ có giá). */}
+      {!!result && <VnPriceSection terms={vnTerms} />}
     </div>
   )
 }
