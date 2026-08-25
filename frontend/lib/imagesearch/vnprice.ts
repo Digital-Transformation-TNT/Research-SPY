@@ -65,6 +65,8 @@ export type VnRow = ImageMatch & {
   phraseHit?: boolean
   /** Tiêu đề dòng này có mang đúng mã đang tra không. Xem `rowMatches`. */
   codeHit?: boolean
+  /** Mang mã nhưng bị gạch khỏi phép tính giá, và vì sao. Xem `chonGiaThapNhat`. */
+  vnSkip?: VnSkip
 }
 
 /**
@@ -81,6 +83,22 @@ export type VnCodePrice = {
   price: number | null
   /** Số dòng mang mã. 0 nghĩa là Shopee có trả bảng nhưng không dòng nào là món này. */
   hits: number
+  /**
+   * Số dòng mang mã nhưng bị gạch khỏi phép tính giá vì là phụ kiện. Hiện ra cho người dùng:
+   * một con số kèm "(đã bỏ 3 dòng phụ kiện)" nói được vì sao nó khác con số họ thấy khi tự
+   * bấm vào Shopee sắp theo giá tăng dần. Không nói thì chênh lệch ấy đọc thành lỗi.
+   */
+  skipped: number
+  /**
+   * Chính những dòng đã bị bỏ, để người dùng SOI ĐƯỢC chứ không phải tin suông.
+   *
+   * Cột phải không có bảng Shopee để bày từng dòng — nó chỉ có chỗ cho một con số. Nên chúng
+   * nằm trong tooltip. Không giữ lại thì luật này thành một hộp đen: nó bỏ đi vài dòng, con
+   * số nhảy lên, và không có đường nào kiểm xem nó bỏ đúng hay bỏ nhầm.
+   */
+  skippedRows: { title: string; price: number | null; why: VnSkip }[]
+  /** Giá sỉ Trung Quốc đã quy ra đồng, tức là cái sàn đã dùng. `null` = luật giá không chạy. */
+  floorVnd: number | null
   /** Link mở Shopee đúng cụm đã tra, để người dùng tự kiểm. */
   url: string
 }
@@ -127,6 +145,16 @@ export function rowMatches(row: VnRow, term: VnTerm): boolean {
   // coi là khớp, vì ở đó không có bằng chứng ngược lại.
   return row.phraseHit !== false
 }
+
+/* Hai luật lọc phụ kiện tách sang `vnfilter.ts` để kiểm được trong Node trần — xem đầu
+ * file đó. Re-export ở đây để nơi gọi không phải biết chúng ở đâu. */
+export {
+  chonGiaThapNhat,
+  laPhuKienVn,
+  TY_GIA_VND,
+  type VnSkip,
+} from './vnfilter'
+import type { VnSkip } from './vnfilter'
 
 /**
  * Định dạng giá theo đúng kiểu bốn bảng kia đang dùng, để `priceValue` và nút sắp xếp làm

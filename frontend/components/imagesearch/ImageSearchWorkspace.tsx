@@ -4,7 +4,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { extensionAvailable } from '@/lib/ads/extension'
 import { browserPost } from '@/lib/api'
-import { shopeePrices, type VnCodePrice, type VnTerm } from '@/lib/imagesearch/vnprice'
+import {
+  chonGiaThapNhat,
+  shopeePrices,
+  TY_GIA_VND,
+  type VnCodePrice,
+  type VnTerm,
+} from '@/lib/imagesearch/vnprice'
 import type {
   ImageMatch,
   ImageSearchResult,
@@ -200,6 +206,36 @@ function SortBar({
  */
 type VnPriceMap = Record<string, VnCodePrice>
 
+/**
+ * GIÁ SỈ TRUNG QUỐC của một mã, quy ra đồng — cái sàn để nhận ra phụ kiện đội lốt hàng thật.
+ *
+ * Lấy dòng RẺ NHẤT mang mã ấy trong bốn bảng nguồn, bỏ qua những dòng chính bảng nguồn đã
+ * chấm là phụ kiện (`isAccessory`, luật 适用/适配 ở `codes.py`). Rẻ nhất chứ không phải trung
+ * bình, vì đây là cái sàn: nó chỉ cần thấp đến mức KHÔNG thể loại bỏ nhầm hàng thật.
+ *
+ * `null` khi không có dòng nào mang mã, hoặc bảng trộn nhiều loại tiền không đọc nổi ký hiệu.
+ * Lúc ấy luật giá tự tắt — thà không có sàn còn hơn có một cái sàn bịa ra.
+ */
+function sanGiaSi(found: ImageSearchResult, code: string): number | null {
+  const bang = [
+    ...(found.sourcing ?? []),
+    ...(found.globalSourcing ?? []),
+    ...(found.chinaRetail ?? []),
+    ...(found.globalRetail ?? []),
+  ]
+  let thap: number | null = null
+  for (const row of bang) {
+    if (row.isAccessory) continue
+    if (!(row.titleCodes ?? []).includes(code)) continue
+    if (typeof row.priceValue !== 'number') continue
+    const ty = TY_GIA_VND[priceUnit(row.price)]
+    if (!ty) continue
+    const vnd = row.priceValue * ty
+    if (thap === null || vnd < thap) thap = vnd
+  }
+  return thap
+}
+
 /** Giá Việt Nam của dòng này: tìm mã đầu tiên trong tiêu đề mà bảng tra có số. */
 function vnPriceFor(row: ImageMatch, prices: VnPriceMap): VnCodePrice | null {
   for (const code of row.titleCodes ?? []) {
@@ -320,12 +356,41 @@ function VnCell({ row, prices }: { row: ImageMatch; prices: VnPriceMap }) {
         event.stopPropagation()
         window.open(found.url, '_blank', 'noopener')
       }}
-      title={`Shopee: rẻ nhất ${found.price.toLocaleString('vi-VN')} ₫ trong ${found.hits} sản phẩm mang mã ${found.code}. Bấm để mở danh sách.`}
+      title={vnTooltip(found)}
     >
       <b>{found.price.toLocaleString('vi-VN')} ₫</b>
-      <small>Shopee · {found.code}</small>
+      <small>
+        Shopee · {found.code}
+        {found.skipped > 0 ? ` · bỏ ${found.skipped}` : ''}
+      </small>
     </span>
   )
+}
+
+/**
+ * Câu giải thích đầy đủ cho một ô giá, kể cả phần đã bị bỏ.
+ *
+ * PHẢI NÓI RA SỐ DÒNG ĐÃ BỎ. Người dùng bấm vào ô này là mở thẳng Shopee sắp theo giá tăng
+ * dần, và dòng đầu tiên họ thấy ở đó chính là dòng công cụ vừa gạch đi. Hai con số lệch nhau
+ * mà không giải thích thì đọc thành lỗi — trong khi lệch mới là đúng.
+ */
+function vnTooltip(found: VnCodePrice): string {
+  const dong = [
+    `Shopee: rẻ nhất ${found.price?.toLocaleString('vi-VN')} ₫ trong ${found.hits} sản phẩm mang mã ${found.code}.`,
+  ]
+  if (found.skipped > 0) {
+    dong.push('', `Đã bỏ ${found.skipped} dòng không phải món này:`)
+    for (const row of found.skippedRows) {
+      const gia = row.price !== null ? `${row.price.toLocaleString('vi-VN')} ₫` : '—'
+      const vi = row.why === 'phu-kien' ? 'tiêu đề là phụ kiện' : 'rẻ hơn cả giá sỉ Trung Quốc'
+      dong.push(`  · ${gia} — ${row.title.slice(0, 60)} (${vi})`)
+    }
+    if (found.floorVnd !== null) {
+      dong.push('', `Sàn giá dùng để lọc: ${Math.round(found.floorVnd).toLocaleString('vi-VN')} ₫ (giá sỉ 1688 quy đổi).`)
+    }
+  }
+  dong.push('', 'Bấm để mở danh sách trên Shopee.')
+  return dong.join('\n')
 }
 
 /**
@@ -612,17 +677,23 @@ export default function ImageSearchWorkspace() {
       try {
         const one = await shopeePrices(term)
         const hits = one.rows.filter((row) => row.codeHit)
-        const low = hits.reduce<number | null>((best, row) => {
-          const value = row.priceValue
-          if (typeof value !== 'number') return best
-          return best === null || value < best ? value : best
-        }, null)
+        // Sàn giá: rẻ hơn cả giá sỉ tại xưởng Trung Quốc thì không phải cùng một món.
+        const san = sanGiaSi(found, code)
+        const { price: low, rows: daCham, skipped } = chonGiaThapNhat(one.rows, san)
         // GHI CẢ KHI KHÔNG CÓ GIÁ (`price: null`) — nhờ vậy chú giải phân biệt được "hỏi rồi,
         // sàn Việt không có" với "chưa hỏi tới". Hai câu ấy khác hẳn nhau.
         gia[code] = {
           code,
           price: low,
           hits: hits.length,
+          skipped,
+          // Chỉ giữ vài dòng đầu: đây là tooltip, không phải bảng. Đủ để kiểm luật đoán đúng
+          // hay sai, mà không biến một ô nhỏ thành bức tường chữ.
+          skippedRows: daCham
+            .filter((row) => row.vnSkip)
+            .slice(0, 4)
+            .map((row) => ({ title: row.title || '', price: row.priceValue ?? null, why: row.vnSkip ?? null })),
+          floorVnd: san,
           url: `https://shopee.vn/search?keyword=${encodeURIComponent(term.query)}&sortBy=price&order=asc`,
         }
       } catch {
