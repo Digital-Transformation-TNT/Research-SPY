@@ -1380,11 +1380,24 @@ function drawVidGrid() {
   for (let i = 0; i < vidShown.length; i++) grid.appendChild(vidCard(vidShown[i], i));
 }
 
-/** Một con số thống kê, chỉ hiện khi CÓ. Số 0 và số vắng mặt là hai chuyện khác nhau. */
+/**
+ * Một con số thống kê CỦA CHÍNH VIDEO ẤY, chỉ hiện khi có. Số 0 và số vắng mặt là hai chuyện
+ * khác nhau: video thật sự không ai bình luận thì TikTok trả về 0 và ta ẩn đi; video đọc không
+ * ra thì trường ấy vắng mặt.
+ *
+ * DƯỚI MƯỜI NGHÌN THÌ HIỆN SỐ ĐẦY ĐỦ. `fmtCompact` rút gọn từ 1.000 trở lên, nên 5.495 và
+ * 5.512 đều thành "5,5K" — hai video khác nhau trông y hệt, mà mục đích của cả hàng này lại
+ * đúng là để so chúng với nhau. TikTok cũng hiện đủ số ở khoảng ấy (5495, 1467) và chỉ rút gọn
+ * từ chục nghìn trở lên (35.1K).
+ *
+ * Trên mười nghìn thì rút gọn: bốn ô số đứng cạnh nhau trong một thẻ hẹp, "41.400.000" làm vỡ
+ * hàng — và ở cỡ ấy thì vài nghìn hơn kém không đổi quyết định của ai. Số đầy đủ vẫn còn
+ * nguyên trong phần chú khi rê chuột.
+ */
 function stat(icon, ten, v) {
-  return typeof v === 'number' && v > 0
-    ? `<span title="${ten}">${icon}<span class="n">${fmtCompact(v)}</span></span>`
-    : '';
+  if (typeof v !== 'number' || v <= 0) return '';
+  const hien = v < 10000 ? v.toLocaleString('vi-VN') : fmtCompact(v);
+  return `<span title="${ten}: ${v.toLocaleString('vi-VN')}">${icon}<span class="n">${hien}</span></span>`;
 }
 
 function vidCard(ad, idx) {
