@@ -182,13 +182,55 @@ function SortBar({
 }
 
 /**
+ * MỐC GIÁ VIỆT NAM — con số các bảng nguồn đem ra so.
+ *
+ * Một mốc cho cả trang, không phải một giá cho mỗi dòng, và đó là điều bản đầu tiên hiểu sai.
+ * Một bảng chào hàng 1688 lấy về bằng ảnh KHÔNG phải hai bốn dòng của cùng một món: đếm trên
+ * ảnh con chuột thì được 10 dòng chuột G304, 11 dòng model khác (G102, G305, T-WOLF) và 3
+ * dòng miếng dán chuột. Dán một giá bán vào cả hai bốn dòng là gán giá con chuột cho miếng
+ * dán — và vì miếng dán rẻ nhất nên nó cho ra con số TO NHẤT bảng, đúng thứ mắt nhìn vào
+ * trước.
+ *
+ * Nên thứ hiện ở cột phải là BỘI SỐ so với mốc, không phải "giá bán của dòng này".
+ */
+type VnRef = {
+  /** Giá bán thấp nhất tìm được ở Việt Nam, đơn vị ₫. */
+  price: number
+  /** Mã đã dùng để tìm ra con số ấy. Rỗng khi tra bằng cụm chữ. */
+  code: string
+  term: string
+  /** Tỷ giá ¥ → ₫, đọc từ kết quả (gốc là `.env.local`). */
+  rate: number
+}
+
+/**
+ * Bội số của một dòng so với mốc giá Việt Nam: bán ở VN gấp mấy lần giá nhập dòng này.
+ *
+ * `null` nghĩa là KHÔNG ĐƯỢC HIỆN SỐ, và có đúng hai trường hợp:
+ *   - dòng là phụ kiện cho món khác (`isAccessory`) — bội số của nó vô nghĩa
+ *   - dòng không có giá đọc được
+ *
+ * Quy đổi theo ký hiệu tiền của chính dòng đó chứ không theo tên bảng: `¥` thì nhân tỷ giá,
+ * còn Alibaba.com và AliExpress vốn đã trả `₫` nên giữ nguyên. Đọc từ dữ liệu thay vì từ chỗ
+ * gọi thì thêm một nguồn mới không phải sửa lại chỗ này.
+ */
+function marginOf(row: ImageMatch, ref: VnRef): number | null {
+  if (row.isAccessory) return null
+  const value = row.priceValue
+  if (typeof value !== 'number' || value <= 0) return null
+  const vnd = priceUnit(row.price) === '¥' ? value * ref.rate : value
+  if (!vnd) return null
+  return ref.price / vnd
+}
+
+/**
  * Một bảng kết quả. Ba nguồn dùng chung đúng một cách bày vì chúng cùng hình dạng dữ liệu —
  * cái khác nhau chỉ là trường nào có mặt: 1688 có `sold`, Taobao có `note` ("300+人付款"),
  * Lens có `rating` và `inStock`. Nên hàng tự bày theo thứ nó cầm, không cần ba bản sao.
  */
-function Rows({ items }: { items: ImageMatch[] }) {
+function Rows({ items, vnRef }: { items: ImageMatch[]; vnRef?: VnRef | null }) {
   return (
-      <div className="img-list">
+      <div className="img-list" data-margin={!!vnRef}>
         {items.map((item) => (
           <a
             className="img-row"
@@ -227,6 +269,7 @@ function Rows({ items }: { items: ImageMatch[] }) {
               {item.note && <span className="img-rating">{item.note}</span>}
               {item.inStock && <span className="img-stock">Còn hàng</span>}
             </span>
+            {vnRef && <MarginCell row={item} vnRef={vnRef} />}
           </a>
         ))}
       </div>
@@ -248,16 +291,84 @@ function codeHint(code: ProductCode): string {
   return `${code.count} dòng có nhắc mã này (${where}). Chưa thấy ở bảng bán tại Việt Nam, nên có thể là mã xưởng — tra ngược thường không ra gì.`
 }
 
-function Section({ title, items }: { title: string; items: ImageMatch[] }) {
+/**
+ * Ô bội số ở cột phải.
+ *
+ * BA TRẠNG THÁI, và cả ba đều phải nói ra được, vì im lặng ở đây đọc thành "không có lời".
+ *
+ *   phụ kiện       không có số — chỉ nhãn. Bội số của miếng dán so với giá con chuột là một
+ *                  con số có thật về mặt số học và vô nghĩa về mặt buôn bán.
+ *   model khác     có số, nhưng nhạt đi và kèm mã của chính dòng ấy ("G102"), để mắt biết
+ *                  ngay đây không phải món đang tra.
+ *   đúng model     số đậm. Đây là dòng trả lời câu hỏi.
+ *
+ * Bội số dưới 1 nghĩa là nhập vào còn đắt hơn bán ra — đổi màu đỏ, vì đó là câu trả lời quan
+ * trọng nhất mà một bảng nguồn hàng có thể đưa ra, và nó dễ bị lướt qua nhất.
+ */
+function MarginCell({ row, vnRef }: { row: ImageMatch; vnRef: VnRef }) {
+  if (row.isAccessory) {
+    return (
+      <span className="img-margin" data-kind="accessory" title="Tiêu đề ghi “dùng cho…” — đây là phụ kiện cho món khác, không phải chính món đang tra. Bội số của nó không có nghĩa.">
+        phụ kiện
+      </span>
+    )
+  }
+
+  const ratio = marginOf(row, vnRef)
+  if (ratio === null) return <span className="img-margin" data-kind="none" />
+
+  // Dòng có mã riêng KHÁC mã đang tra thì đó là model khác — nói ra bằng chính mã của nó.
+  const own = (row.titleCodes ?? []).filter((code) => code !== vnRef.code)
+  const sameModel = !vnRef.code || (row.titleCodes ?? []).includes(vnRef.code)
+
+  return (
+    <span
+      className="img-margin"
+      data-kind={ratio < 1 ? 'loss' : sameModel ? 'match' : 'other'}
+      title={
+        `Bán ở Việt Nam ${vnRef.price.toLocaleString('vi-VN')} ₫ ÷ giá dòng này` +
+        (priceUnit(row.price) === '¥' ? ` (¥1 ≈ ${vnRef.rate.toLocaleString('vi-VN')} ₫)` : '') +
+        (sameModel ? '' : ' — dòng này là model khác, so cho có ngữ cảnh thôi.')
+      }
+    >
+      <b>×{ratio.toLocaleString('vi-VN', { maximumFractionDigits: 1 })}</b>
+      {!sameModel && !!own.length && <small>{own[0]}</small>}
+    </span>
+  )
+}
+
+function Section({
+  title,
+  items,
+  vnRef,
+}: {
+  title: string
+  items: ImageMatch[]
+  vnRef?: VnRef | null
+}) {
   const [sort, setSort] = useState<SortId>('default')
   if (!items.length) return null
   return (
     <div className="panel">
       <h3 className="img-head">
         {title} <span className="img-count">{items.length}</span>
+        {/* MỐC GIÁ HIỆN NGAY TRÊN BẢNG, kèm cả tỷ giá. Cột phải chỉ là những con số nhân
+            chia từ hai giá trị này; giấu chúng đi thì "×3,9" không kiểm lại được, và một
+            con số không kiểm được là một con số phải tin bừa. */}
+        {vnRef && (
+          <span className="img-ref">
+            Bán ở VN <b>{vnRef.price.toLocaleString('vi-VN')} ₫</b>
+            <small>
+              {vnRef.term ? `“${vnRef.term}”` : ''}
+              {items.some((item) => priceUnit(item.price) === '¥')
+                ? ` · ¥1 ≈ ${vnRef.rate.toLocaleString('vi-VN')} ₫`
+                : ''}
+            </small>
+          </span>
+        )}
         <SortBar items={items} value={sort} onChange={setSort} />
       </h3>
-      <Rows items={sortRows(items, sort)} />
+      <Rows items={sortRows(items, sort)} vnRef={vnRef} />
     </div>
   )
 }
@@ -343,7 +454,15 @@ function MarketSection({
  * và có món mã lại là mã xưởng (tra ra số không — đo 2026-08-19). Người dùng nhìn bảng mã ở
  * trên là biết nên thử cụm nào trước.
  */
-function VnPriceSection({ terms }: { terms: VnTerm[] }) {
+function VnPriceSection({
+  terms,
+  rate,
+  onRef,
+}: {
+  terms: VnTerm[]
+  rate: number
+  onRef: (ref: VnRef | null) => void
+}) {
   const [picked, setPicked] = useState(0)
   const [result, setResult] = useState<VnPriceResult | null>(null)
   const [loading, setLoading] = useState(false)
@@ -357,22 +476,40 @@ function VnPriceSection({ terms }: { terms: VnTerm[] }) {
     setLoading(true)
     setError(null)
     setResult(null)
+    onRef(null)
     try {
-      setResult(await shopeePrices(term))
+      const found = await shopeePrices(term)
+      setResult(found)
+      // CHỈ BÁO LÊN KHI CÓ DÒNG THẬT SỰ KHỚP. Shopee luôn trả về một bảng đầy, nên một mốc
+      // dựng từ bảng không khớp sẽ đi thẳng vào cột bội số của cả bốn bảng nguồn — một con
+      // số sai nhân lên trăm chỗ.
+      const hit = found.rows
+        .filter((row) => row.codeHit && typeof row.priceValue === 'number')
+        .reduce<number | null>(
+          (low, row) => (low === null || row.priceValue! < low ? row.priceValue! : low),
+          null,
+        )
+      onRef(hit === null ? null : { price: hit, code: term.code, term: found.term, rate })
     } catch (e) {
       setError((e as Error).message)
     } finally {
       setLoading(false)
     }
-  }, [term])
+  }, [term, rate, onRef])
 
   // ĐỔI CỤM LÀ XOÁ KẾT QUẢ CŨ. Không xoá thì chip sáng là cụm mới trong khi bảng bên dưới
   // vẫn là kết quả của cụm cũ — người đọc không có cách nào biết mình đang nhìn cái nào.
-  const pick = useCallback((index: number) => {
-    setPicked(index)
-    setResult(null)
-    setError(null)
-  }, [])
+  const pick = useCallback(
+    (index: number) => {
+      setPicked(index)
+      setResult(null)
+      setError(null)
+      // Xoá luôn mốc ở các bảng trên: giữ lại thì cột bội số vẫn là của cụm cũ trong khi
+      // chip sáng đã là cụm mới.
+      onRef(null)
+    },
+    [onRef],
+  )
 
   if (!terms.length) return null
 
@@ -506,6 +643,15 @@ export default function ImageSearchWorkspace() {
   const [multi, setMulti] = useState(false)
 
   /*
+   * MỐC GIÁ VIỆT NAM sống ở đây chứ không ở trong bảng tra giá, vì bốn bảng nguồn nằm TRÊN
+   * bảng ấy lại là nơi cần nó. Bấm "Tra giá" xong là cột bội số của cả bốn bảng có số.
+   *
+   * `null` là trạng thái mặc định và cũng là trạng thái sau mỗi lượt tìm ảnh mới: mốc cũ
+   * thuộc về tấm ảnh cũ, để lại thì cột bội số nói về một sản phẩm khác.
+   */
+  const [vnRef, setVnRef] = useState<VnRef | null>(null)
+
+  /*
    * ĐỌC KHI ĐÃ GẮN VÀO TRANG, không đọc trong hàm khởi tạo state. Trang này được dựng sẵn ở
    * phía máy chủ, nơi không có `localStorage`, nên máy chủ luôn vẽ ra mặc định. Nếu client
    * khởi tạo bằng một giá trị KHÁC thì hai bên lệch nhau, và React không vá lại thuộc tính
@@ -582,6 +728,7 @@ export default function ImageSearchWorkspace() {
     setPreview(URL.createObjectURL(incoming))
     setResult(null)
     setError(null)
+    setVnRef(null)
   }, [])
 
   const run = useCallback(async () => {
@@ -886,16 +1033,22 @@ export default function ImageSearchWorkspace() {
 
           Cố ý KHÔNG trộn vào một bảng — ¥29 của xưởng, ¥145 của shop Taobao và 989.000đ của
           Shopee đặt cạnh nhau sẽ trông như so sánh trực tiếp được. */}
-      <Section title="Nguồn hàng 1688" items={sourcing} />
-      <Section title="Bán buôn quốc tế · Alibaba.com" items={globalSourcing} />
-      <Section title="Bán lẻ ở Trung Quốc" items={chinaRetail} />
-      <Section title="Khách tự đặt về · AliExpress" items={globalRetail} />
+      <Section title="Nguồn hàng 1688" items={sourcing} vnRef={vnRef} />
+      <Section title="Bán buôn quốc tế · Alibaba.com" items={globalSourcing} vnRef={vnRef} />
+      <Section title="Bán lẻ ở Trung Quốc" items={chinaRetail} vnRef={vnRef} />
+      <Section title="Khách tự đặt về · AliExpress" items={globalRetail} vnRef={vnRef} />
       <MarketSection title="Nơi đang bán" items={matches} platforms={platforms} />
       {/* ĐỨNG CUỐI vì nó là mắt xích cuối của chuỗi ra quyết định ở trên: giá bán thật tại
           chợ đích. Bảng "Nơi đang bán" của Lens nói AI đang bán, bảng này nói BAO NHIÊU —
           hai câu khác nhau, và Lens gần như không trả lời được câu thứ hai (đo được 2/24
           thẻ có giá). */}
-      {!!result && <VnPriceSection terms={vnTerms} />}
+      {!!result && (
+        <VnPriceSection
+          terms={vnTerms}
+          rate={result.cnyVndRate || 0}
+          onRef={setVnRef}
+        />
+      )}
     </div>
   )
 }

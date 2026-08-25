@@ -38,7 +38,19 @@ from collections import Counter, defaultdict
 #: Bắt buộc có chữ số để loại các từ thường ("Wireless", "Gaming"). Bắt buộc bắt đầu bằng chữ
 #: để loại thông số kỹ thuật, thứ luôn mở đầu bằng số và luôn trông giống mã: `1800W`,
 #: `12000DPI`, `2000mAh`, `180g`. Đây đúng là cái bẫy đã ghi ở `identify.py` khi dặn Gemini.
-_CANDIDATE = re.compile(r"\b(?=[A-Za-z0-9-]{3,14}\b)(?=\S*\d)[A-Za-z][A-Za-z0-9-]{2,13}\b")
+#:
+#: BIÊN TỰ VIẾT TAY, KHÔNG DÙNG `\b`. Trong Unicode, chữ Hán LÀ ký tự từ, nên giữa `境`
+#: và `G` của "跨境G304无线游戏鼠标" KHÔNG có ranh giới từ — `\bG304\b` trượt sạch mọi
+#: tiêu đề 1688 và Taobao. Bản đầu mắc đúng lỗi này, và nó còn làm sai cả phép đo: "1688
+#: chỉ có 2/96 tiêu đề mang mã" hoá ra là 2/96 tiêu đề có mã ĐỨNG CẠNH KHOẢNG TRẮNG, chứ
+#: không phải 2/96 tiêu đề có mã. Biên đúng ở đây là "không kề chữ Latin hay chữ số".
+_CANDIDATE = re.compile(
+    r"(?<![A-Za-z0-9])"
+    r"(?=[A-Za-z0-9-]{3,14}(?![A-Za-z0-9]))"
+    r"(?=[A-Za-z0-9-]*\d)"
+    r"[A-Za-z][A-Za-z0-9-]{2,13}"
+    r"(?![A-Za-z0-9])"
+)
 
 #: Chuỗi có chữ-và-số nhưng KHÔNG BAO GIỜ là mã model. Danh sách ngắn và chỉ chứa thứ đã thật
 #: sự thấy trong dữ liệu — một danh sách đoán trước sẽ vứt nhầm mã thật của hãng nào đó.
@@ -48,6 +60,34 @@ _NOT_CODE = {
     "MP3", "MP4", "H2O", "PM2",
     "COVID19", "NO1", "NO2", "TOP1",
 }
+
+
+#: "dùng cho…" / "tương thích…" trong tiêu đề Trung Quốc — dấu hiệu đây là PHỤ KIỆN cho một
+#: món khác, không phải chính món ấy. "适用罗技g304防滑贴" là miếng dán DÙNG CHO chuột G304,
+#: giá ¥4.5, và nó không liên quan gì tới giá bán một con chuột.
+#:
+#: `(?!于)` là chi tiết quan trọng chứ không phải làm đẹp: "适用于游戏电竞办公" nghĩa là "dùng
+#: được cho việc chơi game, văn phòng" — một câu quảng cáo bình thường trên tiêu đề CHUỘT
+#: THẬT. Thiếu dấu loại trừ ấy thì một phần hàng thật bị gắn nhãn phụ kiện.
+#:
+#: Đo trên 96 tiêu đề 1688 đang nằm trong cache, đối chiếu với danh sách từ chỉ phụ kiện
+#: (防滑贴, 贴纸, 鼠标垫, 保护套…): trùng khớp 96/96, không sót và không báo oan.
+_FOR_OTHER = re.compile(r"适(?:用|配)(?!于)")
+
+
+def is_accessory(title: str) -> bool:
+    """Tiêu đề này là PHỤ KIỆN cho món khác, chứ không phải chính món ấy?"""
+    return bool(_FOR_OTHER.search(title or ""))
+
+
+def codes_in(title: str) -> list[str]:
+    """Các mã ứng viên trong MỘT tiêu đề, viết hoa, không trùng, giữ thứ tự xuất hiện."""
+    out: list[str] = []
+    for raw in _CANDIDATE.findall(title or ""):
+        code = raw.upper()
+        if code not in _NOT_CODE and code not in out:
+            out.append(code)
+    return out
 
 
 def extract_codes(titles_by_table: dict[str, list[str]]) -> list[tuple[str, int, list[str]]]:

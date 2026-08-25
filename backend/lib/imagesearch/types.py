@@ -6,7 +6,7 @@ from pydantic import computed_field
 
 from lib.core.model import CamelModel
 
-from .codes import extract_codes
+from .codes import codes_in, extract_codes, is_accessory
 from .price import price_number
 
 
@@ -78,6 +78,30 @@ class ImageMatch(CamelModel):
     #: một số. Ép về `sold` là bịa ra độ chính xác không có; ghép vào `reviews` cũng sai vì đó
     #: là người MUA chứ không phải người đánh giá.
     note: str | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def title_codes(self) -> list[str]:
+        """
+        Mã model nằm trong tiêu đề CỦA CHÍNH DÒNG NÀY.
+
+        Khác `ImageSearchResult.codes` ở chỗ: kia là mã của cả lượt tìm, đây là mã của một
+        dòng. Giao diện cần nó để nói "dòng này là G102, không phải G304 anh đang tra" —
+        một bảng chào hàng 1688 lấy về bằng ảnh luôn lẫn model khác, đo được 11/24.
+        """
+        return codes_in(self.title)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def is_accessory(self) -> bool:
+        """
+        Dòng này là PHỤ KIỆN cho món khác chứ không phải chính món ấy.
+
+        Tồn tại để chặn đúng một con số sai: miếng dán chuột ¥2.15 đặt cạnh giá bán một con
+        chuột 415.000 ₫ cho ra bội số ~52 lần — con số TO NHẤT bảng, tức là thứ mắt nhìn vào
+        trước, và nó hoàn toàn vô nghĩa. Giao diện không tính bội số cho những dòng này.
+        """
+        return is_accessory(self.title)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -156,6 +180,13 @@ class ImageSearchResult(CamelModel):
     """
 
     country: str
+    #: Tỷ giá ¥ → ₫ để giao diện quy đổi giá 1688/Taobao khi so với giá bán ở Việt Nam.
+    #:
+    #: Đi kèm KẾT QUẢ chứ không nằm ở một endpoint cấu hình riêng, vì nó chỉ có nghĩa đúng
+    #: lúc có bảng để quy đổi — và vì giao diện phải hiện con số ấy ra cho người dùng thấy.
+    #: Một tỷ giá chết ngầm trong mã là cách chắc chắn để mọi bội số sai cùng lúc mà không ai
+    #: hay; hiện nó lên thì người đọc tự biết đây là giả định và sửa được ở `.env.local`.
+    cny_vnd_rate: float = 0.0
     identity: ImageIdentity | None = None
     matches: list[ImageMatch] = []
     #: Chào hàng 1688. Rỗng khi nguồn hỏng — không bao giờ là lý do để cả lượt tìm thất bại.

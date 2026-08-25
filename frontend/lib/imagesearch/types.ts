@@ -32,6 +32,18 @@ export type ImageMatch = {
    * không bị loại. Giá dạng khoảng ("¥1.20-3.50") rút về cận dưới.
    */
   priceValue?: number
+  /**
+   * Mã model nằm trong tiêu đề CỦA CHÍNH DÒNG NÀY — khác `ImageSearchResult.codes`, thứ nói
+   * về cả lượt tìm. Cần nó để nói "dòng này là G102, không phải G304 anh đang tra": bảng
+   * chào hàng 1688 lấy về bằng ảnh luôn lẫn model khác, đo được 11/24 dòng.
+   */
+  titleCodes?: string[]
+  /**
+   * Dòng này là PHỤ KIỆN cho món khác chứ không phải chính món ấy ("miếng dán DÙNG CHO chuột
+   * G304"). Giao diện không tính bội số cho những dòng này — miếng dán ¥2.15 cạnh giá bán một
+   * con chuột 415.000 ₫ cho ra ~52 lần, con số to nhất bảng và hoàn toàn vô nghĩa.
+   */
+  isAccessory?: boolean
   rating?: number
   reviews?: number
   inStock?: boolean
@@ -89,6 +101,9 @@ export type PlatformCount = {
 
 export type ImageSearchResult = {
   country: string
+  /** Tỷ giá ¥ → ₫ để quy đổi giá 1688/Taobao khi so với giá bán ở Việt Nam. Giao diện PHẢI
+   *  hiện con số này ra: nó là một giả định đọc từ `.env.local`, không phải một phép đo. */
+  cnyVndRate?: number
   identity?: ImageIdentity
   /** Ai đang BÁN LẺ ở thị trường đích, theo Google Lens. */
   matches?: ImageMatch[]

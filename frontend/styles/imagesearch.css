@@ -311,6 +311,13 @@
   font-size: 13px;
 }
 
+/* Có mốc giá Việt Nam thì mọc thêm CỘT THỨ TƯ. Bề rộng cố định chứ không `auto`: các ô
+   trong cột dài ngắn khác nhau ("×3,9" cạnh "phụ kiện"), để `auto` thì mép trái cột nhảy
+   theo từng dòng và cả cột đọc thành lởm chởm. */
+.img-list[data-margin='true'] .img-row {
+  grid-template-columns: 56px minmax(0, 1fr) auto 76px;
+}
+
 .img-row:hover { background: var(--surface-2); }
 
 /* Trang không phải sàn vẫn giữ lại — bài đánh giá cũng có ích — nhưng mờ đi để mắt biết
@@ -422,6 +429,71 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+/* Ô bội số ở cột phải: bán ở Việt Nam gấp mấy lần giá nhập của dòng này. */
+.img-margin {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 1px;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.img-margin b {
+  font-weight: 700;
+}
+
+.img-margin small {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-mute);
+}
+
+/* Đúng model đang tra — đây là dòng trả lời câu hỏi, nên nó là ô duy nhất dùng màu thương hiệu. */
+.img-margin[data-kind='match'] b { color: var(--brand); }
+
+/* Model khác: vẫn hiện số vì nó là ngữ cảnh có ích ("model rẻ hơn thì biên bao nhiêu"),
+   nhưng nhạt hẳn đi để mắt không nhặt nhầm nó thành câu trả lời. */
+.img-margin[data-kind='other'] { opacity: 0.55; }
+
+/* Nhập vào còn đắt hơn bán ra. Đây là câu trả lời quan trọng nhất một bảng nguồn hàng đưa
+   ra được, và cũng là câu dễ lướt qua nhất — nên nó là thứ duy nhất trong bảng màu đỏ. */
+.img-margin[data-kind='loss'] b { color: var(--bad); }
+
+.img-margin[data-kind='accessory'] {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-mute);
+}
+
+/* Mốc giá trên dòng tiêu đề bảng. Đứng trước nút sắp xếp vì nó là dữ kiện, không phải thao
+   tác — và vì cột bội số bên dưới chỉ là phép chia từ nó. */
+.img-ref {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.img-ref b {
+  font-weight: 700;
+  color: var(--brand);
+}
+
+.img-ref small {
+  font-size: 11px;
+  color: var(--text-mute);
+}
+
+/* Cạnh nhau thì mốc giá phải nhường lề tự động cho nút sắp xếp — chỉ một cái được đẩy. */
+.img-ref + .img-sort {
+  margin-left: 0;
 }
 
 /* Nút sắp xếp, nằm cuối dòng tiêu đề bảng.
