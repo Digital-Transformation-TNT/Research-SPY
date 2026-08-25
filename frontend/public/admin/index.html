@@ -62,6 +62,10 @@
     /* Số đếm chờ duyệt trên tab. */
     .tab-count { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; margin-left: 4px; }
 
+    /* Bảng yêu cầu chờ duyệt — viền cam nổi để admin chú ý ngay. */
+    .panel-pending { border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--accent) 4%, transparent); }
+    .panel-pending h2 { color: var(--accent-ink); }
+
     button.primary { font: inherit; padding: 8px 16px; background: var(--accent); color: #fff; border: 1px solid var(--accent); border-radius: var(--radius-sm); font-weight: 700; cursor: pointer; box-shadow: var(--shadow-sm); transition: background-color .14s var(--ease); }
     button.primary:hover { background: var(--accent-ink); }
     button.primary:disabled { opacity: .5; cursor: default; }
@@ -124,6 +128,22 @@
         <div class="status" id="addStatus"></div>
       </div>
 
+      <!-- Yêu cầu chờ duyệt — bảng RIÊNG, chỉ hiện khi có pending. Đặt trên "Danh sách user"
+           để admin thấy việc cần làm ngay. -->
+      <div class="panel panel-pending" id="pendingPanel" style="display:none">
+        <h2>⏳ Yêu cầu chờ duyệt <span class="tab-count" id="pendingCount"></span></h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Ngày gửi</th>
+              <th>Thao tác</th>
+            </tr>
+          </thead>
+          <tbody id="pendingRows"></tbody>
+        </table>
+      </div>
+
       <div class="panel">
         <h2>Danh sách user</h2>
         <table>
@@ -164,6 +184,8 @@
     </div>
   </main>
 
-  <script src="admin.js"></script>
+  <!-- Absolute path: trang serve tại /admin (rewrite, không trailing slash) nên "admin.js" tương
+       đối sẽ thành /admin.js → 404. Absolute /admin/admin.js mới đúng file. -->
+  <script src="/admin/admin.js"></script>
 </body>
 </html>

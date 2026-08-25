@@ -79,28 +79,47 @@
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
       const rows = data.users || [];
-      const pending = data.pending_count || 0;
+      const pendingCount = data.pending_count || 0;
 
-      // Badge đếm trên tab "Người dùng" — báo cho admin có bao nhiêu yêu cầu chờ.
-      $('tabUsersBtn').innerHTML = '👥 Người dùng' + (pending ? ` <span class="tab-count">${pending}</span>` : '');
+      // Badge đếm trên tab "Người dùng".
+      $('tabUsersBtn').innerHTML = '👥 Người dùng' + (pendingCount ? ` <span class="tab-count">${pendingCount}</span>` : '');
 
-      $('usersRows').innerHTML = rows.map((u) => {
-        const isPending = u.status === 'pending';
-        // Pending → chỉ hiện Duyệt / Từ chối (việc cần làm). Đã duyệt → các thao tác quản lý bình thường.
-        const actions = isPending
-          ? `<button class="mini approve" data-act="approve">✓ Duyệt</button>
-             <button class="mini danger" data-act="reject">✕ Từ chối</button>`
-          : `<button class="mini" data-act="role" data-role="${u.role === 'admin' ? 'user' : 'admin'}">${u.role === 'admin' ? '↓ Hạ user' : '↑ Nâng admin'}</button>
-             <button class="mini" data-act="toggle" data-active="${u.is_active ? 'false' : 'true'}">${u.is_active ? 'Khoá' : 'Mở'}</button>
-             <button class="mini danger" data-act="delete">Xoá</button>`;
+      // TÁCH 2 nhóm: pending → bảng riêng phía trên; còn lại (đã duyệt / từ chối) → danh sách chính.
+      const pending = rows.filter((u) => u.status === 'pending');
+      const others = rows.filter((u) => u.status !== 'pending');
+
+      // --- Bảng yêu cầu chờ duyệt (chỉ hiện khi có) ---
+      $('pendingPanel').style.display = pending.length ? '' : 'none';
+      $('pendingCount').textContent = pending.length || '';
+      $('pendingRows').innerHTML = pending.map((u) => `
+        <tr data-id="${esc(u.id)}">
+          <td><b>${esc(u.username)}</b></td>
+          <td>${fmtDate(u.created_at)}</td>
+          <td>
+            <button class="mini approve" data-act="approve">✓ Duyệt</button>
+            <button class="mini danger" data-act="reject">✕ Từ chối</button>
+          </td>
+        </tr>`).join('');
+
+      // --- Danh sách user chính (đã duyệt / từ chối) ---
+      $('usersRows').innerHTML = others.map((u) => {
+        // Từ chối → cho phép Duyệt lại; còn lại → quản lý bình thường.
+        const reapprove = u.status === 'rejected'
+          ? `<button class="mini approve" data-act="approve">✓ Duyệt lại</button>`
+          : '';
         return `
-        <tr data-id="${esc(u.id)}"${isPending ? ' class="row-pending"' : ''}>
+        <tr data-id="${esc(u.id)}">
           <td><b>${esc(u.username)}</b></td>
           <td><span class="badge ${u.role}">${u.role}</span></td>
           <td>${statusBadge(u.status)}</td>
           <td>${fmtDate(u.last_login_at)}</td>
           <td>${fmtDate(u.created_at)}</td>
-          <td>${actions}</td>
+          <td>
+            ${reapprove}
+            <button class="mini" data-act="role" data-role="${u.role === 'admin' ? 'user' : 'admin'}">${u.role === 'admin' ? '↓ Hạ user' : '↑ Nâng admin'}</button>
+            <button class="mini" data-act="toggle" data-active="${u.is_active ? 'false' : 'true'}">${u.is_active ? 'Khoá' : 'Mở'}</button>
+            <button class="mini danger" data-act="delete">Xoá</button>
+          </td>
         </tr>`;
       }).join('');
     } catch (e) {
@@ -108,8 +127,8 @@
     }
   }
 
-  // Delegate mọi action nút trong bảng — 1 handler duy nhất, không phải gắn lại mỗi lần render.
-  $('usersRows').addEventListener('click', async (e) => {
+  // Delegate mọi action nút trong CẢ HAI bảng (chờ duyệt + danh sách chính) — 1 handler dùng chung.
+  const onRowAction = async (e) => {
     const btn = e.target.closest('button[data-act]');
     if (!btn) return;
     const row = btn.closest('tr[data-id]');
@@ -143,7 +162,9 @@
     } catch (err) {
       setStatus(err.message, 'err');
     }
-  });
+  };
+  $('usersRows').addEventListener('click', onRowAction);
+  $('pendingRows').addEventListener('click', onRowAction);
 
   // Thêm user
   $('addBtn').addEventListener('click', async () => {
