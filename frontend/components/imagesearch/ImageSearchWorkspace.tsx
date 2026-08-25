@@ -2,13 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { extensionAvailable } from '@/lib/ads/extension'
 import { browserPost } from '@/lib/api'
-import {
-  shopeePrices,
-  type VnCodePrice,
-  type VnPriceResult,
-  type VnTerm,
-} from '@/lib/imagesearch/vnprice'
+import { shopeePrices, type VnCodePrice, type VnTerm } from '@/lib/imagesearch/vnprice'
 import type {
   ImageMatch,
   ImageSearchResult,
@@ -458,175 +454,6 @@ function MarketSection({
   )
 }
 
-/**
- * BẢNG GIÁ ĐANG BÁN Ở VIỆT NAM — đầu kia của cả mục này.
- *
- * Bốn bảng nguồn Trung Quốc nói mua vào bao nhiêu; bảng này nói bán ra được bao nhiêu.
- *
- * MỘT LƯỢT BẤM HỎI HẾT CÁC MÃ, không phải mỗi mã một lượt. Một tấm ảnh con chuột kéo về cả
- * G304 lẫn G102, và ở Việt Nam hai mã ấy là hai mức giá khác hẳn nhau — người dùng cần cả
- * hai để đọc bảng nguồn, chứ không phải bấm ba lần rồi tự nhớ. Hỏi xong thì cột phải của cả
- * bốn bảng trên có số ngay.
- *
- * VẪN PHẢI BẤM MỚI CHẠY. Mỗi mã là một lần mở tab Shopee trong trình duyệt của người dùng;
- * làm ngầm sau mỗi lượt tìm ảnh là cướp trình duyệt của họ cho một câu hỏi chưa ai hỏi.
- */
-function VnPriceSection({
-  terms,
-  onPrices,
-}: {
-  terms: VnTerm[]
-  onPrices: (prices: VnPriceMap) => void
-}) {
-  const [found, setFound] = useState<Record<string, VnPriceResult>>({})
-  const [picked, setPicked] = useState('')
-  const [loading, setLoading] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [sort, setSort] = useState<SortId>('price-asc')
-
-  const run = useCallback(async () => {
-    setError(null)
-    setFound({})
-    onPrices({})
-    const ket: Record<string, VnPriceResult> = {}
-    const gia: VnPriceMap = {}
-    try {
-      // TUẦN TỰ, không song song: ba tab Shopee bật cùng lúc là Shopee bắt đầu nghi bot —
-      // đã đo 2026-07-28, `captcha?scene=crawler_item`.
-      for (const term of terms) {
-        setLoading(term.query)
-        const one = await shopeePrices(term)
-        ket[term.query] = one
-        setFound({ ...ket })
-        if (!picked) setPicked(term.query)
-
-        if (term.code) {
-          const hits = one.rows.filter((row) => row.codeHit)
-          const low = hits.reduce<number | null>((best, row) => {
-            const value = row.priceValue
-            if (typeof value !== 'number') return best
-            return best === null || value < best ? value : best
-          }, null)
-          // GHI CẢ KHI KHÔNG CÓ GIÁ (`price: null`). Bỏ qua thì bảng trên không phân biệt
-          // được "chưa hỏi" với "hỏi rồi, sàn Việt không có" — mà hai câu ấy khác nhau hoàn
-          // toàn, và câu thứ hai mới là phát hiện.
-          gia[term.code] = {
-            code: term.code,
-            price: low,
-            hits: hits.length,
-            url: `https://shopee.vn/search?keyword=${encodeURIComponent(term.query)}&sortBy=price&order=asc`,
-          }
-          onPrices({ ...gia })
-        }
-      }
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setLoading('')
-    }
-  }, [terms, onPrices, picked])
-
-  if (!terms.length) return null
-
-  const one = found[picked]
-  const rows = one?.rows ?? []
-  const hits = rows.filter((row) => row.codeHit)
-  const extras = rows.filter((row) => !row.codeHit)
-  const cheapest = hits.reduce<number | null>((low, row) => {
-    const value = row.priceValue
-    if (typeof value !== 'number') return low
-    return low === null || value < low ? value : low
-  }, null)
-  const daHoi = Object.keys(found).length
-
-  return (
-    <div className="panel">
-      <h3 className="img-head">
-        Giá đang bán ở Việt Nam <span className="img-count">Shopee</span>
-        {!!rows.length && <SortBar items={rows} value={sort} onChange={setSort} />}
-      </h3>
-
-      <div className="img-vn-run">
-        {/* Trước khi hỏi, chip chỉ là danh sách sắp hỏi. Sau khi hỏi, mỗi chip mang luôn câu
-            trả lời của nó — nên không phải bấm qua từng cái mới biết mã nào có hàng. */}
-        <div className="chips">
-          {terms.map((term) => {
-            const ket = found[term.query]
-            const co = ket ? ket.hits > 0 : null
-            return (
-              <button
-                type="button"
-                key={term.query}
-                className="chip"
-                data-on={picked === term.query}
-                disabled={!ket}
-                onClick={() => setPicked(term.query)}
-              >
-                {term.query}
-                {co === true && <b> ✓</b>}
-                {co === false && <b> ✕</b>}
-              </button>
-            )
-          })}
-        </div>
-        <button className="btn" onClick={run} disabled={!!loading}>
-          {loading ? 'Đang hỏi Shopee…' : daHoi ? 'Tra lại' : 'Tra giá'}
-        </button>
-      </div>
-
-      {!!loading && (
-        <p className="muted small">
-          <span className="spinner" /> Extension đang mở tab Shopee bằng phiên đăng nhập của
-          bạn — đang hỏi “{loading}”. Mỗi mã khoảng 5 giây, đừng đóng tab đó.
-        </p>
-      )}
-
-      {error && <div className="notice bad">{error}</div>}
-      {one?.notice && <div className="notice warn">{one.notice}</div>}
-
-      {!!rows.length && !hits.length && (
-        /* KHÔNG IN GIÁ NÀO KHI KHÔNG DÒNG NÀO KHỚP, và nói thẳng bảng dưới là gì. Shopee
-           luôn trả về một bảng đầy: tra "PH16271" — mã xưởng không người bán Việt nào dùng —
-           vẫn ra dây sạc, đồ chơi lắp ráp, cáp Type-C. Bảng ấy vẫn hiện (biết đâu có thứ đáng
-           xem), nhưng nó không được đội lốt câu trả lời. */
-        <div className="notice warn">
-          Shopee không có sản phẩm nào mang mã <b>{one?.term}</b>. Bảng dưới là thứ Shopee tự
-          gợi ý cho cụm này, KHÔNG phải món đang tra — nên không có giá thấp nhất nào để nói.
-          Mã này nhiều khả năng là mã xưởng: người bán Việt Nam không dịch tiêu đề 1688, họ
-          viết tiêu đề mới và tự đặt mã riêng.
-        </div>
-      )}
-
-      {!!hits.length && (
-        <p className="img-cheapest">
-          Thấp nhất <b>{hits.find((r) => r.priceValue === cheapest)?.price}</b>
-          <span className="muted small">
-            {' '}
-            trong {hits.length} sản phẩm khớp “{one?.term}”
-            {rows.length > hits.length &&
-              ` · ${rows.length - hits.length} món Shopee gợi ý thêm xếp bên dưới`}
-          </span>
-        </p>
-      )}
-
-      {!!hits.length && <Rows items={sortRows(hits, sort)} />}
-
-      {/* HAI BẢNG TÁCH HẲN, không phải một bảng xếp hạng. Gộp chung thì bấm "Giá thấp" là
-          món gợi ý rẻ tiền nhảy lên đầu, nằm ngay dưới câu "Thấp nhất 415.000 đ" — hai con
-          số cạnh nhau, không con số nào giải thích được con số kia. */}
-      {!!extras.length && (
-        <>
-          <p className="img-extra-head">
-            Shopee gợi ý thêm <span className="img-count">{extras.length}</span>
-            <span className="muted small"> — không mang mã đang tra, nên không tính vào giá thấp nhất</span>
-          </p>
-          <Rows items={sortRows(extras, sort)} />
-        </>
-      )}
-    </div>
-  )
-}
-
 export default function ImageSearchWorkspace() {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -661,6 +488,15 @@ export default function ImageSearchWorkspace() {
    * về tấm ảnh cũ, để lại thì cột phải nói về một sản phẩm khác.
    */
   const [vnPrices, setVnPrices] = useState<Record<string, VnCodePrice>>({})
+
+  /*
+   * `''` khi chưa chạy · `'hoi'` đang hỏi · `'xong'` · `'thieu-ext'` khi không có extension.
+   *
+   * Cần một trạng thái riêng chứ không suy từ `vnPrices` rỗng, vì rỗng có hai nghĩa hoàn toàn
+   * khác nhau: "chưa hỏi" và "hỏi rồi, không mã nào có ở sàn Việt". Con thứ hai là một phát
+   * hiện; con thứ nhất chỉ là chưa xong.
+   */
+  const [vnStatus, setVnStatus] = useState('')
 
   /*
    * ĐỌC KHI ĐÃ GẮN VÀO TRANG, không đọc trong hàm khởi tạo state. Trang này được dựng sẵn ở
@@ -740,25 +576,85 @@ export default function ImageSearchWorkspace() {
     setResult(null)
     setError(null)
     setVnPrices({})
+    setVnStatus('')
+  }, [])
+
+  /*
+   * HỎI GIÁ VIỆT NAM cho từng mã, ngay sau khi đọc ảnh xong.
+   *
+   * GỌI TỪ `run()` CHỨ KHÔNG PHẢI TỪ `useEffect`, và đó là điểm đã đo chứ không phải sở
+   * thích: bản đầu đặt trong effect phụ thuộc `result`, chốt lại bằng một `useRef`. Đo ra
+   * BỐN lượt gọi cho một lượt tìm — StrictMode của React dựng lại component, mà dựng lại thì
+   * `useRef` mất giá trị nên cái chốt không chốt được gì. Việc này vốn là một hành động do
+   * người dùng khởi ra, không phải một hiệu ứng của lần vẽ, nên chỗ đúng của nó là ở đây.
+   *
+   * CHỈ HỎI CÁC MÃ, bỏ cụm chữ trần: cột phải tra theo mã của từng dòng, nên một lượt hỏi
+   * bằng cụm chữ không điền được ô nào mà vẫn tốn một lần mở tab.
+   *
+   * TUẦN TỰ, tối đa ba mã: mỗi mã là một lần mở tab Shopee trong trình duyệt của người dùng,
+   * và ba tab bật cùng lúc là Shopee bắt đầu nghi bot (`captcha?scene=crawler_item`, đo
+   * 2026-07-28).
+   */
+  const hoiGiaVn = useCallback(async (found: ImageSearchResult) => {
+    const ten = found.identity?.product ?? ''
+    const ma = (found.codes ?? []).slice(0, 3).map((entry) => entry.code)
+    if (!ma.length) return
+
+    setVnStatus('hoi')
+    if (!(await extensionAvailable())) {
+      setVnStatus('thieu-ext')
+      return
+    }
+
+    const gia: Record<string, VnCodePrice> = {}
+    for (const code of ma) {
+      const term: VnTerm = { query: `${ten} ${code}`.trim(), code }
+      try {
+        const one = await shopeePrices(term)
+        const hits = one.rows.filter((row) => row.codeHit)
+        const low = hits.reduce<number | null>((best, row) => {
+          const value = row.priceValue
+          if (typeof value !== 'number') return best
+          return best === null || value < best ? value : best
+        }, null)
+        // GHI CẢ KHI KHÔNG CÓ GIÁ (`price: null`) — nhờ vậy chú giải phân biệt được "hỏi rồi,
+        // sàn Việt không có" với "chưa hỏi tới". Hai câu ấy khác hẳn nhau.
+        gia[code] = {
+          code,
+          price: low,
+          hits: hits.length,
+          url: `https://shopee.vn/search?keyword=${encodeURIComponent(term.query)}&sortBy=price&order=asc`,
+        }
+      } catch {
+        // Một mã hỏng không được kéo theo hai mã còn lại. Bỏ qua, đi tiếp.
+      }
+      setVnPrices({ ...gia })
+    }
+    setVnStatus('xong')
   }, [])
 
   const run = useCallback(async () => {
     if (!file) return
     setResult(null)
     setError(null)
+    setVnPrices({})
+    setVnStatus('')
     setLoading(true)
     try {
       const form = new FormData()
       form.append('file', file)
       form.append('geo', 'VN')
       form.append('sources', chosen.join(','))
-      setResult(await browserPost<ImageSearchResult>('/api/imagesearch', form))
+      const found = await browserPost<ImageSearchResult>('/api/imagesearch', form)
+      setResult(found)
+      // Bảng nguồn hiện ra ngay; cột giá điền dần vào sau, nên không ai phải chờ nó.
+      void hoiGiaVn(found)
     } catch (e) {
       setError((e as Error).message)
     } finally {
       setLoading(false)
     }
-  }, [file, chosen])
+  }, [file, chosen, hoiGiaVn])
 
   const onDrop = useCallback(
     (event: React.DragEvent) => {
@@ -810,7 +706,7 @@ export default function ImageSearchWorkspace() {
    * Cụm chữ không mã đứng cuối, cho những món vốn không có mã nào — với chúng thì cụm chữ là
    * đường duy nhất, và lúc ấy `rowMatches` rơi về `phraseHit` mà backend đã chấm.
    */
-  const daTra = Object.keys(vnPrices).length ? vnPrices : null
+  const daTra = vnStatus === 'hoi' || vnStatus === 'xong' ? vnPrices : null
 
   const product = identity?.product ?? ''
   const vnTerms = [
@@ -999,6 +895,20 @@ export default function ImageSearchWorkspace() {
                   ))}
                 </span>
               ))}
+
+              {/* Trạng thái của cột giá, đặt ngay cạnh dãy mã vì cột ấy nói về đúng những mã
+                  này. Ba câu cho ba tình huống — im lặng ở đây thì cột trống bên dưới không
+                  có gì giải thích, và người đọc chỉ có thể kết luận là công cụ hỏng. */}
+              {vnStatus === 'hoi' && (
+                <span className="img-vn-status">
+                  <span className="spinner" /> đang hỏi giá Shopee…
+                </span>
+              )}
+              {vnStatus === 'thieu-ext' && (
+                <span className="img-vn-status" data-warn="true">
+                  chưa có extension nên không lấy được giá Việt Nam
+                </span>
+              )}
             </div>
           )}
 
@@ -1054,13 +964,6 @@ export default function ImageSearchWorkspace() {
       <Section title="Bán lẻ ở Trung Quốc" items={chinaRetail} vnPrices={daTra} />
       <Section title="Khách tự đặt về · AliExpress" items={globalRetail} vnPrices={daTra} />
       <MarketSection title="Nơi đang bán" items={matches} platforms={platforms} />
-      {/* ĐỨNG CUỐI vì nó là mắt xích cuối của chuỗi ra quyết định ở trên: giá bán thật tại
-          chợ đích. Bảng "Nơi đang bán" của Lens nói AI đang bán, bảng này nói BAO NHIÊU —
-          hai câu khác nhau, và Lens gần như không trả lời được câu thứ hai (đo được 2/24
-          thẻ có giá). */}
-      {!!result && (
-        <VnPriceSection terms={vnTerms} onPrices={setVnPrices} />
-      )}
     </div>
   )
 }

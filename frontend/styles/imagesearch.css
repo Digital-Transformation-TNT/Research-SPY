@@ -384,51 +384,17 @@
   color: var(--text-mute);
 }
 
-/* Hàng điều khiển của bảng "Giá đang bán ở Việt Nam": chọn cụm rồi bấm tra.
- *
- * Nút "Tra giá" tách khỏi dãy chip bằng `margin-left: auto` — chip là thứ để chọn, nút là
- * thứ để làm, và hai việc ấy không nên đứng lẫn vào nhau trong cùng một hàng.
- */
-.img-vn-run {
-  display: flex;
+/* Trạng thái của cột giá, đứng cạnh dãy mã sản phẩm. */
+.img-vn-status {
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-mute);
 }
 
-.img-vn-run .btn {
-  margin-left: auto;
-}
-
-/* Giá thấp nhất — con số duy nhất người ta mở bảng này để tìm, nên nó to hơn mọi dòng trong
- * bảng và dùng đúng màu thương hiệu như `.img-price`. */
-.img-cheapest {
-  margin: 0 0 12px;
-  font-size: 14px;
-}
-
-.img-cheapest b {
-  font-size: 19px;
-  font-weight: 700;
-  color: var(--brand);
-}
-
-/* Nhãn của bảng "Shopee gợi ý thêm".
- *
- * Nhạt hơn tiêu đề bảng chính một cách có chủ ý: nó phải đọc được nhưng không được trông
- * ngang hàng với phần trả lời. Cách trên 18px để mắt thấy rõ đây là một khối KHÁC, không
- * phải phần tiếp theo của bảng ở trên — đó là toàn bộ lý do hai bảng tách nhau.
- */
-.img-extra-head {
-  margin: 18px 0 10px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-dim);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+.img-vn-status[data-warn='true'] {
+  color: var(--warn);
 }
 
 /* Ô cột phải: giá đang bán ở Việt Nam của đúng model dòng này.
