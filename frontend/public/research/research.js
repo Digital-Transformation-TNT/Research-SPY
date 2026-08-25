@@ -187,14 +187,19 @@ const PRICE_SCALE = 100000;
 
 // Cấu hình sàn: active = đã có adapter; regions = mảng nước (có region), [] = nội địa/toàn cầu
 // (không chọn region), 'any' = lọc mọi nước (Facebook). Region động theo sàn đang chọn.
+//
+// THỨ TỰ NƯỚC LÀ CÓ CHỦ Ý: Việt Nam trước, rồi Philippines, rồi phần còn lại. Đây là hai thị
+// trường đang làm thật, và thứ tự này không chỉ để đỡ phải tìm — nước ĐẦU TIÊN chính là nước
+// được chọn sẵn khi bấm vào một sàn lần đầu (xem chỗ chọn sàn ở `renderPlatforms`). Đảo thứ
+// tự là đảo luôn mặc định, nên đừng sắp lại theo bảng chữ cái cho "gọn".
 const PLATFORMS = {
-  shopee: { label: 'Shopee', active: true, regions: ['VN', 'TH', 'ID', 'MY', 'PH', 'SG', 'TW', 'BR', 'MX', 'CO', 'CL'] },
-  tiktok: { label: 'TikTok Shop', active: true, regions: ['PH', 'VN', 'TH', 'ID', 'MY', 'SG', 'US', 'GB'] },
+  shopee: { label: 'Shopee', active: true, regions: ['VN', 'PH', 'TH', 'ID', 'MY', 'SG', 'TW', 'BR', 'MX', 'CO', 'CL'] },
+  tiktok: { label: 'TikTok Shop', active: true, regions: ['VN', 'PH', 'TH', 'ID', 'MY', 'SG', 'US', 'GB'] },
   // Facebook nằm CHUNG hàng chọn sàn như mọi nguồn khác. Trước đây nó bị tách ra một tab
   // riêng ("Content (FB Ads)") vì dữ liệu khác hẳn — quảng cáo đang chạy, không có giá,
   // không có lượt bán. Nhưng `fetchBackend` vốn đã chuẩn hoá nó về đúng hình dạng sản phẩm
   // và backend đã tự chấm điểm theo đời quảng cáo, nên nó chạy được ngay trong bảng chung.
-  facebook: { label: 'Facebook', active: true, backend: true, regions: ['US', 'GB', 'DE', 'FR', 'BR', 'VN'] },
+  facebook: { label: 'Facebook', active: true, backend: true, regions: ['VN', 'US', 'GB', 'DE', 'FR', 'BR'] },
   amazon: { label: 'Amazon', active: true, regions: ['US', 'GB', 'DE', 'JP', 'FR', 'IT', 'ES', 'CA'] },
   etsy: { label: 'Etsy', active: true, backend: true, regions: [] },
   taobao: { label: 'Taobao', active: true, experimental: true, regions: [] },
