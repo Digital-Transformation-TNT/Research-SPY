@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { browserPost } from '@/lib/api'
-import { shopeePrices, type VnPriceResult } from '@/lib/imagesearch/vnprice'
+import { shopeePrices, type VnPriceResult, type VnTerm } from '@/lib/imagesearch/vnprice'
 import type {
   ImageMatch,
   ImageSearchResult,
@@ -343,14 +343,17 @@ function MarketSection({
  * và có món mã lại là mã xưởng (tra ra số không — đo 2026-08-19). Người dùng nhìn bảng mã ở
  * trên là biết nên thử cụm nào trước.
  */
-function VnPriceSection({ terms }: { terms: string[] }) {
-  const [term, setTerm] = useState(terms[0] ?? '')
+function VnPriceSection({ terms }: { terms: VnTerm[] }) {
+  const [picked, setPicked] = useState(0)
   const [result, setResult] = useState<VnPriceResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sort, setSort] = useState<SortId>('price-asc')
 
+  const term = terms[picked]
+
   const run = useCallback(async () => {
+    if (!term) return
     setLoading(true)
     setError(null)
     setResult(null)
@@ -363,12 +366,23 @@ function VnPriceSection({ terms }: { terms: string[] }) {
     }
   }, [term])
 
+  // ĐỔI CỤM LÀ XOÁ KẾT QUẢ CŨ. Không xoá thì chip sáng là cụm mới trong khi bảng bên dưới
+  // vẫn là kết quả của cụm cũ — người đọc không có cách nào biết mình đang nhìn cái nào.
+  const pick = useCallback((index: number) => {
+    setPicked(index)
+    setResult(null)
+    setError(null)
+  }, [])
+
   if (!terms.length) return null
 
   const rows = result?.rows ?? []
-  // Giá thấp nhất là con số người ta mở bảng này để tìm, nên nó đứng riêng ở tiêu đề chứ
-  // không nằm lẫn trong bảng. Đọc từ `priceValue` — cùng con số thanh sắp xếp đang dùng.
-  const cheapest = rows.reduce<number | null>((low, row) => {
+  // CHỈ DÒNG KHỚP mới được góp vào giá thấp nhất. Shopee không bao giờ trả bảng rỗng — tra
+  // một mã không ai dùng vẫn ra sáu chục món bán chạy khác hẳn — nên lấy min trên cả bảng là
+  // đọc giá của một món khác rồi gán cho món này.
+  const hits = rows.filter((row) => row.codeHit)
+  const extras = rows.filter((row) => !row.codeHit)
+  const cheapest = hits.reduce<number | null>((low, row) => {
     const value = row.priceValue
     if (typeof value !== 'number') return low
     return low === null || value < low ? value : low
@@ -383,15 +397,15 @@ function VnPriceSection({ terms }: { terms: string[] }) {
 
       <div className="img-vn-run">
         <div className="chips">
-          {terms.map((option) => (
+          {terms.map((option, index) => (
             <button
               type="button"
-              key={option}
+              key={option.query}
               className="chip"
-              data-on={term === option}
-              onClick={() => setTerm(option)}
+              data-on={picked === index}
+              onClick={() => pick(index)}
             >
-              {option}
+              {option.query}
             </button>
           ))}
         </div>
@@ -410,19 +424,56 @@ function VnPriceSection({ terms }: { terms: string[] }) {
       {error && <div className="notice bad">{error}</div>}
       {result?.notice && <div className="notice warn">{result.notice}</div>}
 
-      {!!rows.length && (
+      {!!rows.length && !hits.length && (
+        /* KHÔNG IN GIÁ NÀO KHI KHÔNG CÓ DÒNG NÀO KHỚP, và nói thẳng bảng dưới là gì.
+           Shopee luôn trả về một bảng đầy: tra "PH16271" — mã xưởng không người bán Việt nào
+           dùng — vẫn ra dây sạc, đồ chơi lắp ráp, cáp Type-C. Bảng ấy vẫn hiện (biết đâu có
+           thứ đáng xem), nhưng nó không được đội lốt câu trả lời. */
+        <div className="notice warn">
+          Shopee không có sản phẩm nào mang mã <b>{terms[picked]?.code || result?.term}</b>.
+          Bảng dưới là thứ Shopee tự gợi ý cho cụm này, KHÔNG phải món đang tra — nên không có
+          giá thấp nhất nào để nói.
+          {!!terms[picked]?.code && ' Mã này nhiều khả năng là mã xưởng: người bán Việt Nam ' +
+            'không dịch tiêu đề 1688, họ viết tiêu đề mới và tự đặt mã riêng. Thử cụm khác ở trên.'}
+        </div>
+      )}
+
+      {!!hits.length && (
         <>
           {/* Con số duy nhất người ta mở bảng này để tìm, nên nó to và đứng trước bảng. Kèm
-              cỡ mẫu vì "thấp nhất trong 47 món bán chạy" là một câu khác hẳn "thấp nhất trên
-              toàn Shopee" — bảng này lấy theo sắp xếp Bán chạy, không quét hết sàn. */}
+              cỡ mẫu vì "thấp nhất trong 12 món KHỚP" là một câu khác hẳn "thấp nhất toàn
+              Shopee" — bảng lấy theo sắp xếp Bán chạy, không quét hết sàn. */}
           <p className="img-cheapest">
-            Thấp nhất <b>{rows.find((r) => r.priceValue === cheapest)?.price}</b>
+            Thấp nhất <b>{hits.find((r) => r.priceValue === cheapest)?.price}</b>
             <span className="muted small">
               {' '}
-              trong {rows.length} sản phẩm bán chạy khớp “{result?.term}”
+              trong {hits.length} sản phẩm khớp “{result?.term}”
+              {rows.length > hits.length && ` · ${rows.length - hits.length} món Shopee gợi ý thêm xếp bên dưới`}
             </span>
           </p>
-          <Rows items={sortRows(rows, sort)} />
+        </>
+      )}
+
+      {!!hits.length && <Rows items={sortRows(hits, sort)} />}
+
+      {/* HAI BẢNG TÁCH HẲN, không phải một bảng xếp hạng. Gộp chung thì bấm "Giá thấp" là
+          dòng gợi ý rẻ tiền nhảy lên đầu, nằm ngay dưới câu "Thấp nhất 415.000 đ" — hai con
+          số cạnh nhau, không con số nào giải thích được con số kia.
+
+          Vẫn hiện đủ chứ không vứt: đôi khi người bán viết mã sai chính tả, và đôi khi món
+          gợi ý mới đúng là món đáng xem. Nhưng chúng phải nằm dưới một cái nhãn nói rõ chúng
+          là gì. */}
+      {!!extras.length && (
+        <>
+          <p className="img-extra-head">
+            Shopee gợi ý thêm <span className="img-count">{extras.length}</span>
+            <span className="muted small">
+              {' '}
+              — không mang mã {terms[picked]?.code ? `“${terms[picked].code}”` : 'đang tra'}, nên
+              không tính vào giá thấp nhất
+            </span>
+          </p>
+          <Rows items={sortRows(extras, sort)} />
         </>
       )}
     </div>
@@ -586,10 +637,29 @@ export default function ImageSearchWorkspace() {
   // Cụm vi sát với thứ người ta gõ hơn tên món — "chuột máy tính logitech" thay vì "chuột
   // không dây" — nên nó cho bảng từ khoá tốt hơn.
   const seed = identity?.terms?.vi?.[0] || identity?.product || ''
-  // Cụm để tra giá Việt Nam: mã trước, rồi mới tới cụm chữ. Mã cho kết quả sát hơn hẳn —
-  // "BHD321" ra đúng một món, "máy sấy tóc" ra hàng nghìn. Giữ cả cụm chữ vì nhiều món
-  // không có mã nào, và lúc ấy cụm chữ là đường duy nhất.
-  const vnTerms = [...codes.slice(0, 3).map((code) => code.code), seed].filter(Boolean)
+  /*
+   * Cụm để tra giá Việt Nam: TÊN MÓN GHÉP VỚI MÃ, không phải mã trần trụi.
+   *
+   * Bản đầu gửi thẳng "PH16271" và nhận về dây sạc, cáp Type-C, đồ chơi lắp ráp — Shopee coi
+   * một mã nó không biết là một chuỗi vô nghĩa rồi trả về hàng bán chạy chung. Ghép tên món
+   * vào ("máy sấy tóc PH1627") thì Shopee còn một chỗ bám để hiểu, và bảng trả về ít nhất
+   * đúng loại hàng. Đây đúng là cách người dùng tự gõ khi tra tay.
+   *
+   * `code` đi kèm riêng để `rowMatches` kiểm — tên món giúp Shopee tìm đúng NGÀNH, còn mã
+   * mới phân biệt được ĐÚNG MODEL trong ngành ấy. Thiếu vế thứ hai thì bảng máy sấy tóc nào
+   * cũng "có kết quả".
+   *
+   * Cụm chữ không mã đứng cuối, cho những món vốn không có mã nào — với chúng thì cụm chữ là
+   * đường duy nhất, và lúc ấy `rowMatches` rơi về `phraseHit` mà backend đã chấm.
+   */
+  const product = identity?.product ?? ''
+  const vnTerms = [
+    ...codes.slice(0, 3).map((entry) => ({
+      query: `${product} ${entry.code}`.trim(),
+      code: entry.code,
+    })),
+    { query: seed, code: '' },
+  ].filter((entry) => entry.query)
 
   return (
     <div onPaste={onPaste}>

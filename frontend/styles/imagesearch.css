@@ -407,6 +407,23 @@
   color: var(--brand);
 }
 
+/* Nhãn của bảng "Shopee gợi ý thêm".
+ *
+ * Nhạt hơn tiêu đề bảng chính một cách có chủ ý: nó phải đọc được nhưng không được trông
+ * ngang hàng với phần trả lời. Cách trên 18px để mắt thấy rõ đây là một khối KHÁC, không
+ * phải phần tiếp theo của bảng ở trên — đó là toàn bộ lý do hai bảng tách nhau.
+ */
+.img-extra-head {
+  margin: 18px 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 /* Nút sắp xếp, nằm cuối dòng tiêu đề bảng.
  *
  * Dùng lại `.img-mode` của bước "Một sàn / Nhiều sàn" chứ không đẻ kiểu mới: vẫn đúng là

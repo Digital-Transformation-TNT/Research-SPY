@@ -26,12 +26,68 @@ import type { ImageMatch } from './types'
 /** Lấy dư rồi mới rút — giá thấp nhất trong 20 món thì gần như luôn là 20 món đầu bảng. */
 const POOL = 60
 
+/**
+ * Một cách tra: gõ gì vào Shopee, và chữ nào PHẢI có trong tiêu đề thì dòng đó mới tính.
+ *
+ * Hai thứ tách nhau vì chúng làm hai việc khác nhau. `query` cần đủ ngữ cảnh để Shopee hiểu
+ * — "PH1627" trần trụi trả về dây sạc và đồ chơi, "máy sấy tóc PH1627" mới trả về máy sấy.
+ * Còn `code` là thứ phân biệt ĐÚNG MODEL với cùng loại hàng: Shopee luôn trả về một bảng đầy,
+ * kể cả khi không có món nào mang mã ấy, nên không kiểm mã thì bảng nào cũng "có kết quả".
+ */
+export type VnTerm = {
+  query: string
+  /** Rỗng khi tra bằng cụm chữ thường — lúc ấy dùng `phraseHit` của backend thay thế. */
+  code: string
+}
+
+export type VnRow = ImageMatch & {
+  /** Backend đã tính: cụm từ khoá có nằm trong phần chữ của sản phẩm không. */
+  phraseHit?: boolean
+  /** Tiêu đề dòng này có mang đúng mã đang tra không. Xem `rowMatches`. */
+  codeHit?: boolean
+}
+
 export type VnPriceResult = {
   /** Cụm đã dùng để tra. Hiện ra cho người dùng, vì nó quyết định kết quả nhiều hơn mọi thứ khác. */
   term: string
-  rows: ImageMatch[]
+  rows: VnRow[]
+  /** Số dòng THẬT SỰ khớp. Có thể bằng 0 trong khi `rows` đầy — xem `rowMatches`. */
+  hits: number
   /** Câu nói vì sao thiếu — chưa cài extension, chưa đăng nhập, hoặc Shopee đang chặn. */
   notice?: string
+}
+
+/**
+ * Dạng so sánh của một đoạn chữ: bỏ dấu, bỏ mọi thứ không phải chữ-số, viết thường.
+ *
+ * BỎ CẢ KHOẢNG TRẮNG là chủ ý, và chỉ đúng vì thứ đem so ở đây là MÃ. Người bán viết cùng
+ * một mã bằng đủ kiểu — "FL-1302", "FL 1302", "FL1302" — mà cả ba là một. Gộp hết lại thì ba
+ * cách viết ấy về cùng một chuỗi.
+ *
+ * Cách này KHÔNG dùng được cho cụm chữ: "máy sấy tóc" gộp thành "maysaytoc" sẽ không khớp
+ * tiêu đề nào viết khác thứ tự từ. Cụm chữ đi đường `phraseHit` của backend, thứ so theo TỪ.
+ */
+export function collapse(text: string): string {
+  return (text || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^0-9a-z]+/g, '')
+}
+
+/**
+ * Dòng này có đúng là món đang tìm không?
+ *
+ * ĐÂY LÀ TẦNG QUAN TRỌNG NHẤT CỦA CẢ BẢNG, vì Shopee không bao giờ trả về bảng rỗng. Tra
+ * "PH16271" — một mã xưởng không người bán Việt nào dùng — Shopee vẫn trả về sáu chục món
+ * bán chạy: dây sạc, đồ chơi lắp ráp, cáp Type-C. Không kiểm ở đây thì công cụ đọc con số rẻ
+ * nhất trong đám ấy rồi in ra "Thấp nhất 5.500 ₫", một câu vừa sai vừa không trông giống lỗi.
+ */
+export function rowMatches(row: VnRow, term: VnTerm): boolean {
+  if (term.code) return collapse(row.title).includes(collapse(term.code))
+  // Tra bằng cụm chữ: `phraseHit` vắng mặt nghĩa là backend chưa chấm (luồng cache cũ) —
+  // coi là khớp, vì ở đó không có bằng chứng ngược lại.
+  return row.phraseHit !== false
 }
 
 /**
@@ -58,7 +114,7 @@ function formatPrice(value: number | undefined, currency: string | undefined): s
  * Đổi hình để dùng lại được `Rows` và thanh sắp xếp có sẵn, thay vì viết bảng thứ sáu. Hai
  * kiểu này vốn tả cùng một thứ — một món hàng đang bày bán — chỉ khác tên trường.
  */
-function adToRow(ad: Ad): ImageMatch {
+function adToRow(ad: Ad): VnRow {
   const creative = ad.creatives?.find((c) => c.posterUrl || c.url)
   return {
     source: 'Shopee',
@@ -71,7 +127,17 @@ function adToRow(ad: Ad): ImageMatch {
     supplier: ad.advertiser,
     marketplace: true,
     platform: 'shopee',
+    phraseHit: ad.phraseHit,
   }
+}
+
+/** Gắn cờ khớp/không khớp rồi đẩy dòng KHỚP lên trước — xếp lại, không xoá bớt. */
+function markAndRank(rows: VnRow[], term: VnTerm): { rows: VnRow[]; hits: number } {
+  const marked = rows.map((row) => ({ ...row, codeHit: rowMatches(row, term) }))
+  // Giữ nguyên thứ tự trong từng nhóm (`sort` của JS ổn định), nên thứ hạng bán chạy mà
+  // Shopee trả về vẫn còn nguyên bên trong nhóm khớp.
+  marked.sort((a, b) => Number(b.codeHit) - Number(a.codeHit))
+  return { rows: marked, hits: marked.filter((row) => row.codeHit).length }
 }
 
 /**
@@ -81,9 +147,9 @@ function adToRow(ad: Ad): ImageMatch {
  * đúng việc người dùng cần làm. Một ngoại lệ ở đây sẽ hiện thành "có gì đó hỏng", trong khi
  * việc cần làm chỉ là mở tab Shopee đăng nhập.
  */
-export async function shopeePrices(term: string, country = 'VN'): Promise<VnPriceResult> {
-  const keyword = term.trim()
-  if (!keyword) return { term, rows: [], notice: 'Chưa có mã hoặc từ khoá nào để tra.' }
+export async function shopeePrices(term: VnTerm, country = 'VN'): Promise<VnPriceResult> {
+  const keyword = term.query.trim()
+  if (!keyword) return { term: keyword, rows: [], hits: 0, notice: 'Chưa có mã hoặc từ khoá nào để tra.' }
 
   const query = new URLSearchParams({
     keyword,
@@ -96,13 +162,14 @@ export async function shopeePrices(term: string, country = 'VN'): Promise<VnPric
   // Không có `pending` nghĩa là backend đã trả sẵn kết quả (đọc từ cache của lượt trước).
   const jobs = planned.pending ?? []
   if (!jobs.length) {
-    return { term: keyword, rows: (planned.ads ?? []).map(adToRow) }
+    return { term: keyword, ...markAndRank((planned.ads ?? []).map(adToRow), term) }
   }
 
   if (!(await extensionAvailable())) {
     return {
       term: keyword,
       rows: [],
+      hits: 0,
       notice:
         'Cần extension Research-SPY để hỏi Shopee — Shopee chặn mọi lượt gọi từ server. ' +
         'Cài extension (xem QUICKSTART.md) rồi bấm lại.',
@@ -118,7 +185,7 @@ export async function shopeePrices(term: string, country = 'VN'): Promise<VnPric
     submissions,
   })
 
-  const rows = (done.ads ?? []).map(adToRow)
+  const { rows, hits } = markAndRank((done.ads ?? []).map(adToRow), term)
   if (!rows.length) {
     // Nói ra LÝ DO mà backend báo, đừng nuốt nó thành một bảng trống — bảng trống đọc thành
     // "món này không ai bán", một câu trả lời sai và tốn kém.
@@ -126,10 +193,11 @@ export async function shopeePrices(term: string, country = 'VN'): Promise<VnPric
     return {
       term: keyword,
       rows: [],
+      hits: 0,
       notice:
         said ||
         'Shopee không trả về sản phẩm nào. Mở tab shopee.vn, đăng nhập, rồi bấm lại.',
     }
   }
-  return { term: keyword, rows }
+  return { term: keyword, rows, hits }
 }
