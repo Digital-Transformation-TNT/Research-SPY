@@ -57,16 +57,22 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
     label: 'Research',
     items: [
       {
-        href: '/ads',
-        label: 'Sản phẩm',
-        hint: 'Top sản phẩm đa sàn theo từ khoá — kèm Facebook Ads và video theo sản phẩm',
-        icon: 'ads',
-      },
-      {
         href: '/keywords',
         label: 'Keyword',
         hint: 'Khám phá và mở rộng từ khoá đa nguồn',
         icon: 'keyword',
+      },
+      {
+        href: '/image',
+        label: 'Image Search',
+        hint: 'Tìm tên sản phẩm và nơi đang bán từ ảnh',
+        icon: 'image',
+      },
+      {
+        href: '/ads',
+        label: 'Sản phẩm',
+        hint: 'Top sản phẩm đa sàn theo từ khoá — kèm Facebook Ads và video theo sản phẩm',
+        icon: 'ads',
       },
       {
         href: '/opportunity',
@@ -74,11 +80,18 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
         hint: 'Khám phá món nên bán cùng trợ lý AI',
         icon: 'idea',
       },
+    ],
+  },
+  // Mục độc lập, có database riêng (`backend/hub_data.db`) và không dùng chung gì với nhóm
+  // Research ở trên, nên nó là một nhóm riêng chứ không nằm lẫn vào đó.
+  {
+    label: 'Tín hiệu thị trường',
+    items: [
       {
-        href: '/image',
-        label: 'Image Search',
-        hint: 'Tìm tên sản phẩm và nơi đang bán từ ảnh',
-        icon: 'image',
+        href: '/trend-signal',
+        label: 'Trend Signal Hub',
+        hint: 'Tín hiệu hôm nay từ Etsy, Amazon và Google Trends',
+        icon: 'signal',
       },
     ],
   },
@@ -90,20 +103,6 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
         label: 'Hướng dẫn',
         hint: 'Quy trình dùng và cách đọc số liệu',
         icon: 'guide',
-      },
-    ],
-  },
-  // Mang từ dự án Product Opportunity Hub sang. Đặt cuối cùng theo yêu cầu — nó là một mục
-  // độc lập, có database riêng (`backend/hub_data.db`) và không dùng chung gì với ba mục
-  // Research ở trên, nên gom vào nhóm ấy sẽ nói sai về quan hệ giữa chúng.
-  {
-    label: 'Tín hiệu thị trường',
-    items: [
-      {
-        href: '/trend-signal',
-        label: 'Trend Signal Hub',
-        hint: 'Tín hiệu hôm nay từ Etsy, Amazon và Google Trends',
-        icon: 'signal',
       },
     ],
   },
