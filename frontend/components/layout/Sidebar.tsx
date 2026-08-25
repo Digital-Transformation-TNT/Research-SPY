@@ -49,8 +49,8 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
     items: [
       {
         href: '/ads',
-        label: 'Sản phẩm & Content',
-        hint: 'Top sản phẩm đa sàn, content quảng cáo đang chạy, và video theo sản phẩm',
+        label: 'Sản phẩm',
+        hint: 'Top sản phẩm đa sàn theo từ khoá — kèm Facebook Ads và video theo sản phẩm',
         icon: 'ads',
       },
       {

@@ -190,7 +190,11 @@ const PRICE_SCALE = 100000;
 const PLATFORMS = {
   shopee: { label: 'Shopee', active: true, regions: ['VN', 'TH', 'ID', 'MY', 'PH', 'SG', 'TW', 'BR', 'MX', 'CO', 'CL'] },
   tiktok: { label: 'TikTok Shop', active: true, regions: ['PH', 'VN', 'TH', 'ID', 'MY', 'SG', 'US', 'GB'] },
-  facebook: { label: 'Facebook Ads', active: true, backend: true, content: true, regions: ['US', 'GB', 'DE', 'FR', 'BR', 'VN'] },
+  // Facebook nằm CHUNG hàng chọn sàn như mọi nguồn khác. Trước đây nó bị tách ra một tab
+  // riêng ("Content (FB Ads)") vì dữ liệu khác hẳn — quảng cáo đang chạy, không có giá,
+  // không có lượt bán. Nhưng `fetchBackend` vốn đã chuẩn hoá nó về đúng hình dạng sản phẩm
+  // và backend đã tự chấm điểm theo đời quảng cáo, nên nó chạy được ngay trong bảng chung.
+  facebook: { label: 'Facebook', active: true, backend: true, regions: ['US', 'GB', 'DE', 'FR', 'BR', 'VN'] },
   amazon: { label: 'Amazon', active: true, regions: ['US', 'GB', 'DE', 'JP', 'FR', 'IT', 'ES', 'CA'] },
   etsy: { label: 'Etsy', active: true, backend: true, regions: [] },
   taobao: { label: 'Taobao', active: true, experimental: true, regions: [] },
@@ -215,7 +219,7 @@ function curOf(p) { return p.currency || CURRENCY[p.region] || 'VND'; }
 function regionPlatforms() {
   return [...selectedPlatforms].filter((p) => {
     const cfg = PLATFORMS[p];
-    return cfg && !cfg.content && Array.isArray(cfg.regions) && cfg.regions.length;
+    return cfg && Array.isArray(cfg.regions) && cfg.regions.length;
   });
 }
 
@@ -224,7 +228,6 @@ function renderPlatforms() {
   if (!box) return;
   box.innerHTML = '';
   for (const [id, cfg] of Object.entries(PLATFORMS)) {
-    if (cfg.content) continue; // sàn content (FB) nằm ở tab Content, không hiện ở tab Sản phẩm
     const rg = cfg.regions === 'any' ? 'mọi nước' : (cfg.regions.length ? `${cfg.regions.length} nước` : 'nội địa/không region');
     const chip = document.createElement('button');
     chip.className = 'rgchip' + (cfg.active ? '' : ' dim');
@@ -830,11 +833,19 @@ async function research() {
   renderRegions();
 
   if (!all.length) {
+    // Câu cuối cùng phải nói về ĐÚNG những sàn vừa chạy. Bản trước ghi cứng "Shopee: kiểm tra
+    // đăng nhập; Amazon: có thể bị chặn" cho mọi trường hợp — chạy mỗi Facebook cũng hiện y
+    // như vậy, tức là chỉ người dùng đi sửa hai thứ không liên quan gì tới lượt tìm của họ.
+    const daChay = [...new Set(jobs.map((j) => j.pf))];
+    const ten = daChay.map((pf) => (PLATFORMS[pf] && PLATFORMS[pf].label) || pf).join(', ');
+    const goiY = [];
+    if (daChay.some((pf) => LOGIN[pf])) goiY.push('sàn cần đăng nhập thì kiểm lại phiên');
+    if (daChay.includes('amazon')) goiY.push('Amazon có thể đang bị chặn tạm/captcha');
     const msg = backendDown
       ? 'Không gọi được backend — Etsy/Facebook cần nó. Kiểm cửa sổ backend còn chạy không, rồi tải lại trang.'
       : notices.length
         ? notices.join(' · ') // hiện lý do thật từ backend (vd Etsy chưa có key)
-        : 'Không có kết quả — Shopee: kiểm tra đăng nhập; Amazon: có thể bị chặn tạm/captcha.';
+        : `Không có kết quả từ ${ten}${goiY.length ? ' — ' + goiY.join('; ') : ''}.`;
     setStatus(msg, 'err');
     $('table').style.display = 'none';
     return;
@@ -1079,154 +1090,6 @@ if (_kw) $('kw').value = _kw;
 refreshLogin(); // KHÔNG tự research — chờ user bấm
 
 // ===== TAB CONTENT (Facebook Ads) + TAB TÌM BẰNG ẢNH =====
-function showTab(which) {
-  $('tabProduct').style.display = which === 'product' ? '' : 'none';
-  $('tabContent').style.display = which === 'content' ? '' : 'none';
-  $('tabImage').style.display = which === 'image' ? '' : 'none';
-  $('tabProductBtn').classList.toggle('on', which === 'product');
-  $('tabContentBtn').classList.toggle('on', which === 'content');
-  $('tabImageBtn').classList.toggle('on', which === 'image');
-  if (which === 'image') updateISel();
-}
-function setCStatus(msg, kind) { $('cstatusText').textContent = msg; $('cstatus').className = 'status' + (kind ? ' ' + kind : ''); }
-
-function renderContent(list) {
-  const grid = $('contentGrid');
-  grid.innerHTML = '';
-  for (const p of list) {
-    const days = p.daysActive != null ? `<span>${p.daysActive} ngày chạy</span>` : '';
-    const sc = p.score ? `<span class="cscore">${p.score.total}đ</span>` : '';
-    const el = document.createElement('div');
-    el.className = 'ccard';
-    el.innerHTML =
-      `<div class="media">${p.image ? `<img src="${p.image}" loading="lazy" alt="">` : ''}</div>` +
-      `<div class="cbody">` +
-      `<div class="cadv">${esc(p.shop || '—')}</div>` +
-      `<div class="ccopy">${esc(p.name || '')}</div>` +
-      `<div class="cmeta">${sc}${days}</div>` +
-      `<a class="clink" href="${esc(p.link)}" target="_blank" rel="noreferrer">Xem quảng cáo ↗</a>` +
-      `</div>`;
-    grid.appendChild(el);
-  }
-}
-
-async function contentResearch() {
-  const kw = $('ckw').value.trim();
-  const region = $('cregion').value;
-  const count = Number($('ccount').value);
-  if (!kw) { setCStatus('Nhập keyword.', 'err'); return; }
-  $('cgo').disabled = true;
-  setCStatus(`Đang tìm content quảng cáo cho "${kw}" (${region})… (FB lần đầu chậm)`);
-  const r = await fetchBackend('facebook', kw, region, count);
-  $('cgo').disabled = false;
-  if (r.backendDown) { setCStatus('Không gọi được backend — kiểm cửa sổ backend còn chạy không, rồi tải lại trang.', 'err'); $('contentGrid').innerHTML = ''; return; }
-  if (!r.products.length) { setCStatus(r.notice || 'Không có quảng cáo nào khớp từ khoá.', 'err'); $('contentGrid').innerHTML = ''; return; }
-  const list = r.products.slice().sort((a, b) => ((b.score && b.score.total) || 0) - ((a.score && a.score.total) || 0));
-  setCStatus(`${list.length} quảng cáo · Facebook ${region}${r.notice ? ' · ' + r.notice : ''}`, 'ok');
-  renderContent(list);
-}
-
-$('tabProductBtn').addEventListener('click', () => showTab('product'));
-$('tabContentBtn').addEventListener('click', () => showTab('content'));
-$('tabImageBtn').addEventListener('click', () => showTab('image'));
-$('cgo').addEventListener('click', contentResearch);
-$('ckw').addEventListener('keydown', (e) => { if (e.key === 'Enter') contentResearch(); });
-
-// ===== TAB TÌM BẰNG ẢNH — tìm cùng sản phẩm trên các sàn, xếp theo giá rẻ nhất =====
-let imgData = null; // dataURL ảnh đã chọn (để gửi lên adapter khi wire)
-let irows = [];
-function setIStatus(msg, kind) { $('istatusText').textContent = msg; $('istatus').className = 'status' + (kind ? ' ' + kind : ''); }
-function updateISel() {
-  const pfs = [...selectedPlatforms].filter((p) => PLATFORMS[p]?.active).map((p) => PLATFORMS[p].label);
-  const regs = [...new Set([...selectedRegions].map((k) => k.split(':')[1]))];
-  $('iselSummary').textContent = `Sàn: ${pfs.join(', ') || '—'} · Region: ${regs.join(', ') || '—'}`;
-}
-function setImg(blob) {
-  const rd = new FileReader();
-  rd.onload = () => {
-    imgData = rd.result;
-    $('imgPreview').src = imgData; $('imgPreview').style.display = '';
-    $('imgClear').style.display = ''; $('imgDrop').textContent = 'Đã chọn ảnh — bấm để đổi ảnh khác';
-  };
-  rd.readAsDataURL(blob);
-}
-
-// Dispatcher image-search theo sàn. CHƯA WIRE: mỗi sàn cần bắt API upload+search-by-image riêng
-// (Shopee: Cách A in-tab; 1688/Taobao: login/TMAPI) hoặc dùng Google Lens/SerpApi (backend, mọi web).
-async function imageSearchFor(pf, region, img) {
-  const label = `${PLATFORMS[pf]?.label || pf}${region && region !== '_' ? ' ' + region : ''}`;
-  return { products: [], notice: `${label}: image search chưa wire` };
-}
-
-async function imageResearch() {
-  if (!imgData) { setIStatus('Chọn hoặc dán 1 ảnh sản phẩm trước.', 'err'); return; }
-  const activePf = [...selectedPlatforms].filter((p) => PLATFORMS[p]?.active);
-  if (!activePf.length) { setIStatus('Chọn ít nhất 1 sàn ở tab Sản phẩm.', 'err'); return; }
-  const jobs = [];
-  for (const pf of activePf) {
-    const cfg = PLATFORMS[pf];
-    const hasReg = Array.isArray(cfg.regions) && cfg.regions.length;
-    const pfRegions = hasReg ? cfg.regions.filter((c) => selectedRegions.has(`${pf}:${c}`)) : ['_'];
-    for (const region of pfRegions) jobs.push({ pf, region });
-  }
-  if (!jobs.length) { setIStatus('Không có (sàn × region) hợp lệ.', 'err'); return; }
-
-  $('imgGo').disabled = true;
-  setIStatus(`Đang tìm nguồn theo ảnh (${jobs.length} sàn × region)…`);
-  const all = [];
-  const notices = [];
-  for (const j of jobs) {
-    const r = await imageSearchFor(j.pf, j.region, imgData);
-    if (r.notice) notices.push(r.notice);
-    for (const p of (r.products || [])) { if (!p.score) p.score = score(p); all.push(p); }
-  }
-  $('imgGo').disabled = false;
-
-  irows = all.sort((a, b) => (a.price == null ? Infinity : a.price) - (b.price == null ? Infinity : b.price)); // rẻ nhất lên đầu
-  renderImage();
-  const note = notices.length ? ' · ' + [...new Set(notices)].join(' · ') : '';
-  setIStatus(all.length ? `${all.length} nguồn · xếp theo giá rẻ nhất${note}` : (notices.join(' · ') || 'Chưa có nguồn nào.'), all.length ? 'ok' : 'err');
-}
-
-function renderImage() {
-  $('irows').innerHTML = irows.map((p, i) =>
-    `<tr>` +
-    `<td class="num rank">${i + 1}</td>` +
-    `<td><div class="prod"><img class="thumb" src="${p.image}" data-full="${p.image}" loading="lazy" alt="" />` +
-    `<div><a class="name" href="${p.link}" target="_blank" rel="noreferrer">${esc(p.name)}</a>` +
-    `<div class="shop">${esc(p.shop)}</div></div></div></td>` +
-    `<td><span class="pill">${esc(p.platform)} ${FLAG[p.region] || ''}${p.region ? ' ' + esc(p.region) : ''}</span></td>` +
-    `<td class="num"><span class="price">${fmtPrice(p.price, curOf(p))}</span></td>` +
-    `<td><button class="sim" data-url="${esc(p.link)}">↗ Mở</button></td>` +
-    `</tr>`
-  ).join('');
-  $('itable').style.display = irows.length ? 'table' : 'none';
-}
-
-$('imgDrop').addEventListener('click', () => $('imgFile').click());
-$('imgFile').addEventListener('change', (e) => { const f = e.target.files[0]; if (f) setImg(f); });
-$('imgDrop').addEventListener('dragover', (e) => { e.preventDefault(); $('imgDrop').classList.add('drag'); });
-$('imgDrop').addEventListener('dragleave', () => $('imgDrop').classList.remove('drag'));
-$('imgDrop').addEventListener('drop', (e) => {
-  e.preventDefault(); $('imgDrop').classList.remove('drag');
-  const f = e.dataTransfer.files[0]; if (f && f.type.startsWith('image/')) setImg(f);
-});
-window.addEventListener('paste', (e) => {
-  if ($('tabImage').style.display === 'none') return; // chỉ nhận dán khi đang ở tab ảnh
-  for (const it of (e.clipboardData ? e.clipboardData.items : [])) {
-    if (it.type.startsWith('image/')) { setImg(it.getAsFile()); break; }
-  }
-});
-$('imgClear').addEventListener('click', () => {
-  imgData = null; $('imgPreview').style.display = 'none'; $('imgClear').style.display = 'none';
-  $('imgDrop').textContent = 'Kéo-thả ảnh vào đây · hoặc dán (Ctrl+V) · hoặc bấm chọn file';
-});
-$('irows').addEventListener('click', (e) => {
-  const b = e.target.closest('button.sim'); if (b && b.dataset.url) chrome.tabs.create({ url: b.dataset.url });
-});
-$('imgGo').addEventListener('click', imageResearch);
-$('iGoProduct').addEventListener('click', () => showTab('product'));
-
 // ===== MODAL VIDEO — "video quảng cáo khớp ẢNH sản phẩm" cho một dòng ở tab Sản phẩm =====
 // Gọi backend /api/ads/match-image: seed keyword (tên SP) lấy ứng viên Facebook/TikTok, rồi backend
 // so pHash poster video với ẢNH sản phẩm, chỉ trả video TRÙNG ảnh. Cần backend chạy.
