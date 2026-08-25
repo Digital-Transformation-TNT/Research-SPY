@@ -6,6 +6,7 @@ from pydantic import computed_field
 
 from lib.core.model import CamelModel
 
+from .codes import extract_codes
 from .price import price_number
 
 
@@ -96,6 +97,27 @@ class ImageMatch(CamelModel):
         return price_number(self.price)
 
 
+class ProductCode(CamelModel):
+    """
+    Một mã model ứng viên, rút ra từ tiêu đề các bảng kết quả.
+
+    `count` và `sources` KHÔNG phải trang trí, chúng là phần đọc độ tin cậy — xem `codes.py`.
+    Một mã 42 lần ở ba bảng là mã thật; một mã 1 lần ở một bảng có thể chỉ là chuỗi ngẫu
+    nhiên trong tiêu đề. Công cụ không giấu cái sau đi, nó xếp cái sau xuống dưới.
+    """
+
+    code: str
+    #: Số DÒNG có nhắc mã này (không phải số lần xuất hiện — xem `extract_codes`).
+    count: int
+    #: Tên các bảng đã thấy mã. Bảng nào cũng quan trọng, nhưng "Nơi đang bán" quan trọng
+    #: nhất: thấy ở đó nghĩa là chính thị trường Việt Nam đang gọi món này bằng mã ấy, tức là
+    #: gõ vào ô tìm kiếm của Shopee sẽ ra hàng.
+    sources: list[str]
+    #: Mã ĐỌC ĐƯỢC TRÊN ẢNH (`identity.model`) thay vì rút từ tiêu đề. Đáng tin hơn hẳn —
+    #: nó nằm trên chính sản phẩm — nên nó đứng đầu bảng và được đánh dấu riêng.
+    from_image: bool = False
+
+
 class PlatformCount(CamelModel):
     """
     Một chip lọc trên bảng "Nơi đang bán": tên sàn và số kết quả thuộc sàn đó.
@@ -154,3 +176,39 @@ class ImageSearchResult(CamelModel):
     message: str | None = None
     took_ms: int = 0
     cached: bool = False
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def codes(self) -> list[ProductCode]:
+        """
+        Mã model ứng viên, gom từ TẤT CẢ các bảng và xếp theo số lần xuất hiện.
+
+        Trả lời đúng câu người dùng hỏi khi nhìn một bảng chào hàng Trung Quốc: "món này gọi
+        là mã gì?" — thứ để nhắn cho xưởng, và thứ để gõ ngược vào ô tìm kiếm của sàn Việt
+        Nam. Xem `codes.py` để biết vì sao xếp hạng chứ không lọc.
+
+        Là trường TÍNH RA vì nó không thêm thông tin gì mới: mọi tiêu đề dùng để rút mã đều
+        đã nằm sẵn trong các bảng ở trên. Lưu nó là lưu hai bản của cùng một sự thật, và hai
+        bản thì sẽ có ngày lệch nhau.
+        """
+        tables = {
+            "1688": self.sourcing,
+            "Alibaba.com": self.global_sourcing,
+            "Taobao": self.china_retail,
+            "AliExpress": self.global_retail,
+            "Nơi đang bán": self.matches,
+        }
+        found = extract_codes({ten: [row.title for row in rows] for ten, rows in tables.items()})
+        codes = [ProductCode(code=code, count=count, sources=src) for code, count, src in found]
+
+        # Mã đọc TRÊN ẢNH lên đầu — nó nằm trên chính sản phẩm nên đáng tin hơn mọi tiêu đề
+        # do người bán tự viết. Nếu nó cũng có trong danh sách rút từ tiêu đề thì nhấc lên
+        # chứ không thêm dòng thứ hai: hai dòng cùng một mã đọc thành hai mã khác nhau.
+        from_image = (self.identity.model if self.identity else "").strip().upper()
+        if not from_image:
+            return codes
+        same = next((c for c in codes if c.code == from_image), None)
+        if same:
+            codes.remove(same)
+            return [same.model_copy(update={"from_image": True}), *codes]
+        return [ProductCode(code=from_image, count=0, sources=[], from_image=True), *codes]

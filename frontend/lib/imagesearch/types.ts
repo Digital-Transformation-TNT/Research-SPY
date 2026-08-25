@@ -56,6 +56,25 @@ export type ImageMatch = {
 }
 
 /**
+ * Một mã model ứng viên, rút ra từ tiêu đề các bảng kết quả.
+ *
+ * `count` và `sources` là phần ĐỌC ĐỘ TIN CẬY, không phải trang trí: mã thật thì người bán
+ * nào cũng chép vào tiêu đề nên nó lặp lại nhiều lần và xuất hiện ở nhiều bảng, còn một chuỗi
+ * chữ-số ngẫu nhiên thì chỉ có một lần. Backend xếp hạng chứ không lọc — xem `codes.py`.
+ */
+export type ProductCode = {
+  code: string
+  /** Số DÒNG có nhắc mã này. Nhiều = nhiều người bán độc lập cùng gọi món này như thế. */
+  count: number
+  /** Các bảng đã thấy mã. "Nơi đang bán" là bảng đáng giá nhất — thấy ở đó nghĩa là gõ mã
+   *  vào ô tìm kiếm của sàn Việt Nam sẽ ra hàng. Mã chỉ thấy ở 1688 là mã XƯỞNG, đã đo
+   *  2026-08-19 là tra ngược ra số không. */
+  sources: string[]
+  /** Đọc được trên chính tấm ảnh thay vì rút từ tiêu đề — đáng tin hơn hẳn, nên đứng đầu. */
+  fromImage?: boolean
+}
+
+/**
  * Một chip lọc trên bảng "Nơi đang bán".
  *
  * `count` được phép bằng không và chip vẫn phải hiện: "TikTok 0" nói rằng ảnh này không tìm
@@ -88,6 +107,9 @@ export type ImageSearchResult = {
   /** Bán lẻ quốc tế theo AliExpress — ship lẻ về VN. Đây là TRẦN GIÁ: khách của người dùng tự
    *  đặt được ở mức này, nên bán cao hơn là khó. Rỗng khi AliExpress đang chặn theo tần suất. */
   globalRetail?: ImageMatch[]
+  /** Mã model ứng viên, gom từ MỌI bảng và xếp theo số lần xuất hiện. Rỗng là một câu trả
+   *  lời có thật: nhiều món (sáp thơm, đồ gia dụng không thương hiệu) vốn không có mã. */
+  codes?: ProductCode[]
   /** Thường là "Lens đang bận" — không phải lỗi, và khi đó `identity` vẫn còn nguyên. */
   message?: string
   tookMs?: number

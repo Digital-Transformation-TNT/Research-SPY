@@ -191,6 +191,49 @@
   font-weight: 600;
 }
 
+/* Hàng MÃ SẢN PHẨM, ngay dưới tên món.
+ *
+ * Dùng lại dáng `.img-term` của hàng cụm tiếng Trung — vẫn đúng là "một chuỗi chữ kèm mấy
+ * nút mở sàn", nên nó phải trông giống hệt. Khác đúng một chỗ: mã in đậm và to hơn phần chú,
+ * vì mã là thứ người ta CHÉP đi dùng còn số đếm chỉ là thứ để liếc.
+ */
+.img-codes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+/* Nhãn ở đây là "mã model", dài hơn hẳn "tra tay" của hàng dưới, nên bỏ bề rộng cố định
+ * 26px của `.img-lang` — giữ nguyên thì chữ tràn ra ngoài đè lên chip đầu tiên. */
+.img-codes .img-lang {
+  width: auto;
+}
+
+.img-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.img-code b {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* Số đếm nhạt hơn mã: mã là thứ để chép, con số là thứ để cân nhắc tin hay không. Cùng luật
+ * đã dùng cho số đếm trong chip lọc sàn (`.img-platforms .chip b`). */
+.img-code small {
+  color: var(--text-mute);
+  font-size: 11px;
+}
+
 .img-terms {
   display: flex;
   align-items: center;

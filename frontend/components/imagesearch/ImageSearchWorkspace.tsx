@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { browserPost } from '@/lib/api'
-import type { ImageMatch, ImageSearchResult, PlatformCount } from '@/lib/imagesearch/types'
+import type {
+  ImageMatch,
+  ImageSearchResult,
+  PlatformCount,
+  ProductCode,
+} from '@/lib/imagesearch/types'
 
 /**
  * Màn hình MỤC TÌM BẰNG ẢNH.
@@ -45,6 +50,36 @@ const DEFAULT_SOURCES = ['1688']
 const STORAGE_KEY = 'imagesearch-sources'
 
 /** Nơi mang cụm tiếng Trung sang. Đây là thứ Lens không cho, nên nó đáng có nút riêng. */
+/**
+ * Nơi tra NGƯỢC một mã model về thị trường Việt Nam.
+ *
+ * Đây là câu trả lời cho "tìm ra hàng Trung rồi, vậy ở Việt Nam ai đang bán và giá bao
+ * nhiêu". Mã model là đường tra chính xác hơn tên món rất nhiều: "máy sấy tóc" ra hàng nghìn
+ * thứ, "BHD321" ra đúng một món.
+ *
+ * Link Shopee kèm sẵn `sortBy=price&order=asc` — mở ra là GIÁ THẤP NHẤT nằm ngay dòng đầu,
+ * không phải cuộn đi tìm.
+ *
+ * Là LINK MỞ TAB chứ không phải bảng giá tại chỗ, và đó là giới hạn có thật chứ không phải
+ * làm tắt: Shopee trả 403 cho mọi lượt gọi từ server (đo 2026-07-28), gắn cookie đăng nhập
+ * vào thì rơi tiếp vào `captcha?scene=crawler_item` — Shopee tự dán nhãn "crawler". Lấy giá
+ * tự động cần extension chạy trong trình duyệt đã đăng nhập của người dùng, đúng cách mục
+ * Quảng cáo đang làm.
+ */
+const VN_MARKETS = [
+  {
+    id: 'shopee',
+    label: 'Shopee',
+    url: (term: string) =>
+      `https://shopee.vn/search?keyword=${encodeURIComponent(term)}&sortBy=price&order=asc`,
+  },
+  {
+    id: 'tiktok',
+    label: 'TikTok Shop',
+    url: (term: string) => `https://www.tiktok.com/search/shop?q=${encodeURIComponent(term)}`,
+  },
+]
+
 const CN_MARKETS = [
   { id: 'taobao', label: 'Taobao', url: (t: string) => `https://s.taobao.com/search?q=${encodeURIComponent(t)}` },
   { id: '1688', label: '1688', url: (t: string) => `https://s.1688.com/selloffer/offer_search.htm?keywords=${encodeURIComponent(t)}` },
@@ -195,6 +230,21 @@ function Rows({ items }: { items: ImageMatch[] }) {
         ))}
       </div>
   )
+}
+
+/**
+ * Câu hiện khi rê chuột lên một mã. Nó nói ra CHỖ ĐÃ THẤY mã, vì chính chỗ ấy quyết định mã
+ * có tra ngược được hay không: đo ngày 2026-08-19, mã hãng (`G304`) tra `site:shopee.vn` ra
+ * 8 trang sản phẩm, còn mã lấy từ tiêu đề 1688 (`T15S`, `N612`) ra số không — người bán Việt
+ * Nam không dịch tiêu đề 1688, họ viết tiêu đề mới và tự đặt mã riêng.
+ */
+function codeHint(code: ProductCode): string {
+  if (code.fromImage) return 'Đọc được ngay trên tấm ảnh — đáng tin nhất.'
+  const where = code.sources.join(', ')
+  if (code.sources.includes('Nơi đang bán')) {
+    return `${code.count} dòng có nhắc mã này (${where}). Thị trường Việt Nam đang gọi món này bằng mã ấy, nên gõ vào Shopee sẽ ra hàng.`
+  }
+  return `${code.count} dòng có nhắc mã này (${where}). Chưa thấy ở bảng bán tại Việt Nam, nên có thể là mã xưởng — tra ngược thường không ra gì.`
 }
 
 function Section({ title, items }: { title: string; items: ImageMatch[] }) {
@@ -426,6 +476,7 @@ export default function ImageSearchWorkspace() {
   const chinaRetail = result?.chinaRetail ?? []
   const globalRetail = result?.globalRetail ?? []
   const zhTerms = identity?.terms?.zh ?? []
+  const codes = result?.codes ?? []
 
   // Từ gốc mang sang tab Từ khoá: cụm vi ĐẦU TIÊN, và lùi về tên món khi không có cụm nào.
   // Cụm vi sát với thứ người ta gõ hơn tên món — "chuột máy tính logitech" thay vì "chuột
@@ -581,6 +632,37 @@ export default function ImageSearchWorkspace() {
               </button>
             )}
           </div>
+
+          {/* MÃ SẢN PHẨM, ngay dưới tên món vì đây là thứ người ta chép đi dùng: nhắn cho
+              xưởng để chắc hai bên đang nói cùng một món, và gõ vào ô tìm kiếm của sàn Việt
+              Nam để so giá.
+
+              SỐ ĐẾM HIỆN CÙNG MÃ chứ không giấu. Backend xếp hạng chứ không lọc (xem
+              `codes.py`), nên mã ở cuối danh sách có thể chỉ là một chuỗi ngẫu nhiên lọt vào
+              một tiêu đề — con số là thứ duy nhất cho người dùng biết nên tin cái nào. Giấu
+              nó đi là bắt người ta tin đều cả năm dòng. */}
+          {!!codes.length && (
+            <div className="img-codes">
+              <span className="img-lang">mã model</span>
+              {codes.slice(0, 5).map((code) => (
+                <span className="img-code" key={code.code} title={codeHint(code)}>
+                  <b>{code.code}</b>
+                  <small>{code.fromImage ? 'trên ảnh' : `${code.count} dòng`}</small>
+                  {VN_MARKETS.map((market) => (
+                    <a
+                      key={market.id}
+                      className="img-go"
+                      href={market.url(code.code)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {market.label}
+                    </a>
+                  ))}
+                </span>
+              ))}
+            </div>
+          )}
 
           {/* Cụm tiếng Trung CHỈ hiện khi hai sàn Trung Quốc không trả về gì — tức là đúng lúc
               nó là đường thoát duy nhất: ảnh mờ, nhiều vật, hoặc nhận nhầm loại. Lúc bảng có
