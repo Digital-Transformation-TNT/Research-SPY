@@ -8,6 +8,12 @@ export type ImageIdentity = {
   product: string
   /** Rỗng khi không đọc được nhãn trên ảnh — cố ý không đoán. */
   brand?: string
+  /**
+   * Mã model đọc được TRÊN ẢNH ("G304", "PH1627"). Đây là mã HÃNG, và theo phép đo
+   * 2026-08-19 nó là loại mã DUY NHẤT tra ngược ra hàng ở sàn Việt Nam — mã lấy từ tiêu đề
+   * 1688 là mã xưởng và trả về không có gì. Xem `types.py::ImageIdentity.model`.
+   */
+  model?: string
   /** `vi` là từ gốc mang sang tab Từ khoá; `zh` là đường tra tay khi tìm bằng ảnh trượt. */
   terms?: Record<string, string[]>
 }
@@ -19,6 +25,13 @@ export type ImageMatch = {
   thumbnail?: string
   /** Giá nguyên văn như Google hiện ("989.000 đ") — không phải số, vì đơn vị đổi theo nước. */
   price?: string
+  /**
+   * `price` rút về số, CHỈ để sắp xếp. Đơn vị là đơn vị của chính dòng đó, không quy đổi —
+   * nên chỉ so được trong cùng một bảng, và đó đúng là cách giao diện dùng nó (mỗi bảng một
+   * nút sắp xếp riêng). Vắng mặt khi nguồn không cho giá; dòng như vậy xếp xuống cuối chứ
+   * không bị loại. Giá dạng khoảng ("¥1.20-3.50") rút về cận dưới.
+   */
+  priceValue?: number
   rating?: number
   reviews?: number
   inStock?: boolean

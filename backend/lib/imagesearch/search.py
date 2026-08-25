@@ -294,10 +294,11 @@ async def search_by_image(
         # TTL của rổ này dài tới chín mươi ngày. Không nâng khoá thì mọi ảnh đã từng tra sẽ
         # trả về `model` rỗng suốt ba tháng, và đường tra theo mã hãng lặng lẽ không chạy.
         _read_identity(image, mime, f"id2:{key}"),
-        # `v2` trong khoá: bộ bóc thẻ của Lens trước đây gần như không lấy được ảnh thu nhỏ
-        # (đo 0/24, 1/24). Không nâng số thì bảng đã cache còn sống ba mươi ngày nữa, và người
-        # dùng thử lại đúng tấm ảnh cũ sẽ thấy y nguyên các ô xám.
-        _read_matches(image, mime, f"v2:{key}:{country}") if "lens" in chosen else _skip(),
+        # `v3` trong khoá: bộ bóc thẻ giờ đọc GIÁ từ nhãn dán trên ảnh (xem `lens.py::_CARDS_JS`).
+        # Bản v2 đo được 168/168 dòng KHÔNG có giá, nên bảng đã cache vừa sai vừa còn sống ba
+        # mươi ngày nữa — và nút sắp theo giá sẽ lặng lẽ không hiện với đúng những ảnh người
+        # dùng đã tra rồi. Cùng lý do đã nâng v1 lên v2 khi vá phần ảnh thu nhỏ.
+        _read_matches(image, mime, f"v3:{key}:{country}") if "lens" in chosen else _skip(),
         # KHÔNG kèm `country` vào khoá cho hai nguồn Trung Quốc: cả 1688 lẫn Taobao đều là chợ
         # trong nước, kết quả không đổi theo thị trường đích. Nhét `country` vào chỉ làm cùng
         # một tấm ảnh bị hỏi lại mỗi lần người dùng đổi ô Quốc gia.

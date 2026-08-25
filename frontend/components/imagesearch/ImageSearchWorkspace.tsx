@@ -51,6 +51,101 @@ const CN_MARKETS = [
 ]
 
 /**
+ * CÁCH SẮP XẾP một bảng kết quả.
+ *
+ * SẮP Ở ĐÂY, KHÔNG GỌI LẠI SERVER — cùng lập luận đã viết cho dãy chip lọc sàn ở
+ * `MarketSection`: một lượt tìm đã kéo về cả bảng và đã tiêu suất hạn mức rồi, nên đổi cách
+ * sắp chỉ là đọc lại mảng đang có. Không chờ, không tốn thêm suất nào.
+ *
+ * So giá được LÀ VÌ mỗi bảng chỉ có MỘT loại tiền: 1688 với Taobao toàn ¥, Alibaba.com với
+ * AliExpress toàn ₫. Cố ý không có nút nào sắp chung hai bảng — ¥29 và 989.000₫ không có
+ * thứ tự, và một nút hứa hẹn điều đó là một nút nói dối.
+ */
+const SORTS = [
+  { id: 'default', label: 'Mặc định', key: null },
+  { id: 'price-asc', label: 'Giá thấp', key: 'priceValue', dir: 1 },
+  { id: 'price-desc', label: 'Giá cao', key: 'priceValue', dir: -1 },
+  { id: 'sold-desc', label: 'Bán chạy', key: 'sold', dir: -1 },
+] as const
+
+type SortId = (typeof SORTS)[number]['id']
+
+function sortRows(items: ImageMatch[], id: SortId): ImageMatch[] {
+  const spec = SORTS.find((s) => s.id === id)
+  if (!spec || !spec.key) return items
+
+  const { key, dir } = spec as { key: 'priceValue' | 'sold'; dir: number }
+  // CHÉP RỒI MỚI SẮP. `Array.sort` sắp tại chỗ, mà `items` chính là mảng trong kết quả — sắp
+  // thẳng lên nó là mất luôn thứ tự gốc, và "Mặc định" không còn đường quay về.
+  return [...items].sort((a, b) => {
+    const x = a[key]
+    const y = b[key]
+    // THIẾU SỐ THÌ XUỐNG CUỐI Ở MỌI CHIỀU, không coi như 0. Một dòng không công bố giá không
+    // phải là dòng rẻ nhất — đó là dòng chưa biết. Đẩy nó lên đầu bảng "Giá thấp" là bịa ra
+    // một câu trả lời. Và xuống cuối chứ không biến mất: giấu đi thì người dùng đếm thiếu.
+    if (typeof x !== 'number') return typeof y !== 'number' ? 0 : 1
+    if (typeof y !== 'number') return -1
+    return (x - y) * dir
+  })
+}
+
+/**
+ * ĐƠN VỊ TIỀN của một dòng, đọc từ chính chuỗi giá: bỏ hết chữ số, dấu phân cách và dấu nối
+ * khoảng, còn lại là ký hiệu ("¥", "₫", "us$"). `ImageMatch` không có trường `currency` — ba
+ * trong năm nguồn chỉ trả về chuỗi đã định dạng sẵn — nên ký hiệu là thứ duy nhất có thật.
+ */
+function priceUnit(price: string | undefined): string {
+  return (price ?? '').replace(/[\d.,\s\-–~/]/g, '').trim().toLowerCase()
+}
+
+/**
+ * CHỈ HIỆN NHỮNG NÚT BẢNG NÀY LÀM ĐƯỢC.
+ *
+ * Google Lens không trả lượt bán, nên bảng "Nơi đang bán" không có gì để sắp theo "Bán chạy";
+ * Taobao chỉ cho lượt bán dưới dạng chữ ("300+人付款") nên `sold` cũng vắng. Một cái nút bấm
+ * vào mà bảng không nhúc nhích đọc thành "hỏng", nên nút nào không có dữ liệu thì không hiện.
+ *
+ * NÚT GIÁ CÒN TẮT KHI BẢNG TRỘN HAI LOẠI TIỀN. Bốn bảng nguồn Trung Quốc mỗi bảng một loại
+ * tiền nên không bao giờ vướng; riêng "Nơi đang bán" là do Google Lens gom về từ mọi tên
+ * miền, nên "989.000 đ" đứng cạnh "US $12.50" là chuyện có thể xảy ra. Sắp chung hai thứ đó
+ * cho ra một danh sách TRÔNG có thứ tự mà thật ra vô nghĩa — sai kiểu tệ nhất, vì nó không
+ * trông giống lỗi. Lọc về một sàn thì đơn vị đồng nhất trở lại và nút giá hiện lại.
+ */
+function usableSorts(items: ImageMatch[]) {
+  const units = new Set(
+    items.filter((item) => typeof item.priceValue === 'number').map((item) => priceUnit(item.price)),
+  )
+  const hasPrice = units.size === 1
+  const hasSold = items.some((item) => typeof item.sold === 'number')
+  return SORTS.filter((sort) =>
+    sort.key === 'priceValue' ? hasPrice : sort.key === 'sold' ? hasSold : true,
+  )
+}
+
+function SortBar({
+  items,
+  value,
+  onChange,
+}: {
+  items: ImageMatch[]
+  value: SortId
+  onChange: (id: SortId) => void
+}) {
+  const options = usableSorts(items)
+  // Còn mỗi "Mặc định" thì đây không còn là một lựa chọn nữa — ẩn hẳn thay vì bày một nút chết.
+  if (options.length < 2) return null
+  return (
+    <div className="img-mode img-sort">
+      {options.map((option) => (
+        <button key={option.id} data-on={value === option.id} onClick={() => onChange(option.id)}>
+          {option.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/**
  * Một bảng kết quả. Ba nguồn dùng chung đúng một cách bày vì chúng cùng hình dạng dữ liệu —
  * cái khác nhau chỉ là trường nào có mặt: 1688 có `sold`, Taobao có `note` ("300+人付款"),
  * Lens có `rating` và `inStock`. Nên hàng tự bày theo thứ nó cầm, không cần ba bản sao.
@@ -103,13 +198,15 @@ function Rows({ items }: { items: ImageMatch[] }) {
 }
 
 function Section({ title, items }: { title: string; items: ImageMatch[] }) {
+  const [sort, setSort] = useState<SortId>('default')
   if (!items.length) return null
   return (
     <div className="panel">
       <h3 className="img-head">
         {title} <span className="img-count">{items.length}</span>
+        <SortBar items={items} value={sort} onChange={setSort} />
       </h3>
-      <Rows items={items} />
+      <Rows items={sortRows(items, sort)} />
     </div>
   )
 }
@@ -137,6 +234,7 @@ function MarketSection({
   platforms: PlatformCount[]
 }) {
   const [active, setActive] = useState('all')
+  const [sort, setSort] = useState<SortId>('default')
   if (!items.length) return null
 
   const shown = active === 'all' ? items : items.filter((item) => item.platform === active)
@@ -146,6 +244,10 @@ function MarketSection({
     <div className="panel">
       <h3 className="img-head">
         {title} <span className="img-count">{items.length}</span>
+        {/* Đọc theo `shown`, tức là SAU khi lọc sàn — nên dãy nút tự đổi theo sàn đang chọn.
+            Ở "Tất cả", nếu Lens gom về nhiều loại tiền thì `usableSorts` giấu hai nút giá đi;
+            bấm vào một sàn là đơn vị đồng nhất trở lại và chúng hiện ra. */}
+        <SortBar items={shown} value={sort} onChange={setSort} />
       </h3>
 
       <div className="chips img-platforms">
@@ -166,7 +268,7 @@ function MarketSection({
       </div>
 
       {shown.length ? (
-        <Rows items={shown} />
+        <Rows items={sortRows(shown, sort)} />
       ) : (
         <p className="img-none">Ảnh này không tìm thấy kết quả nào trên {activeLabel}.</p>
       )}

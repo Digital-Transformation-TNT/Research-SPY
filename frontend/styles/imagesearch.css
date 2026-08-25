@@ -334,6 +334,25 @@
   color: var(--text-mute);
 }
 
+/* Nút sắp xếp, nằm cuối dòng tiêu đề bảng.
+ *
+ * Dùng lại `.img-mode` của bước "Một sàn / Nhiều sàn" chứ không đẻ kiểu mới: vẫn đúng là
+ * "chọn một trong mấy", nên nó phải trông y hệt. `margin-left: auto` đẩy sang phải để tên
+ * bảng và con số đếm — thứ người ta đọc trước — giữ nguyên chỗ cũ bên trái.
+ *
+ * Chữ nhỏ hơn một nấc so với `.img-mode` ở khung điều khiển: đây là thao tác phụ trên một
+ * bảng đã có kết quả, không phải một bước phải làm.
+ */
+.img-sort {
+  margin-left: auto;
+}
+
+.img-sort button {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 /* Dãy chip lọc theo sàn trên bảng "Nơi đang bán".
  *
  * Dùng lại `.chip` của `controls.css` chứ không đẻ kiểu mới: đây vẫn đúng là "chọn một trong

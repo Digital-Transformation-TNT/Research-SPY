@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from pydantic import computed_field
+
 from lib.core.model import CamelModel
+
+from .price import price_number
 
 
 class ImageIdentity(CamelModel):
@@ -73,6 +77,23 @@ class ImageMatch(CamelModel):
     #: một số. Ép về `sold` là bịa ra độ chính xác không có; ghép vào `reviews` cũng sai vì đó
     #: là người MUA chứ không phải người đánh giá.
     note: str | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def price_value(self) -> float | None:
+        """
+        `price` rút về SỐ, chỉ để sắp xếp. Đơn vị là đơn vị của chính dòng đó — ¥ với
+        1688/Taobao, ₫ với Alibaba.com/AliExpress/Lens — nên CHỈ so được trong cùng một bảng.
+        Đó cũng đúng là cách giao diện dùng nó: mỗi bảng có nút sắp xếp riêng, không có bảng
+        nào trộn hai loại tiền.
+
+        Là trường TÍNH RA chứ không phải trường lưu, vì hai lý do: kho cache 90 ngày đang có
+        sẵn hàng nghìn bản ghi không mang trường này, và năm nguồn dựng `ImageMatch` ở sáu chỗ
+        khác nhau — tính ở đây thì cả sáu chỗ và cả bản ghi cũ đều có, không phải dọn kho.
+
+        Giá dạng KHOẢNG ("¥1.20-3.50") rút về cận dưới; xem `price.py` để biết vì sao.
+        """
+        return price_number(self.price)
 
 
 class PlatformCount(CamelModel):

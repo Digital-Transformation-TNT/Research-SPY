@@ -128,6 +128,8 @@ class LensUnavailable(RuntimeError):
 class RawCard:
     href: str
     lines: list[str]
+    #: Chữ CHỈ có trong hộp ảnh — nhãn dán đè lên ảnh. Lens để giá ở đây. Xem `_CARDS_JS`.
+    overlay: list[str]
     thumbnail: str | None
 
 
@@ -204,8 +206,23 @@ _CARDS_JS = """
       break
     }
 
+    // Chữ nằm TRONG HỘP ẢNH mà KHÔNG có ở hộp chữ. Đó là nhãn dán đè lên ảnh, và Lens để
+    // GIÁ đúng ở đó ("54.000 ₫*" góc trên trái ảnh) chứ không để cùng tên nguồn và tiêu đề.
+    // `textBox` phía trên dừng leo ngay khi đủ 20 ký tự — tiêu đề nào cũng vượt mức ấy — nên
+    // nó không bao giờ leo tới hộp ảnh. Đã đo: 168 dòng Lens trong kho cache không dòng nào
+    // có giá, trong khi ảnh chụp trang cho thấy giá hiện rõ trên ảnh.
+    // Chỉ đọc khi ĐÃ tìm ra ảnh thật: lúc ấy `box` dừng đúng ở hộp của thẻ này. Không có
+    // ảnh thì vòng leo chạy hết bảy nấc và `box` thành một hộp ôm cả chục thẻ — nhãn nhặt
+    // ở đó là giá của thẻ khác, sai mà không có cách nào nhận ra.
+    const overlay = (best && box !== textBox)
+      ? [...new Set((box.innerText || '').split('\\n').map(s => s.trim()).filter(Boolean))]
+          .filter(line => !text.includes(line))
+          .slice(0, 4)
+      : []
+
     out.push({
       href,
+      overlay,
       lines: text.split('\\n').map(s => s.trim()).filter(Boolean).slice(0, 8),
       thumbnail: best ? (best.currentSrc || best.src) : null,
     })
@@ -471,7 +488,12 @@ async def fetch_cards(image: bytes, mime: str, language: str = "vi") -> list[Raw
                 _guard_sorry(page)
 
             return [
-                RawCard(href=c["href"], lines=c["lines"], thumbnail=c.get("thumbnail"))
+                RawCard(
+                    href=c["href"],
+                    lines=c["lines"],
+                    overlay=c.get("overlay") or [],
+                    thumbnail=c.get("thumbnail"),
+                )
                 for c in raw
             ]
         finally:
@@ -507,7 +529,10 @@ def parse_card(card: RawCard) -> dict | None:
             rating = None
         reviews = _to_number(match.group(2))
 
-    price_match = _PRICE.search(rest)
+    # Tìm giá ở CẢ HAI chỗ, hộp chữ trước rồi mới tới nhãn trên ảnh. Thứ tự ấy có lý do:
+    # khi Lens bày giá thành một dòng chữ thì đó chắc chắn là giá của ĐÚNG thẻ này, còn nhãn
+    # trên ảnh, trong trường hợp xấu (hộp ảnh ôm hai thẻ), có thể là của thẻ bên cạnh.
+    price_match = _PRICE.search(rest) or _PRICE.search(" · ".join(card.overlay))
     lowered = rest.lower()
     in_stock: bool | None = None
     if any(word in lowered for word in _IN_STOCK):
