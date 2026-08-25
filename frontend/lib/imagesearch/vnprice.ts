@@ -97,8 +97,6 @@ export type VnCodePrice = {
    * số nhảy lên, và không có đường nào kiểm xem nó bỏ đúng hay bỏ nhầm.
    */
   skippedRows: { title: string; price: number | null; why: VnSkip }[]
-  /** Giá sỉ Trung Quốc đã quy ra đồng, tức là cái sàn đã dùng. `null` = luật giá không chạy. */
-  floorVnd: number | null
   /** Link mở Shopee đúng cụm đã tra, để người dùng tự kiểm. */
   url: string
 }
@@ -151,7 +149,8 @@ export function rowMatches(row: VnRow, term: VnTerm): boolean {
 export {
   chonGiaThapNhat,
   laPhuKienVn,
-  TY_GIA_VND,
+  CUA_SO_LIEN_QUAN,
+  maTrongTieuDe,
   type VnSkip,
 } from './vnfilter'
 import type { VnSkip } from './vnfilter'

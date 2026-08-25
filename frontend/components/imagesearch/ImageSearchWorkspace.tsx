@@ -6,8 +6,8 @@ import { extensionAvailable } from '@/lib/ads/extension'
 import { browserPost } from '@/lib/api'
 import {
   chonGiaThapNhat,
+  CUA_SO_LIEN_QUAN,
   shopeePrices,
-  TY_GIA_VND,
   type VnCodePrice,
   type VnTerm,
 } from '@/lib/imagesearch/vnprice'
@@ -74,12 +74,24 @@ const STORAGE_KEY = 'imagesearch-sources'
  * tự động cần extension chạy trong trình duyệt đã đăng nhập của người dùng, đúng cách mục
  * Quảng cáo đang làm.
  */
+/**
+ * Link Shopee, LUÔN ở tab Liên Quan.
+ *
+ * Trước đây gắn `sortBy=price&order=asc` cho "mở ra là thấy ngay giá rẻ nhất". Nghe tiện
+ * nhưng sai hẳn: trang đầu của Giá-tăng-dần toàn chuột 17-32k của hãng khác — Arigatoo,
+ * JERTECH, Jedel — không dính gì tới mã đang tra. Tab Liên Quan mới cho đúng món, và đó cũng
+ * là tab mà chính lượt tìm ở `vnprice.ts` đang dùng, nên hai bên nói cùng một thứ.
+ */
+function shopeeLienQuan(term: string): string {
+  return `https://shopee.vn/search?keyword=${encodeURIComponent(term)}&sortBy=relevancy`
+}
+
 const VN_MARKETS = [
   {
     id: 'shopee',
     label: 'Shopee',
     url: (term: string) =>
-      `https://shopee.vn/search?keyword=${encodeURIComponent(term)}&sortBy=price&order=asc`,
+      shopeeLienQuan(term),
   },
   {
     id: 'tiktok',
@@ -205,36 +217,6 @@ function SortBar({
  * 1688 — mã xưởng thì người bán Việt không ai dùng — và im lặng mới là câu trả lời đúng.
  */
 type VnPriceMap = Record<string, VnCodePrice>
-
-/**
- * GIÁ SỈ TRUNG QUỐC của một mã, quy ra đồng — cái sàn để nhận ra phụ kiện đội lốt hàng thật.
- *
- * Lấy dòng RẺ NHẤT mang mã ấy trong bốn bảng nguồn, bỏ qua những dòng chính bảng nguồn đã
- * chấm là phụ kiện (`isAccessory`, luật 适用/适配 ở `codes.py`). Rẻ nhất chứ không phải trung
- * bình, vì đây là cái sàn: nó chỉ cần thấp đến mức KHÔNG thể loại bỏ nhầm hàng thật.
- *
- * `null` khi không có dòng nào mang mã, hoặc bảng trộn nhiều loại tiền không đọc nổi ký hiệu.
- * Lúc ấy luật giá tự tắt — thà không có sàn còn hơn có một cái sàn bịa ra.
- */
-function sanGiaSi(found: ImageSearchResult, code: string): number | null {
-  const bang = [
-    ...(found.sourcing ?? []),
-    ...(found.globalSourcing ?? []),
-    ...(found.chinaRetail ?? []),
-    ...(found.globalRetail ?? []),
-  ]
-  let thap: number | null = null
-  for (const row of bang) {
-    if (row.isAccessory) continue
-    if (!(row.titleCodes ?? []).includes(code)) continue
-    if (typeof row.priceValue !== 'number') continue
-    const ty = TY_GIA_VND[priceUnit(row.price)]
-    if (!ty) continue
-    const vnd = row.priceValue * ty
-    if (thap === null || vnd < thap) thap = vnd
-  }
-  return thap
-}
 
 /** Giá Việt Nam của dòng này: tìm mã đầu tiên trong tiêu đề mà bảng tra có số. */
 function vnPriceFor(row: ImageMatch, prices: VnPriceMap): VnCodePrice | null {
@@ -382,12 +364,15 @@ function vnTooltip(found: VnCodePrice): string {
     dong.push('', `Đã bỏ ${found.skipped} dòng không phải món này:`)
     for (const row of found.skippedRows) {
       const gia = row.price !== null ? `${row.price.toLocaleString('vi-VN')} ₫` : '—'
-      const vi = row.why === 'phu-kien' ? 'tiêu đề là phụ kiện' : 'rẻ hơn cả giá sỉ Trung Quốc'
+      const vi =
+        row.why === 'phu-kien'
+          ? 'tiêu đề là phụ kiện'
+          : row.why === 'ma-khac'
+            ? 'tiêu đề còn nhắc model khác — giá hiện ra là của model kia'
+            : 'giá lạc hẳn khỏi cụm — gần như luôn là hàng nhái hoặc biến thể rẻ'
       dong.push(`  · ${gia} — ${row.title.slice(0, 60)} (${vi})`)
     }
-    if (found.floorVnd !== null) {
-      dong.push('', `Sàn giá dùng để lọc: ${Math.round(found.floorVnd).toLocaleString('vi-VN')} ₫ (giá sỉ 1688 quy đổi).`)
-    }
+    dong.push('', `Chỉ đọc ${CUA_SO_LIEN_QUAN} kết quả đầu của tab Liên Quan — phần đuôi là hàng vơ vét.`)
   }
   dong.push('', 'Bấm để mở danh sách trên Shopee.')
   return dong.join('\n')
@@ -678,8 +663,7 @@ export default function ImageSearchWorkspace() {
         const one = await shopeePrices(term)
         const hits = one.rows.filter((row) => row.codeHit)
         // Sàn giá: rẻ hơn cả giá sỉ tại xưởng Trung Quốc thì không phải cùng một món.
-        const san = sanGiaSi(found, code)
-        const { price: low, rows: daCham, skipped } = chonGiaThapNhat(one.rows, san)
+        const { price: low, rows: daCham, skipped } = chonGiaThapNhat(one.rows, code)
         // GHI CẢ KHI KHÔNG CÓ GIÁ (`price: null`) — nhờ vậy chú giải phân biệt được "hỏi rồi,
         // sàn Việt không có" với "chưa hỏi tới". Hai câu ấy khác hẳn nhau.
         gia[code] = {
@@ -693,8 +677,7 @@ export default function ImageSearchWorkspace() {
             .filter((row) => row.vnSkip)
             .slice(0, 4)
             .map((row) => ({ title: row.title || '', price: row.priceValue ?? null, why: row.vnSkip ?? null })),
-          floorVnd: san,
-          url: `https://shopee.vn/search?keyword=${encodeURIComponent(term.query)}&sortBy=price&order=asc`,
+          url: shopeeLienQuan(term.query),
         }
       } catch {
         // Một mã hỏng không được kéo theo hai mã còn lại. Bỏ qua, đi tiếp.

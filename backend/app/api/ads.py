@@ -8,6 +8,8 @@ này. Cả bốn route đều duyệt qua sổ đăng ký nguồn chứ không n
 from __future__ import annotations
 
 import asyncio
+import json
+import sys
 import time
 
 from fastapi import APIRouter, Request
@@ -28,6 +30,7 @@ from lib.ads.search import (
 )
 from lib.ads.types import AdSearchResult, ClientSubmission, PlatformStatus
 from lib.core.cache import cache_get, cache_set, cache_stats
+from lib.core.config import env_string
 from lib.core.jscompat import or_default, to_number
 from lib.core.model import dump
 
@@ -282,7 +285,48 @@ async def ingest(request: Request) -> JSONResponse:
         return JSONResponse({"error": f"submissions sai định dạng: {error}"}, status_code=400)
 
     result = await ingest_client_results(params, submissions)
+    _ghi_mau_de_soi(params.keyword, result)
     return JSONResponse(dump(result))
+
+
+def _ghi_mau_de_soi(keyword: str, result) -> None:
+    """Ghi TIÊU ĐỀ + GIÁ của kết quả ra `.cache/ads-mau.json` khi bật `ADS_DUMP=1`.
+
+    VÌ SAO CẦN. Kết quả Shopee chỉ sống trong bộ nhớ rồi đi thẳng ra trình duyệt — không có
+    chỗ nào trên đĩa. Với mục Tìm bằng ảnh, chính những dòng này là thứ quyết định con số
+    "giá thấp nhất ở VN", và luật lọc phụ kiện phải chỉnh theo chúng. Không nhìn được chúng
+    thì mọi lần chỉnh đều là chỉnh mò — đã mò một lần và trượt.
+
+    MẶC ĐỊNH TẮT, và chỉ ghi tiêu đề + giá + link, không ghi cookie, header hay body thô.
+    Bật bằng `ADS_DUMP=1` trong `backend/.env.local`, chỉnh xong thì tắt đi.
+    """
+    # Đọc qua `env_string` chứ không phải `os.environ` trực tiếp — đó là chỗ duy nhất
+    # trong repo này biết `.env.local` nằm ở đâu và đã nạp chưa.
+    if env_string("ADS_DUMP") != "1":
+        return
+    try:
+        from lib.core.store import STORE_DIR
+
+        path = STORE_DIR / "ads-mau.json"
+        kho = {}
+        if path.exists():
+            kho = json.loads(path.read_text(encoding="utf-8"))
+        kho[keyword] = [
+            {
+                "title": ad.title or ad.body or "",
+                "price": ad.price,
+                "currency": ad.currency,
+                "sold": ad.sold_count,
+                "link": ad.permalink,
+            }
+            for ad in (result.ads or [])
+        ]
+        STORE_DIR.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(kho, ensure_ascii=False, indent=1), encoding="utf-8")
+    except Exception as e:  # noqa: BLE001
+        # Đây là công cụ chẩn đoán. Nó hỏng thì im lặng đi tiếp, tuyệt đối không được kéo
+        # theo lượt tìm thật của người dùng.
+        print(f"[ads-mau] khong ghi duoc: {e}", file=sys.stderr)
 
 
 @router.get("/health")

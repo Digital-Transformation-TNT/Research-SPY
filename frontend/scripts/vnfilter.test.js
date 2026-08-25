@@ -14,11 +14,12 @@
  *             là gắn nhầm. Chính bộ này đã bắt được bản đầu dùng `includes('op ')` khớp bên
  *             trong chữ "top".
  *
- *   BẮT ĐỦ    đo trên một bộ tiêu đề TỰ VIẾT theo đúng những gì người dùng mô tả (lót chuột,
- *             keycap, cánh quạt). KHÔNG phải dữ liệu thật — bảng Shopee gây ra lỗi này nằm
- *             trong bộ nhớ chứ không xuống đĩa, nên chưa lấy mẫu thật được. Nghĩa là con số
- *             "bắt đủ" ở đây KHÔNG chứng minh luật chạy tốt ngoài đời. Khi nào có mẫu Shopee
- *             thật thì thay bộ này đi.
+ *   BẮT ĐỦ    đo trên một bộ tiêu đề TỰ VIẾT (lót chuột, keycap, cánh quạt). Nó chỉ nói luật
+ *             chữ không chết, không nói gì về recall ngoài đời.
+ *
+ *   CHỌN GIÁ  đo trên `fixtures/shopee-vn.json` — 179 dòng Shopee THẬT, đúng thứ tự Liên Quan,
+ *             lấy từ chính lượt tìm của người dùng ngày 2026-08-25 (bật `ADS_DUMP=1` rồi đọc
+ *             `.cache/ads-mau.json`). Đây mới là bộ đo có giá trị cho phần chọn giá.
  */
 
 const { execFileSync } = require('child_process')
@@ -39,7 +40,7 @@ execFileSync(
    '--outDir', OUT, '--module', 'commonjs', '--target', 'es2020', '--skipLibCheck'],
   { cwd: GOC, stdio: 'inherit' },
 )
-const { laPhuKienVn, chonGiaThapNhat, TY_GIA_VND } = require(path.join(OUT, 'vnfilter.js'))
+const { laPhuKienVn, chonGiaThapNhat, maTrongTieuDe, CUA_SO_LIEN_QUAN } = require(path.join(OUT, 'vnfilter.js'))
 
 let hong = 0
 const bao = (ok, nhan, them = '') => {
@@ -77,76 +78,59 @@ const sot = phuKien.filter((t) => !laPhuKienVn(t))
 sot.forEach((t) => console.log('       SÓT ' + t.slice(0, 88)))
 bao(sot.length === 0, `bắt ${phuKien.length - sot.length}/${phuKien.length}`)
 
+
 // ─────────────────────────────────────────────────────────────────────────────
-console.log('\n=== 3. ĐÚNG CẢNH TRONG ẢNH NGƯỜI DÙNG GỬI ===')
-// Giá sỉ 1688 đọc thẳng từ ảnh: G304 ¥29, G102 ¥23,76, "305 không dây" ¥49.
-const yen = TY_GIA_VND['¥']
+console.log('\n=== 3. CHỌN GIÁ trên 179 dòng Shopee THẬT ===')
+const shopee = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/shopee-vn.json'), 'utf8'))
+
+// `truoc` là con số công cụ ĐANG in ra trước bản vá này; `tu`-`den` là vùng giá thật đọc từ
+// ảnh chụp Shopee của người dùng. KHÔNG nhắm trúng một con số — người dùng đã nói rõ đây là
+// công cụ ước lượng, không phải thứ phải chuẩn 100%. Nhắm vào đúng vùng là đủ.
 const canh = [
-  {
-    ma: 'G102',
-    san: 23.76 * yen,
-    truoc: 19_000,          // con số công cụ ĐANG in ra — sai
-    rows: [
-      { title: 'Miếng lót chuột G102 chống trượt cỡ lớn', priceValue: 19_000, codeHit: true },
-      { title: 'Chuột Logitech G102 Lightsync RGB chính hãng', priceValue: 289_000, codeHit: true },
-      { title: 'Chuột gaming G102 2nd Gen 8000DPI', priceValue: 315_000, codeHit: true },
-      { title: 'Bàn phím cơ AKKO 3068', priceValue: 890_000, codeHit: false },
-    ],
-    mong: 289_000,
-  },
-  {
-    ma: 'G304',
-    san: 29 * yen,
-    truoc: 40_000,
-    rows: [
-      { title: 'Miếng dán skin chuột G304 chống mồ hôi', priceValue: 40_000, codeHit: true },
-      { title: 'Chuột Gaming không dây Logitech G304 Lightspeed', priceValue: 835_000, codeHit: true },
-      { title: 'Chuột Logitech G304 | Giá tốt cho game thủ', priceValue: 872_000, codeHit: true },
-    ],
-    mong: 835_000,
-  },
-  {
-    ma: 'G305',
-    san: 49 * yen,
-    truoc: 595_000,         // con số này vốn ĐÚNG — luật không được đụng vào
-    rows: [
-      { title: 'Chuột Gaming không dây Logitech G305 Lightspeed chính hãng', priceValue: 595_000, codeHit: true },
-      { title: 'Chuột Logitech G305 bản quốc tế', priceValue: 749_000, codeHit: true },
-    ],
-    mong: 595_000,
-  },
+  { ma: 'G304', truoc: 58_147, tu: 85_000, den: 300_000 },
+  { ma: 'G102', truoc: 84_000, tu: 100_000, den: 300_000 },
+  { ma: 'G305', truoc: 789_000, tu: 700_000, den: 900_000 },
 ]
 
 for (const c of canh) {
-  const r = chonGiaThapNhat(c.rows, c.san)
-  const doi = r.price !== c.truoc
+  const r = chonGiaThapNhat(shopee[c.ma], c.ma)
+  const trong = r.price !== null && r.price >= c.tu && r.price <= c.den
   console.log(
-    `  ${c.ma}: sàn ${Math.round(c.san).toLocaleString('vi-VN')} ₫ · ` +
-    `trước ${c.truoc.toLocaleString('vi-VN')} → sau ${r.price?.toLocaleString('vi-VN')} ₫ ` +
-    `(bỏ ${r.skipped}) ${doi ? '[đã sửa]' : '[giữ nguyên]'}`,
+    `  ${c.ma}: ${c.truoc.toLocaleString('vi-VN')} → ${r.price?.toLocaleString('vi-VN')} ₫ ` +
+    `(bỏ ${r.skipped}, dùng ${r.used})`,
   )
-  bao(r.price === c.mong, `${c.ma} ra đúng ${c.mong.toLocaleString('vi-VN')} ₫`)
+  bao(trong, `${c.ma} nằm trong ${c.tu.toLocaleString('vi-VN')}–${c.den.toLocaleString('vi-VN')} ₫`)
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-console.log('\n=== 4. KHÔNG CÓ SÀN GIÁ thì luật giá phải TẮT, không bịa ===')
-const khongSan = chonGiaThapNhat(
-  [
-    { title: 'Chuột Logitech G102 chính hãng', priceValue: 289_000, codeHit: true },
-    { title: 'Miếng lót chuột G102', priceValue: 19_000, codeHit: true },
-  ],
-  null,
-)
-// Luật chữ vẫn bắt được miếng lót; luật giá không chạy nên không bỏ thêm gì.
-bao(khongSan.price === 289_000 && khongSan.skipped === 1,
-    'chỉ luật chữ làm việc', `giá=${khongSan.price} bỏ=${khongSan.skipped}`)
+// Ba thứ kéo giá xuống sai — mỗi thứ phải bị ĐÚNG một luật bắt, không phải tình cờ đúng.
+const g304 = chonGiaThapNhat(shopee.G304, 'G304')
+const gopMa = g304.rows.find((r) => (r.title || '').includes('M220/M350/G304'))
+bao(gopMa && gopMa.vnSkip === 'ma-khac',
+    'dòng gộp M220/M350/G304 (58.147 ₫, hạng 6) bị bắt vì "mã khác"',
+    gopMa ? String(gopMa.vnSkip) : 'không thấy dòng')
 
-// Dòng KHÔNG mang mã thì không được đụng tới — việc lọc mã là của `rowMatches`.
-const ngoaiMa = chonGiaThapNhat(
-  [{ title: 'Miếng lót chuột loại rẻ', priceValue: 5_000, codeHit: false }],
-  100_000,
-)
-bao(ngoaiMa.price === null && ngoaiMa.skipped === 0, 'dòng không mang mã: không tính, không gắn cờ')
+const g102 = chonGiaThapNhat(shopee.G102, 'G102')
+const nhai = g102.rows.find((r) => r.priceValue === 19_000)
+bao(nhai && nhai.vnSkip === 'gia-lac',
+    'hàng nhái 19.000 ₫ (hạng 3, tiêu đề không có gì đáng ngờ) bị bắt vì "giá lạc"',
+    nhai ? String(nhai.vnSkip) : 'không thấy dòng')
+
+// Dòng ngoài cửa sổ liên quan KHÔNG được gắn cờ: chúng không sai, chỉ là không đủ liên quan
+// để tin. Gắn cờ chúng sẽ thổi con số "đã bỏ" lên tới bốn chục và làm tooltip vô nghĩa.
+const ngoai = g304.rows.slice(CUA_SO_LIEN_QUAN).filter((r) => r.vnSkip)
+bao(ngoai.length === 0, 'dòng ngoài cửa sổ liên quan không bị gắn cờ', `còn ${ngoai.length}`)
+
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n=== 4. RÚT MÃ khớp bản Python ở backend (codes.py) ===')
+const caMa = [
+  ['Chuột không dây Logiteck M220/M350/G304 bluetooth', ['M220', 'M350', 'G304']],
+  ['Chuột Gaming Không Dây Logitech G304 Lightspeed', ['G304']],
+  ['Chuột gaming Logitech G102/G304/G402 có dây', ['G102', 'G304', 'G402']],
+]
+for (const [t, mong] of caMa) {
+  const duoc = maTrongTieuDe(t)
+  bao(mong.every((m) => duoc.includes(m)), `rút được ${mong.join(', ')}`, `ra: ${duoc.join(', ')}`)
+}
 
 console.log(hong === 0 ? '\n>>> TAT CA DAT\n' : `\n>>> ${hong} PHEP DO HONG\n`)
 process.exit(hong === 0 ? 0 : 1)

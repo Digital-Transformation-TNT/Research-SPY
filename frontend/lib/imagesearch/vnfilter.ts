@@ -37,7 +37,7 @@ export type DongCoGia = {
  * ═══════════════════════════════════════════════════════════════════════════════════════ */
 
 /** Vì sao một dòng bị gạch khỏi phép tính giá. `null` = dòng này được tính. */
-export type VnSkip = 'phu-kien' | 're-hon-gia-si' | null
+export type VnSkip = 'phu-kien' | 'ma-khac' | 'gia-lac' | null
 
 /**
  * Danh từ chính của phụ kiện. So ở PHẦN ĐẦU tiêu đề, vì tiếng Việt đặt danh từ chính lên
@@ -98,65 +98,120 @@ export function laPhuKienVn(title: string): boolean {
   return RE_PHU_KIEN.test(dauTitle(title).slice(0, 34))
 }
 
-/**
- * Tỷ giá quy giá sỉ Trung Quốc về đồng, đọc theo ký hiệu mà `priceUnit` bóc ra.
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════
+ * BA THỨ KÉO GIÁ XUỐNG SAI, đo trên 177 dòng Shopee THẬT (`.cache/ads-mau.json`, 2026-08-25)
  *
- * Ghi cứng, đo ngày 2026-08-25. Nó SẼ cũ dần, và điều đó không sao: khoảng cách luật này đi
- * bắt là 4-5 lần (G102 19.000 ₫ so với giá sỉ ~88.000 ₫), nên tỷ giá lệch 10-20% cũng không
- * đổi được kết luận nào. Đừng dùng mấy con số này cho việc tính biên lợi nhuận.
+ *   phụ kiện       "Miếng lót chuột G102" — luật chữ ở trên bắt.
+ *   gộp nhiều mã   "(Thanh lý 1K) Chuột không dây Logiteck M220/M350/G304 hàng OEM" — 58.147 ₫,
+ *                  đứng HẠNG 6. Người bán gộp nhiều model vào một listing rồi hiện giá bản rẻ
+ *                  nhất, tức là giá của M220 chứ không phải G304.
+ *   hàng nhái      "[G102] Chuột gaming logitech G102 Led RGB 8000DPI" — 19.000 ₫, hạng 3.
+ *                  Tiêu đề KHÔNG có gì đáng ngờ. Đúng tiêu đề ấy còn hiện lại ở hạng 44 với
+ *                  giá 84.000 ₫ — cùng một listing, nhiều biến thể, hiện bản rẻ nhất.
+ *
+ * ĐÃ THỬ VÀ BỎ: lấy giá sỉ 1688 làm sàn. Nghe hợp lý — bán lẻ không thể dưới giá sỉ — nhưng
+ * bảng 1688 trộn hàng nhái ¥15 với hàng Logitech thật ¥175, nên sàn tụt theo con rẻ nhất và
+ * gần như không chặn gì. Sâu hơn: giá VỐN không đo được giá BÁN LẺ, G304 vốn ¥29 mà bán ở VN
+ * 800k. Cách đó đã ship một lần và trượt; nó cũng kéo theo một bảng tỷ giá ghi cứng sẽ mục.
+ *
+ * BA LUẬT THAY THẾ, đều không cần tỷ giá:
+ *   cửa sổ liên quan   chỉ đọc N dòng đầu. Shopee xếp theo Liên Quan, và mấy chục dòng cuối
+ *                      là hàng vơ vét — hạng 50-51 của G304 có món 26.000 ₫ và 40.000 ₫.
+ *   mã khác            tiêu đề nhắc model KHÁC thì giá hiện ra gần như luôn là của model kia.
+ *   giá lạc            bỏ giá thấp hơn hẳn phần còn lại của cụm. Đây là thứ duy nhất bắt được
+ *                      hàng nhái, vì chữ nghĩa của nó không khác gì hàng thật.
+ *
+ * KHÔNG NHẮM CHUẨN 100%. Đây là công cụ ước lượng để người bán khỏi phải tự tra tay từng mã;
+ * lệch vài chục nghìn không sao, lệch mười lần mới là hỏng.
+ * ═══════════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Chỉ đọc ngần này dòng đầu tiên.
+ *
+ * Shopee trả về theo LIÊN QUAN (xem `SORT` ở `vnprice.ts`), nên thứ tự này là thông tin thật
+ * chứ không phải ngẫu nhiên: dòng đầu bảng là món người mua thật sự đang tìm. Đo trên dữ liệu
+ * thật, hai món rẻ nhất mang mã G304 nằm ở hạng 50 và 51 — chúng chỉ lọt vào vì Shopee phải
+ * trả đủ 60 dòng, không phải vì chúng liên quan.
  */
-export const TY_GIA_VND: Record<string, number> = {
-  '¥': 3_700,
-  'cny': 3_700,
-  'rmb': 3_700,
-  'us$': 25_400,
-  '$': 25_400,
-  'usd': 25_400,
-  '₫': 1,
-  'đ': 1,
-  'vnd': 1,
+export const CUA_SO_LIEN_QUAN = 20
+
+/** Giá thấp hơn ngần này lần trung vị của cụm thì coi là lạc, không phải cùng một món. */
+const NGUONG_LAC = 0.25
+
+/**
+ * Rút các mã model có trong một tiêu đề. Bản TypeScript của `codes_in` ở
+ * `backend/lib/imagesearch/codes.py` — cùng luật, để hai đầu đọc ra cùng một thứ.
+ *
+ * Mã là cụm CHỮ + SỐ dính nhau: G304, M220, TS3429, PH1627. Bắt buộc phải có ít nhất một chữ
+ * số, nếu không thì mọi từ tiếng Anh trong tiêu đề đều thành mã.
+ */
+export function maTrongTieuDe(title: string): string[] {
+  const re = /(?<![A-Za-z0-9])(?=[A-Za-z0-9-]{3,14}(?![A-Za-z0-9]))(?=[A-Za-z0-9-]*\d)[A-Za-z][A-Za-z0-9-]{2,13}(?![A-Za-z0-9])/g
+  return [...(title || '').matchAll(re)].map((m) => m[0].toUpperCase())
 }
 
-/** Giá VN phải đạt ít nhất ngần này lần giá sỉ thì mới coi là cùng một món. */
-const NGUONG_SAN = 0.9
-
 /**
- * Chọn giá thấp nhất, sau khi gạch những dòng không phải món đang tìm.
+ * Chọn giá thấp nhất trong các dòng THẬT SỰ là món đang tìm.
  *
- * `sanVnd` là giá sỉ Trung Quốc của chính mã này, đã quy ra đồng. `null` khi không tra được
- * — lúc ấy luật giá tự tắt và chỉ còn luật chữ làm việc, chứ không bịa ra một cái sàn.
+ * `rows` phải giữ nguyên THỨ TỰ LIÊN QUAN mà Shopee trả về — `markAndRank` đưa nhóm khớp mã
+ * lên trước nhưng `Array.sort` của JS ổn định nên bên trong nhóm ấy thứ tự vẫn nguyên.
+ * `ma` là mã đang tra; rỗng thì luật "mã khác" tự tắt (lúc tra bằng cụm chữ thường).
  */
 export function chonGiaThapNhat<T extends DongCoGia>(
   rows: T[],
-  sanVnd: number | null,
+  ma: string,
 ): { price: number | null; rows: (T & { vnSkip: VnSkip })[]; used: number; skipped: number } {
-  const danhDau = rows.map((row) => {
-    if (!row.codeHit) return { ...row, vnSkip: null as VnSkip }
-    if (laPhuKienVn(row.title || '')) return { ...row, vnSkip: 'phu-kien' as VnSkip }
-    if (
-      sanVnd !== null &&
-      typeof row.priceValue === 'number' &&
-      row.priceValue < sanVnd * NGUONG_SAN
-    ) {
-      // Bán lẻ ở Việt Nam thấp hơn cả giá sỉ tại xưởng Trung Quốc là chuyện không xảy ra với
-      // cùng một món. Gần như luôn là một món khác, rẻ hơn, bày chung từ khoá.
-      return { ...row, vnSkip: 're-hon-gia-si' as VnSkip }
-    }
-    return { ...row, vnSkip: null as VnSkip }
+  const mucTieu = (ma || '').toUpperCase()
+
+  // Bước 1 — cửa sổ liên quan. Dòng ngoài cửa sổ KHÔNG bị gắn cờ: chúng không sai, chỉ là
+  // không đủ liên quan để tin. Gắn cờ chúng sẽ thổi con số "đã bỏ" lên tới bốn chục.
+  let trongCuaSo = 0
+  const buoc1 = rows.map((row) => {
+    if (!row.codeHit) return { ...row, vnSkip: null as VnSkip, _xet: false }
+    trongCuaSo += 1
+    return { ...row, vnSkip: null as VnSkip, _xet: trongCuaSo <= CUA_SO_LIEN_QUAN }
   })
 
-  const dungDuoc = danhDau.filter((row) => row.codeHit && !row.vnSkip)
-  const price = dungDuoc.reduce<number | null>((best, row) => {
-    const value = row.priceValue
-    if (typeof value !== 'number') return best
-    return best === null || value < best ? value : best
-  }, null)
+  // Bước 2 — hai luật đọc chữ.
+  const buoc2 = buoc1.map((row) => {
+    if (!row._xet) return row
+    if (laPhuKienVn(row.title || '')) return { ...row, vnSkip: 'phu-kien' as VnSkip }
+    if (mucTieu) {
+      const khac = maTrongTieuDe(row.title || '').filter((m) => m !== mucTieu)
+      if (khac.length) return { ...row, vnSkip: 'ma-khac' as VnSkip }
+    }
+    return row
+  })
 
+  // Bước 3 — giá lạc, so với trung vị của chính những dòng còn sống.
+  const con = buoc2.filter((r) => r._xet && !r.vnSkip && typeof r.priceValue === 'number')
+  const gia = con.map((r) => r.priceValue as number).sort((a, b) => a - b)
+  const trungVi = gia.length
+    ? gia.length % 2
+      ? gia[(gia.length - 1) / 2]
+      : (gia[gia.length / 2 - 1] + gia[gia.length / 2]) / 2
+    : null
+  const buoc3 = buoc2.map((row) => {
+    if (!row._xet || row.vnSkip || trungVi === null) return row
+    if (typeof row.priceValue === 'number' && row.priceValue < trungVi * NGUONG_LAC) {
+      return { ...row, vnSkip: 'gia-lac' as VnSkip }
+    }
+    return row
+  })
+
+  const dungDuoc = buoc3.filter((r) => r._xet && !r.vnSkip && typeof r.priceValue === 'number')
+  const price = dungDuoc.reduce<number | null>(
+    (best, row) => (best === null || (row.priceValue as number) < best ? (row.priceValue as number) : best),
+    null,
+  )
+
+  // `_xet` là chuyện nội bộ của hàm này, không để nó rò ra ngoài.
+  const sach = buoc3.map(({ _xet, ...rest }) => rest as T & { vnSkip: VnSkip })
   return {
     price,
-    rows: danhDau,
+    rows: sach,
     used: dungDuoc.length,
-    skipped: danhDau.filter((row) => row.vnSkip).length,
+    skipped: sach.filter((r) => r.vnSkip).length,
   }
 }
-
