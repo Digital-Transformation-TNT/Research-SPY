@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Đăng nhập — Research-SPY</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: Canvas; --fg: CanvasText;
+      --line: color-mix(in srgb, CanvasText 14%, transparent);
+      --line-soft: color-mix(in srgb, CanvasText 8%, transparent);
+      --muted: color-mix(in srgb, CanvasText 55%, transparent);
+      --panel: color-mix(in srgb, CanvasText 4%, transparent);
+      /* Cam brand — chép đúng mã của trang Research (index.html) và webtool base.css.
+         Đổi màu ở webtool thì phải sửa cả đây, trang Research, và base.css. */
+      --accent: #f26522; --accent-ink: #d9541a;
+      --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,.05);
+      --shadow-md: 0 10px 28px -10px rgba(0,0,0,.22);
+      --ease: cubic-bezier(.2,.7,.3,1);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--fg);
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 380px;
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 32px 28px 28px;
+      box-shadow: var(--shadow-md);
+    }
+
+    .brand { text-align: center; margin-bottom: 24px; }
+    .brand h1 { font-size: 20px; font-weight: 800; margin: 0 0 4px; letter-spacing: -.015em; }
+    .brand .tag { font-size: 12.5px; color: var(--muted); }
+
+    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+
+    input {
+      font: inherit;
+      width: 100%;
+      padding: 11px 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: var(--bg); color: var(--fg);
+      transition: border-color .14s var(--ease), box-shadow .14s var(--ease);
+    }
+    input:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+      border-color: transparent;
+    }
+
+    button.primary {
+      font: inherit;
+      width: 100%;
+      margin-top: 16px;
+      padding: 11px 20px;
+      background: var(--accent);
+      color: #fff;
+      border: 1px solid var(--accent);
+      border-radius: var(--radius-sm);
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: var(--shadow-sm);
+      transition: background-color .14s var(--ease), transform .1s var(--ease), box-shadow .14s var(--ease);
+    }
+    button.primary:hover { background: var(--accent-ink); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+    button.primary:active { transform: translateY(0); }
+    button.primary:disabled { opacity: .5; cursor: default; box-shadow: none; transform: none; }
+
+    .hint {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 14px;
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    .status {
+      margin-top: 12px;
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 12.5px;
+      display: none;
+    }
+    .status.err {
+      display: block;
+      background: color-mix(in srgb, #e11d48 10%, transparent);
+      color: #e11d48;
+      border: 1px solid color-mix(in srgb, #e11d48 30%, transparent);
+    }
+    .status.wait {
+      display: block;
+      background: color-mix(in srgb, var(--accent) 10%, transparent);
+      color: var(--accent-ink);
+      border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    }
+  </style>
+</head>
+<body>
+  <form class="card" id="loginForm" autocomplete="off">
+    <div class="brand">
+      <h1>🛰️ Research-SPY</h1>
+      <div class="tag">Đăng nhập để bắt đầu</div>
+    </div>
+
+    <label for="username">Tên đăng nhập</label>
+    <input id="username" type="text" placeholder="vd: nam.pham" required autofocus />
+
+    <button class="primary" type="submit">Đăng nhập →</button>
+
+    <div class="status" id="err"></div>
+
+    <div class="hint">Chỉ cần username — chưa cần mật khẩu ở giai đoạn nội bộ.</div>
+  </form>
+
+  <script>
+    // Đã có token còn hạn → đi thẳng vào Research thay vì bắt gõ lại. Token hết hạn thì trang
+    // Research sẽ tự đá về đây khi gọi API bị 401.
+    if (localStorage.getItem('rs_token')) {
+      window.location.replace('/ads');
+    }
+
+    const form = document.getElementById('loginForm');
+    const input = document.getElementById('username');
+    const err = document.getElementById('err');
+    const btn = form.querySelector('button');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = (input.value || '').trim().toLowerCase();
+      if (!name) {
+        err.textContent = 'Nhập tên đăng nhập trước đã.';
+        err.className = 'status err';
+        input.focus();
+        return;
+      }
+      if (!/^[a-z0-9._-]+$/.test(name)) {
+        err.textContent = 'Chỉ dùng chữ, số, dấu chấm, gạch dưới, gạch nối.';
+        err.className = 'status err';
+        input.focus();
+        return;
+      }
+
+      btn.disabled = true; btn.textContent = 'Đang đăng nhập…';
+      try {
+        const r = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: name }),
+        });
+        const data = await r.json();
+
+        // CHỜ DUYỆT: user mới (202) hoặc user pending (403 + pending) → hiện thông điệp chờ, KHÔNG
+        // lưu token, KHÔNG vào app. Admin phải duyệt ở trang Quản trị.
+        if (data && data.pending) {
+          err.textContent = data.message || 'Yêu cầu đang chờ quản trị viên duyệt.';
+          err.className = 'status wait';
+          btn.disabled = false; btn.textContent = 'Đăng nhập →';
+          return;
+        }
+
+        if (!r.ok) {
+          // 501 = backend chưa cấu hình Supabase → rơi về chế độ chỉ-localStorage như bản cũ.
+          if (r.status === 501) {
+            localStorage.setItem('rs_username', name);
+            localStorage.setItem('rs_role', 'user');
+            window.location.replace('/ads');
+            return;
+          }
+          throw new Error(data.error || `HTTP ${r.status}`);
+        }
+
+        // Login thành công (đã duyệt) — lưu token + profile.
+        localStorage.setItem('rs_token', data.token);
+        localStorage.setItem('rs_username', data.user.username);
+        localStorage.setItem('rs_role', data.user.role);
+        localStorage.setItem('rs_user_id', data.user.id);
+        window.location.replace('/ads');
+      } catch (e) {
+        err.textContent = e.message || 'Không đăng nhập được.';
+        err.className = 'status err';
+        btn.disabled = false; btn.textContent = 'Đăng nhập →';
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quản trị — Research-SPY</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: Canvas; --fg: CanvasText;
+      --line: color-mix(in srgb, CanvasText 14%, transparent);
+      --line-soft: color-mix(in srgb, CanvasText 8%, transparent);
+      --muted: color-mix(in srgb, CanvasText 55%, transparent);
+      --panel: color-mix(in srgb, CanvasText 4%, transparent);
+      --accent: #f26522; --accent-ink: #d9541a;
+      --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+      --good: #16a34a; --bad: #e11d48;
+      --radius: 12px; --radius-sm: 8px;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,.05);
+      --shadow-md: 0 10px 28px -10px rgba(0,0,0,.22);
+      --ease: cubic-bezier(.2,.7,.3,1);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body { font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--fg); -webkit-font-smoothing: antialiased; }
+
+    header { border-bottom: 1px solid var(--line); padding: 18px 24px; position: sticky; top: 0; z-index: 10; background: var(--bg); }
+    .brand { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .brand h1 { font-size: 17px; font-weight: 800; margin: 0 auto 0 0; letter-spacing: -.015em; }
+    .brand .tag { font-size: 12.5px; color: var(--muted); }
+    .brand a, .brand button { font-size: 12.5px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); text-decoration: none; cursor: pointer; }
+    .brand a:hover, .brand button:hover { border-color: var(--accent); color: var(--accent); }
+
+    .tabs { display: flex; gap: 4px; padding: 0 24px; border-bottom: 1px solid var(--line); background: var(--bg); }
+    .tabs button { font: inherit; padding: 12px 18px; border: none; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); cursor: pointer; font-weight: 600; transition: color .14s var(--ease), border-color .14s var(--ease); }
+    .tabs button:hover { color: var(--fg); }
+    .tabs button.on { color: var(--accent); border-bottom-color: var(--accent); }
+
+    main { padding: 24px; max-width: 1200px; margin: 0 auto; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
+    h2 { font-size: 15px; font-weight: 700; margin: 0 0 12px; }
+
+    /* Users table */
+    table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line-soft); }
+    th { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); background: var(--panel); }
+    tbody tr:hover { background: var(--panel); }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; }
+    .badge.admin { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent-ink); }
+    .badge.user { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--muted); }
+    .badge.on { background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good); }
+    .badge.off { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+    .badge.pending { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent-ink); }
+
+    /* Hàng chờ duyệt nổi bật để admin thấy ngay việc cần làm. */
+    tr.row-pending td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+    button.mini.approve { border-color: var(--good); color: var(--good); font-weight: 700; }
+    button.mini.approve:hover { background: color-mix(in srgb, var(--good) 12%, transparent); }
+
+    /* Số đếm chờ duyệt trên tab. */
+    .tab-count { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; margin-left: 4px; }
+
+    button.primary { font: inherit; padding: 8px 16px; background: var(--accent); color: #fff; border: 1px solid var(--accent); border-radius: var(--radius-sm); font-weight: 700; cursor: pointer; box-shadow: var(--shadow-sm); transition: background-color .14s var(--ease); }
+    button.primary:hover { background: var(--accent-ink); }
+    button.primary:disabled { opacity: .5; cursor: default; }
+    button.mini { font: inherit; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); cursor: pointer; font-size: 12px; }
+    button.mini:hover { border-color: var(--accent); color: var(--accent); }
+    button.mini.danger:hover { border-color: var(--bad); color: var(--bad); }
+
+    .add-user { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+    .add-user input, .add-user select { font: inherit; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); color: var(--fg); }
+    .add-user input:focus, .add-user select:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+
+    /* KPI dashboard */
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .kpi-card { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+    .kpi-label { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
+    .kpi-value { font-size: 26px; font-weight: 800; letter-spacing: -.02em; }
+    .kpi-delta { font-size: 12px; margin-top: 6px; color: var(--muted); }
+    .kpi-delta.up { color: var(--good); }
+    .kpi-delta.down { color: var(--bad); }
+
+    .period-picker { display: flex; gap: 4px; margin-bottom: 16px; }
+    .period-picker button { font: inherit; padding: 6px 14px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+    .period-picker button:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+    .period-picker button:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+    .period-picker button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    .status { padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; margin-top: 12px; display: none; }
+    .status.err { display: block; background: color-mix(in srgb, var(--bad) 10%, transparent); color: var(--bad); border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent); }
+    .status.ok  { display: block; background: color-mix(in srgb, var(--good) 10%, transparent); color: var(--good); border: 1px solid color-mix(in srgb, var(--good) 30%, transparent); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <h1>🛠️ Quản trị Research-SPY</h1>
+      <span class="tag" id="whoami"></span>
+      <a href="/ads">← Về Research</a>
+      <button id="logoutBtn">Đăng xuất</button>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <button id="tabUsersBtn" class="on">👥 Người dùng</button>
+    <button id="tabStatsBtn">📊 Thống kê</button>
+  </div>
+
+  <main>
+    <!-- ===== TAB NGƯỜI DÙNG ===== -->
+    <div id="tabUsers">
+      <div class="panel">
+        <h2>Thêm user mới</h2>
+        <div class="add-user">
+          <input id="newUsername" placeholder="username (chữ, số, . _ -)" maxlength="64" />
+          <select id="newRole">
+            <option value="user">Quyền: User</option>
+            <option value="admin">Quyền: Admin</option>
+          </select>
+          <button class="primary" id="addBtn">Thêm →</button>
+        </div>
+        <div class="status" id="addStatus"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Danh sách user</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Quyền</th>
+              <th>Trạng thái</th>
+              <th>Đăng nhập gần nhất</th>
+              <th>Ngày tạo</th>
+              <th>Thao tác</th>
+            </tr>
+          </thead>
+          <tbody id="usersRows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== TAB THỐNG KÊ ===== -->
+    <div id="tabStats" style="display:none">
+      <div class="period-picker">
+        <button data-period="week" class="on">7 ngày</button>
+        <button data-period="month">30 ngày</button>
+      </div>
+
+      <div class="kpi-grid" id="kpiGrid"></div>
+
+      <div class="panel">
+        <h2>Ghi chú</h2>
+        <ul style="color:var(--muted);line-height:1.7;padding-left:20px;margin:0;font-size:13px">
+          <li><b>WAU</b>: số user riêng biệt hoạt động trong kỳ.</li>
+          <li><b>Task Success Rate</b>: % user vừa search vừa có click (product/video) — đo xấp xỉ.</li>
+          <li><b>Thời gian trung bình/task</b>: từ event <code>session_end</code>, đơn vị phút.</li>
+          <li><b>Giờ tiết kiệm</b>: baseline 30 phút thủ công × số task hoàn tất − thời gian thực tế.</li>
+          <li><b>Trend</b>: so với kỳ trước ±5%. Thời gian ít hơn là ↑ tốt (đảo dấu).</li>
+        </ul>
+      </div>
+    </div>
+  </main>
+
+  <script src="admin.js"></script>
+</body>
+</html>

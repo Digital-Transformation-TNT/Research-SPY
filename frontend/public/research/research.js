@@ -26,6 +26,56 @@
 (function () {
 /*
  * ===========================================================================
+ * AUTH GATE — chưa đăng nhập thì đá về /login/.
+ *
+ * Kiểm cả `rs_token` (cấu hình Supabase, có JWT) và `rs_username` (chế độ chỉ-localStorage
+ * khi backend chưa cấu hình Supabase, login page tự set fallback). Thiếu cả hai → chưa đăng
+ * nhập → redirect. Đặt Ở ĐẦU FILE để không code nào chạy trước khi có user.
+ * ===========================================================================
+ */
+if (!localStorage.getItem('rs_token') && !localStorage.getItem('rs_username')) {
+  window.top.location.replace('/login');
+  return;
+}
+
+// Tên user + đăng xuất + link Admin nay nằm ở SIDEBAR (khung Next bọc ngoài iframe), không ở
+// header trang này nữa — nhờ vậy chúng hiện ở MỌI tab, không riêng tab Sản phẩm. Xem
+// components/layout/Sidebar.tsx.
+
+// Helper gọi backend có kèm JWT (nếu có). Dùng chung cho mọi fetch tới /api/* sau này.
+window.rsAuthFetch = async function (url, options = {}) {
+  const token = localStorage.getItem('rs_token');
+  const headers = Object.assign({}, options.headers || {});
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const r = await fetch(url, Object.assign({}, options, { headers }));
+  // 401 = token hết hạn hoặc sai → về login.
+  if (r.status === 401) {
+    ['rs_token', 'rs_username', 'rs_role', 'rs_user_id'].forEach((k) => localStorage.removeItem(k));
+    window.top.location.replace('/login');
+    throw new Error('Phiên đã hết hạn');
+  }
+  return r;
+};
+
+// Fire-and-forget analytics tracker. Backend tự xử user_id từ JWT; không có JWT vẫn track ẩn danh.
+window.rsTrack = function (eventType, meta) {
+  try {
+    const body = JSON.stringify({ event_type: eventType, meta: meta || {} });
+    const token = localStorage.getItem('rs_token');
+    fetch('/api/analytics/track', {
+      method: 'POST',
+      headers: Object.assign(
+        { 'Content-Type': 'application/json' },
+        token ? { 'Authorization': 'Bearer ' + token } : {},
+      ),
+      body,
+      keepalive: true,  // cho phép request hoàn tất khi user điều hướng đi
+    }).catch(() => {});
+  } catch (e) {}
+};
+
+/*
+ * ===========================================================================
  * LỚP GIẢ LẬP API EXTENSION  —  phần DUY NHẤT khác bản chạy trong extension
  * ===========================================================================
  *
@@ -1079,13 +1129,12 @@ if (_kw) $('kw').value = _kw;
 refreshLogin(); // KHÔNG tự research — chờ user bấm
 
 // ===== TAB CONTENT (Facebook Ads) + TAB TÌM BẰNG ẢNH =====
+// Thanh nav 3 tab đã bỏ (Sản phẩm & Content gộp về 1 tab Sản phẩm). showTab giữ lại để mã cũ
+// không vỡ; chỉ đổi display của các div (button đã không còn — không toggle class 'on' nữa).
 function showTab(which) {
   $('tabProduct').style.display = which === 'product' ? '' : 'none';
   $('tabContent').style.display = which === 'content' ? '' : 'none';
   $('tabImage').style.display = which === 'image' ? '' : 'none';
-  $('tabProductBtn').classList.toggle('on', which === 'product');
-  $('tabContentBtn').classList.toggle('on', which === 'content');
-  $('tabImageBtn').classList.toggle('on', which === 'image');
   if (which === 'image') updateISel();
 }
 function setCStatus(msg, kind) { $('cstatusText').textContent = msg; $('cstatus').className = 'status' + (kind ? ' ' + kind : ''); }
@@ -1126,9 +1175,6 @@ async function contentResearch() {
   renderContent(list);
 }
 
-$('tabProductBtn').addEventListener('click', () => showTab('product'));
-$('tabContentBtn').addEventListener('click', () => showTab('content'));
-$('tabImageBtn').addEventListener('click', () => showTab('image'));
 $('cgo').addEventListener('click', contentResearch);
 $('ckw').addEventListener('keydown', (e) => { if (e.key === 'Enter') contentResearch(); });
 

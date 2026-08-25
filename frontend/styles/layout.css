@@ -160,6 +160,57 @@
   color: #b9764f;
 }
 
+/* ==================== chân sidebar: user + đăng xuất ==================== */
+
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 10px 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+
+.user-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  line-height: 1.25;
+}
+
+.user-name b {
+  font-size: 13px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-name small {
+  font-size: 11px;
+  color: var(--text-mute);
+}
+
+.user-logout {
+  flex: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.user-logout:hover {
+  border-color: var(--brand);
+  color: var(--brand-hover);
+}
+
 /* ==================== page header ==================== */
 
 .page-head {
