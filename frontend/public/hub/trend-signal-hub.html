@@ -2197,7 +2197,10 @@ function osKwCards(cards){
 
 /* Báo cáo One-shot thật: câu trả lời DeepSeek + sản phẩm/từ khoá liên quan (ảnh + link). */
 function osReportLive(question, res){
-  const by = res.answered_by==="deepseek" ? "DeepSeek" : "chế độ cơ bản";
+  /* `answered_by` nay là TÊN MODEL THẬT (vd "gemini-3.5-flash"), không phải nhãn ghi cứng.
+     Bản gốc so cứng với chuỗi "deepseek"; giữ nguyên thì mọi model khác đều rơi vào nhánh
+     else và trang ghi "chế độ cơ bản" — tức là báo KHÔNG có AI trong khi AI vừa trả lời. */
+  const by = res.answered_by && res.answered_by !== "heuristic" ? res.answered_by : "chế độ cơ bản";
   const n = (res.keywords||[]).length;
   const html =
     '<div class="vbox go"><div class="vlab">Trả lời · '+esc(by)+' · '+n+' từ khoá dữ liệu thật</div>'+

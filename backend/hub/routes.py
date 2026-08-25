@@ -120,7 +120,7 @@ def copilot_chat(req: CopilotRequest):
 # ---- One-shot AI (chatbot ở Trend Signal Hub) ----
 @router.post("/oneshot")
 def oneshot_run(payload: dict):
-    """One-shot AI: DeepSeek ground trên dữ liệu sản phẩm THẬT khớp câu hỏi.
+    """One-shot AI: LLM ground trên dữ liệu sản phẩm THẬT khớp câu hỏi.
 
     payload: {question: str}. Trả {answer, keywords:[{...,top_image,top_url}], scope}.
     """

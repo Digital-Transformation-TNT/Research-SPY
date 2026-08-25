@@ -1,4 +1,4 @@
-"""One-shot AI — trả lời một câu hỏi nghiên cứu bằng DeepSeek, ground trên dữ
+"""One-shot AI — trả lời một câu hỏi nghiên cứu bằng LLM, ground trên dữ
 liệu sản phẩm thật đã cào.
 
 Lấy các keyword liên quan tới câu hỏi làm ngữ cảnh (doanh thu, listing, shop,
@@ -10,6 +10,7 @@ import re
 import unicodedata
 
 from .. import llm
+from ..config import get_settings
 from ..knowledge import PRINTWAY_CONTEXT
 from . import catalogue
 
@@ -121,7 +122,7 @@ def _heuristic(question: str, hits: list[dict]) -> str:
         lines.append(f"- {k['keyword']} — ${k.get('revenue_30d', 0):,}/30 ngày · "
                      f"{k.get('n_shops', 0)} shop · {g_s}")
     lines.append("")
-    lines.append("*(Bật LLM_* trong .env để có phân tích DeepSeek đầy đủ.)*")
+    lines.append("*(Khai GEMINI_API_KEY trong backend/.env.local để có phân tích AI đầy đủ.)*")
     return "\n".join(lines)
 
 
@@ -155,7 +156,10 @@ def run(question: str) -> dict:
         "available": True,
         "question": question,
         "answer": answer,
-        "answered_by": "deepseek" if used_llm else "heuristic",
+        # Tên model THẬT, không phải nhãn ghi cứng. Bản gốc luôn ghi "deepseek" — sau khi
+        # đổi sang Gemini thì nhãn đó thành một lời nói dối, và là kiểu tệ nhất: nó vẫn trông
+        # hợp lý nên không ai nghĩ tới việc kiểm.
+        "answered_by": (get_settings().model_smart if used_llm else "heuristic"),
         "keywords": cards,
         "scope": {
             "n_keywords": len(cards),

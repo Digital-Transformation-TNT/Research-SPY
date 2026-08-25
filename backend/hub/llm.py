@@ -1,7 +1,11 @@
 """LLM client — chuẩn OpenAI-compatible /chat/completions (httpx).
 
-Chạy với BytePlus Ark (DeepSeek) — endpoint BTC cấp — và mọi gateway OpenAI-compatible
-(OpenAI, DeepSeek, Qwen, GLM...). Chỉ cần đổi LLM_BASE_URL + LLM_* + MODEL_* trong .env.
+MẶC ĐỊNH CHẠY GEMINI: chỉ cần `GEMINI_API_KEY` trong `backend/.env.local` — cùng khoá mà
+phần còn lại của Research SPY đang dùng. Gemini có endpoint OpenAI-compatible nên file này
+không cần biết gì riêng về nó; xem `config.effective_base_url`.
+
+Vẫn chạy được với mọi gateway OpenAI-compatible khác (BytePlus Ark/DeepSeek, OpenAI, Qwen,
+GLM...) bằng cách khai LLM_BASE_URL + LLM_API_KEY + MODEL_* — khai tường minh thì thắng.
 
 Model tiering tối ưu chi phí: tier="cheap" (bulk) / tier="smart" (tổng hợp).
 Không cấu hình -> enabled()=False -> caller dùng heuristic (mock mode).
@@ -25,14 +29,13 @@ def _model_for(tier: str) -> str:
 
 
 def _bearer() -> str:
-    s = get_settings()
-    return (s.llm_auth_token or s.llm_api_key).strip()
+    return get_settings().effective_api_key
 
 
 def complete(system: str, prompt: str, tier: str = "smart", max_tokens: int = 1024,
              temperature: float = 0.3) -> str:
     s = get_settings()
-    url = s.llm_base_url.strip().rstrip("/") + "/chat/completions"
+    url = s.effective_base_url + "/chat/completions"
     payload = {
         "model": _model_for(tier),
         "messages": [{"role": "system", "content": system},
