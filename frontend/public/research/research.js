@@ -1224,6 +1224,7 @@ async function loadModalTiktok(region) {
     permalink: it.videoUrl, langMatch: it.langMatch || 'neutral', regionTag: region,
     likeCount: it.likeCount || null,
     commentCount: it.commentCount || null,
+    playCount: it.playCount || null,
     startedAt: it.createdAt || null,
     creatives: [{ kind: 'video', posterUrl: it.image || '' }],
   }));
@@ -1256,6 +1257,40 @@ async function loadModalTiktok(region) {
   const ccBreak = ccAds.length ? ` · CC ${flag}${ccAds.length}` : '';
   setVidStatus(`${all.length} video · "${usedKw}" · TikTok ${flag}${country} ${tkItems.length} · ${tkMode || modeLabel}${langBreak}${ccBreak} · FB ${st.fbAds.length} · Sàn ${st.marketAds.length}${tkNote}`, 'ok');
   renderVideos(all);
+  // Vẽ xong rồi mới đi lấy tim/bình luận/lượt xem — xem ghi chú ở `fillTiktokStats`. Không
+  // `await`: lưới đã dùng được ngay, số điền vào sau.
+  void fillTiktokStats(all, my);
+}
+
+/**
+ * Bổ sung tim / bình luận / chia sẻ / LƯỢT XEM cho các thẻ TikTok, đọc từ trang nhúng.
+ *
+ * Chạy SAU khi đã vẽ lưới, và vẽ lại khi có số — chứ không chờ nó rồi mới vẽ. Mỗi video là
+ * một lượt tải trang nhúng nên cả loạt mất vài chục giây; bắt người dùng ngồi nhìn màn hình
+ * trống chừng ấy để đổi lấy mấy con số phụ là một cái giá sai.
+ *
+ * Vì sao không lấy từ API search: `parseTiktokTexts` chỉ có số khi page-hook chộp được
+ * response của `/api/search/general/full/`, mà TikTok trả rỗng khá thường xuyên — lúc ấy thẻ
+ * mất sạch số mà không có dấu hiệu gì. Trang nhúng thì luôn có, và không cần đăng nhập: đo
+ * 2026-08-25 trên trình duyệt CHƯA đăng nhập, đúng lúc trang search đang báo "Đã xảy ra lỗi",
+ * `embed/v2` vẫn trả về digg 35100 · comment 5495 · share 1467 · play 159000.
+ */
+async function fillTiktokStats(ads, token) {
+  const ids = ads.filter((a) => a.platform === 'tiktok' && a.id && !a.likeCount).map((a) => a.id);
+  if (!ids.length) return;
+  const res = await new Promise((r) => chrome.runtime.sendMessage({ type: 'RS_TIKTOK_STATS', ids }, (x) => r(x)));
+  if (!res || !res.ok || token !== vidToken) return; // lượt tìm khác đã chen vào — bỏ kết quả cũ
+  let co = 0;
+  for (const ad of ads) {
+    const st = res.stats && res.stats[ad.id];
+    if (!st) continue;
+    co++;
+    ad.likeCount = st.likeCount ?? ad.likeCount;
+    ad.commentCount = st.commentCount ?? ad.commentCount;
+    ad.playCount = st.playCount ?? ad.playCount;
+    ad.startedAt = ad.startedAt || st.createdAt || null;
+  }
+  if (co) renderVideos(ads);
 }
 
 function renderVideos(ads) {
@@ -1276,6 +1311,9 @@ function renderVideos(ads) {
     if (ad.likeCount) {
       engage = `<span title="Lượt tim video">❤️ ${fmtCompact(ad.likeCount)}</span>`;
       if (ad.commentCount) engage += `<span title="Bình luận">💬 ${fmtCompact(ad.commentCount)}</span>`;
+      // LƯỢT XEM đứng sau tim nhưng là con số nói thẳng nhất video nào thật sự chạy — tim còn
+      // phụ thuộc nội dung dễ thương hay không, lượt xem thì không. Chỉ trang nhúng mới cho.
+      if (ad.playCount) engage += `<span title="Lượt xem">▶ ${fmtCompact(ad.playCount)}</span>`;
     } else if (ad.pageLikeCount) {
       engage = `<span title="Followers của Facebook Page (không phải like video)">👥 ${fmtCompact(ad.pageLikeCount)}</span>`;
     }
@@ -1316,17 +1354,46 @@ function renderVideos(ads) {
   }
 }
 
-// Bấm ▶ trên card TikTok → thay poster bằng player embed của TikTok (phát ngay tại chỗ).
-// Video nào TikTok cho nhúng thì phát được; video app-only/riêng tư thì player báo, đành mở app.
+// Bấm ▶ trên thẻ TikTok → mở player TRONG LỚP PHỦ riêng, không nhét vào ô ảnh của thẻ.
+//
+// Bản trước thay thẳng ô ảnh bằng iframe. Ô ấy là hình VUÔNG cỡ ba trăm pixel
+// (`aspect-ratio: 1/1`), còn player TikTok là khung DỌC và có chiều cao tối thiểu — nhét vào
+// đó thì nó cắt cụt hoặc rơi về màn hình "Watch more exciting videos on TikTok". Bấm xong vẫn
+// không xem được gì, đúng như người dùng báo.
+//
+// Đã đo trên trang thật: `tiktok.com/embed/v2/<id>` gắn được, có thẻ <video>, không header nào
+// cấm nhúng — nên vấn đề chưa bao giờ là TikTok chặn, mà là cái khung quá nhỏ.
+function openTkPlayer(id) {
+  const box = $('tkPlay');
+  const cu = box.querySelector('iframe');
+  if (cu) cu.remove();
+  const f = document.createElement('iframe');
+  f.src = `https://www.tiktok.com/embed/v2/${encodeURIComponent(id)}`;
+  f.allow = 'autoplay; encrypted-media; fullscreen';
+  f.setAttribute('scrolling', 'no');
+  box.appendChild(f);
+  box.classList.add('on');
+}
+
+function closeTkPlayer() {
+  const box = $('tkPlay');
+  box.classList.remove('on');
+  // XOÁ HẲN iframe chứ không chỉ ẩn: để nguyên thì video chạy tiếp và tiếng vẫn phát sau lưng
+  // một lớp phủ đã đóng — người dùng không có cách nào tắt ngoài việc tải lại trang.
+  const f = box.querySelector('iframe');
+  if (f) f.remove();
+}
+
 $('vidGrid').addEventListener('click', (e) => {
   const btn = e.target.closest('.play-overlay[data-tkid]');
   if (!btn) return;
   const id = btn.getAttribute('data-tkid');
-  const box = btn.closest('.media');
-  if (box && id) {
-    box.innerHTML = `<iframe src="https://www.tiktok.com/embed/v2/${encodeURIComponent(id)}" style="width:100%;height:100%;border:0;background:#000" allow="autoplay; encrypted-media; fullscreen" scrolling="no"></iframe>`;
-  }
+  if (id) openTkPlayer(id);
 });
+$('tkPlayClose').addEventListener('click', closeTkPlayer);
+// Bấm ra nền tối cũng đóng — nhưng chỉ khi bấm đúng cái nền, không phải bấm trong player.
+$('tkPlay').addEventListener('click', (e) => { if (e.target === $('tkPlay')) closeTkPlayer(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('tkPlay').classList.contains('on')) closeTkPlayer(); });
 
 $('vidClose').addEventListener('click', closeVideoModal);
 // Đổi NƯỚC TikTok → dịch keyword + hashtag sang ngôn ngữ nước đó rồi tìm lại (FB/Sàn giữ nguyên).

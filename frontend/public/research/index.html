@@ -190,6 +190,22 @@
     .vidhead button:hover { border-color: var(--accent); color: var(--accent); }
     .vidbody { padding: 14px 18px 20px; }
     .ccard .media video { width: 100%; height: 100%; object-fit: cover; display: block; background: #000; }
+
+    /* LỚP PHỦ PHÁT VIDEO TIKTOK.
+     *
+     * Trước đây bấm ▶ là nhét thẳng iframe player vào ô ảnh của thẻ. Ô ấy có
+     * `aspect-ratio: 1/1` — một hình VUÔNG cỡ ba trăm pixel — trong khi player của TikTok là
+     * khung DỌC và có chiều cao tối thiểu; nhét vào đó thì nó cắt cụt hoặc rơi về màn hình
+     * "Watch more exciting videos on TikTok", tức là bấm xong vẫn không xem được gì.
+     *
+     * Nên player mở ra một lớp phủ riêng, đúng tỷ lệ 9:16 và cao gần hết màn hình. Đây cũng
+     * là chỗ TikTok tự hiện lượt tim / bình luận / chia sẻ của video ấy. */
+    /* CAO HƠN `.vidmodal` (60): player mở ĐÈ LÊN cửa sổ video, không phải nằm dưới nó. Bằng
+       nhau thì cửa sổ video vẽ sau nên nằm trên, và nút ✕ của player bấm không tới. */
+    .tkplay { position: fixed; inset: 0; background: rgba(0,0,0,.82); display: none; align-items: center; justify-content: center; z-index: 70; }
+    .tkplay.on { display: flex; }
+    .tkplay iframe { width: min(92vw, 46vh); height: min(92vh, 164vw); border: 0; border-radius: 12px; background: #000; }
+    .tkplay .close { position: absolute; top: 16px; right: 20px; font-size: 26px; line-height: 1; background: none; border: 0; color: #fff; cursor: pointer; padding: 6px 10px; }
     .mbadge { position: absolute; left: 8px; top: 8px; z-index: 1; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 7px; }
     .mbadge.langoff { left: auto; right: 8px; background: #b45309; }
   </style>
@@ -277,6 +293,12 @@
   <!-- ===== TAB CONTENT (Facebook Ads) ===== -->
   <!-- ===== TAB TÌM BẰNG ẢNH ===== -->
   <!-- ===== MODAL: video quảng cáo khớp ảnh cho một sản phẩm ===== -->
+  <!-- Player mở đè lên TẤT CẢ, kể cả cửa sổ video — nên nó là anh em của cửa sổ ấy chứ không
+       nằm trong. Nằm trong thì nó bị kẹt trong khung cuộn của lưới thẻ. -->
+  <div id="tkPlay" class="tkplay">
+    <button id="tkPlayClose" class="close" aria-label="Đóng">✕</button>
+  </div>
+
   <div id="vidModal" class="vidmodal">
     <div class="vidpanel">
       <div class="vidhead">
