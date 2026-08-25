@@ -1103,7 +1103,18 @@ let vidState = null; // { p, usedKw, fbAds, marketAds } — giữ FB/Sàn để 
 
 function proxyMedia(url) { return url ? `${BACKEND}/api/media?url=${encodeURIComponent(url)}` : ''; }
 function setVidStatus(msg, kind) { $('vidStatusText').textContent = msg; $('vidStatus').className = 'status' + (kind ? ' ' + kind : ''); }
-function closeVideoModal() { $('vidModal').classList.remove('on'); $('vidGrid').innerHTML = ''; vidState = null; }
+// Đóng cửa sổ là dọn SẠCH: lưới, hàng lọc, danh sách trong bộ nhớ, và cả lớp phủ phát nếu
+// đang mở. Bỏ sót cái nào thì lần mở sau sẽ thấy thoáng qua kết quả của sản phẩm trước.
+function closeVideoModal() {
+  closeTkPlayer();
+  $('vidModal').classList.remove('on');
+  $('vidGrid').innerHTML = '';
+  $('vidFilter').innerHTML = '';
+  vidAll = [];
+  vidShown = [];
+  vidPick = 'all';
+  vidState = null;
+}
 
 async function openVideoModal(p) {
   const my = ++vidToken;
@@ -1161,6 +1172,16 @@ async function openVideoModal(p) {
   // Lưu FB + Sàn + region GỐC (của SP) để đổi NƯỚC TikTok chỉ tải lại phần TikTok. `homeRegion`
   // dùng để quyết định mode: chọn khác nước SP → auto hashtag-only (đỡ cá nhân hoá theo account/IP).
   vidState = { p, usedKw, fbAds, marketAds, homeRegion: region };
+
+  // VẼ NGAY PHẦN ĐÃ CÓ, đừng chờ TikTok.
+  //
+  // Facebook về sau vài giây; TikTok thì phải mở tab, gõ chữ, cuộn — hàng chục giây, và còn
+  // một lượt lấy thống kê nữa phía sau. Chờ đủ cả hai rồi mới vẽ nghĩa là người dùng nhìn màn
+  // hình trống suốt quãng ấy, trong khi thứ họ hỏi ("có ai đang chạy quảng cáo món này không")
+  // thì Facebook đã trả lời xong rồi.
+  renderVideos(fbAds.concat(marketAds));
+  setVidStatus(`Facebook ${fbAds.length} · Sàn ${marketAds.length} — đang lấy TikTok…`);
+
   await loadModalTiktok(region);
 }
 
@@ -1293,107 +1314,225 @@ async function fillTiktokStats(ads, token) {
   if (co) renderVideos(ads);
 }
 
-function renderVideos(ads) {
+/**
+ * Nguồn của một thẻ, dùng cho hàng lọc. Gom "sàn" thành MỘT nhóm: Shopee, Taobao, 1688, Temu
+ * đều là video sản phẩm lấy từ trang bán hàng, người dùng đọc chúng như một loại.
+ */
+function vidSource(ad) {
+  const pf = String(ad.platform || '').toLowerCase();
+  if (pf === 'facebook' || pf === 'tiktok' || pf === 'douyin') return pf;
+  return 'market';
+}
+
+const VID_SOURCES = [
+  { id: 'all', label: 'Tất cả' },
+  { id: 'facebook', label: 'Facebook' },
+  { id: 'tiktok', label: 'TikTok' },
+  { id: 'douyin', label: 'Douyin' },
+  { id: 'market', label: 'Sàn' },
+];
+
+let vidAll = [];       // toàn bộ thẻ đang có, chưa lọc
+let vidShown = [];     // phần đang hiện — cũng là danh sách để bấm ‹ › trong lớp phủ
+let vidPick = 'all';
+
+/** Vẽ hàng lọc. Chip bằng 0 VẪN HIỆN — xem ghi chú CSS `.vfilter`. */
+function drawVidFilter() {
+  const box = $('vidFilter');
+  if (!box) return;
+  const dem = {};
+  for (const ad of vidAll) dem[vidSource(ad)] = (dem[vidSource(ad)] || 0) + 1;
+  box.innerHTML = VID_SOURCES
+    .map((s) => {
+      const n = s.id === 'all' ? vidAll.length : (dem[s.id] || 0);
+      return `<button data-src="${s.id}" data-on="${vidPick === s.id ? 1 : 0}">${s.label}<b>${n}</b></button>`;
+    })
+    .join('');
+}
+
+function drawVidGrid() {
   const grid = $('vidGrid');
   grid.innerHTML = '';
-  for (const ad of ads) {
-    const creatives = ad.creatives || [];
-    const video = creatives.find((c) => c.kind === 'video' && c.url);
-    // Poster: ưu tiên poster của video phát được → poster của bất kỳ creative nào (TikTok chỉ có
-    // poster + permalink, không có url phát trực tiếp) → ảnh tĩnh.
-    const poster = (video && video.posterUrl) ||
-      (creatives.find((c) => c.posterUrl) || {}).posterUrl ||
-      (creatives.find((c) => c.url) || {}).url || '';
-    const days = ad.daysActive != null ? `<span title="Số ngày ad chạy trên Facebook">${ad.daysActive} ngày chạy</span>` : '';
-    // Tương tác video: ưu tiên likeCount (TikTok/Douyin video-level) → page_like_count (FB page).
-    // FB Ad Library KHÔNG expose like video, chỉ có follower của page.
-    let engage = '';
-    if (ad.likeCount) {
-      engage = `<span title="Lượt tim video">❤️ ${fmtCompact(ad.likeCount)}</span>`;
-      if (ad.commentCount) engage += `<span title="Bình luận">💬 ${fmtCompact(ad.commentCount)}</span>`;
-      // LƯỢT XEM đứng sau tim nhưng là con số nói thẳng nhất video nào thật sự chạy — tim còn
-      // phụ thuộc nội dung dễ thương hay không, lượt xem thì không. Chỉ trang nhúng mới cho.
-      if (ad.playCount) engage += `<span title="Lượt xem">▶ ${fmtCompact(ad.playCount)}</span>`;
-    } else if (ad.pageLikeCount) {
-      engage = `<span title="Followers của Facebook Page (không phải like video)">👥 ${fmtCompact(ad.pageLikeCount)}</span>`;
-    }
-    // Ngày đăng: TikTok/Douyin = create_time video; FB = ngày ad start chạy.
-    const posted = ad.startedAt ? `<span title="Ngày đăng / bắt đầu chạy">📅 ${fmtRelDate(ad.startedAt)}</span>` : '';
-    const match = typeof ad.matchScore === 'number' ? `<span class="mbadge">🎯 ${ad.matchScore}% khớp ảnh</span>` : '';
-    // Badge KHI video có mô tả khác ngôn ngữ nước đang chọn (TikTok cá nhân hoá theo account/IP).
-    // Không dìm/bỏ, chỉ nhắc user: "cái này lệch nước, coi cẩn thận".
-    const langBadge = (ad.langMatch === 'other' && ad.regionTag)
-      ? `<span class="mbadge langoff" title="Mô tả không phải tiếng ${COUNTRY[ad.regionTag] || ad.regionTag} — TikTok trả theo account/IP của bạn">⚠ khác ngôn ngữ</span>`
-      : '';
+  vidShown = vidPick === 'all' ? vidAll.slice() : vidAll.filter((a) => vidSource(a) === vidPick);
+  if (!vidShown.length) {
+    // Một CÂU, không phải một ô trống. Ô trống đọc thành "hỏng"; câu này nói rõ là nguồn ấy
+    // không có gì, và đó là một thông tin.
+    grid.innerHTML = `<p class="sub">Không có video nào từ nguồn này.</p>`;
+    return;
+  }
+  for (let i = 0; i < vidShown.length; i++) grid.appendChild(vidCard(vidShown[i], i));
+}
 
-    // TikTok: KHÔNG có url phát trực tiếp → hiện poster + nút ▶; bấm ▶ sẽ nhúng player embed
-    // (tiktok.com/embed/v2/<id>) phát NGAY TẠI CHỖ. Poster load thẳng (no-referrer), không qua proxy.
-    const isTk = ad.platform === 'tiktok' && ad.id;
-    let media;
-    if (isTk) {
-      media =
-        (poster ? `<img src="${esc(poster)}" loading="lazy" alt="" referrerpolicy="no-referrer">` : `<div class="tk-ph">TikTok</div>`) +
-        `<button class="play-overlay" data-tkid="${esc(ad.id)}" aria-label="Phát video TikTok"><span>▶</span></button>`;
-    } else if (video) {
-      media = `<video controls preload="none" ${poster ? `poster="${esc(proxyMedia(poster))}"` : ''} src="${esc(proxyMedia(video.url))}"></video>`;
-    } else {
-      media = poster ? `<img src="${esc(proxyMedia(poster))}" loading="lazy" alt="">` : '';
-    }
+/** Một con số thống kê, chỉ hiện khi CÓ. Số 0 và số vắng mặt là hai chuyện khác nhau. */
+function stat(icon, ten, v) {
+  return typeof v === 'number' && v > 0
+    ? `<span title="${ten}">${icon}<span class="n">${fmtCompact(v)}</span></span>`
+    : '';
+}
 
-    const el = document.createElement('div');
-    el.className = 'ccard';
-    el.innerHTML =
-      `<div class="media">${match}${langBadge}${media}</div>` +
-      `<div class="cbody">` +
-      `<div class="cadv">${esc(ad.advertiser || '—')}</div>` +
-      `<div class="ccopy">${esc(ad.title || ad.body || '')}</div>` +
-      `<div class="cmeta"><span class="pill">${esc(PF_LABEL[ad.platform] || ad.platform)}</span>${engage}${posted}${days}</div>` +
-      (ad.permalink ? `<a class="clink" href="${esc(ad.permalink)}" target="_blank" rel="noreferrer">${isTk ? 'Mở trên TikTok ↗' : 'Xem quảng cáo ↗'}</a>` : '') +
-      `</div>`;
-    grid.appendChild(el);
+function vidCard(ad, idx) {
+  const creatives = ad.creatives || [];
+  const video = creatives.find((c) => c.kind === 'video' && c.url);
+  const poster = (video && video.posterUrl) ||
+    (creatives.find((c) => c.posterUrl) || {}).posterUrl ||
+    (creatives.find((c) => c.url) || {}).url || '';
+
+  // HÀNG THỐNG KÊ riêng, tách khỏi hàng nhãn. Đây là thứ người dùng quét mắt qua để chọn
+  // video đáng xem, nên nó không được lẫn vào giữa tên sàn và ngày tháng.
+  const stats =
+    stat('❤️', 'Lượt tim', ad.likeCount) +
+    stat('💬', 'Bình luận', ad.commentCount) +
+    stat('↗', 'Chia sẻ', ad.shareCount) +
+    stat('▶', 'Lượt xem', ad.playCount);
+  // Facebook không có tương tác nào (Ads Library không công bố — đo 2026-08-18), chỉ có số
+  // người theo dõi Trang. Nói rõ đó là follower chứ không phải like của bài.
+  const fbFollow = !stats && ad.pageLikeCount
+    ? `<span title="Người theo dõi Trang Facebook — KHÔNG phải tương tác của quảng cáo này">👥<span class="n">${fmtCompact(ad.pageLikeCount)}</span><span class="k">theo dõi</span></span>`
+    : '';
+
+  const days = ad.daysActive != null ? `<span title="Số ngày quảng cáo đã chạy">${ad.daysActive} ngày chạy</span>` : '';
+  const posted = ad.startedAt ? `<span title="Ngày đăng / bắt đầu chạy">📅 ${fmtRelDate(ad.startedAt)}</span>` : '';
+  const match = typeof ad.matchScore === 'number' ? `<span class="mbadge">🎯 ${ad.matchScore}% khớp ảnh</span>` : '';
+  const langBadge = (ad.langMatch === 'other' && ad.regionTag)
+    ? `<span class="mbadge langoff" title="Mô tả không phải tiếng ${COUNTRY[ad.regionTag] || ad.regionTag} — TikTok trả theo account/IP của bạn">⚠ khác ngôn ngữ</span>`
+    : '';
+
+  const isTk = ad.platform === 'tiktok' && ad.id;
+  let media;
+  if (isTk) {
+    media =
+      (poster ? `<img src="${esc(poster)}" loading="lazy" alt="" referrerpolicy="no-referrer">` : `<div class="tk-ph">TikTok</div>`) +
+      `<button class="play-overlay" data-idx="${idx}" aria-label="Phát video TikTok"><span>▶</span></button>`;
+  } else if (video) {
+    media = `<video controls preload="none" ${poster ? `poster="${esc(proxyMedia(poster))}"` : ''} src="${esc(proxyMedia(video.url))}"></video>`;
+  } else {
+    media = poster ? `<img src="${esc(proxyMedia(poster))}" loading="lazy" alt="">` : '';
+  }
+
+  const el = document.createElement('div');
+  el.className = 'ccard';
+  el.innerHTML =
+    `<div class="media">${match}${langBadge}${media}</div>` +
+    `<div class="cbody">` +
+    `<div class="cadv">${esc(ad.advertiser || '—')}</div>` +
+    `<div class="ccopy">${esc(ad.title || ad.body || '')}</div>` +
+    ((stats || fbFollow) ? `<div class="cstats">${stats}${fbFollow}</div>` : '') +
+    `<div class="cmeta"><span class="pill">${esc(PF_LABEL[ad.platform] || ad.platform)}</span>${posted}${days}</div>` +
+    (ad.permalink ? `<a class="clink" href="${esc(ad.permalink)}" target="_blank" rel="noreferrer">${isTk ? 'Mở trên TikTok ↗' : 'Xem quảng cáo ↗'}</a>` : '') +
+    `</div>`;
+  return el;
+}
+
+function renderVideos(ads) {
+  vidAll = ads || [];
+  // Nguồn đang lọc có thể vừa biến mất (đổi nước, đổi sản phẩm) — về "Tất cả" thay vì để
+  // người dùng nhìn một lưới trống mà không hiểu vì sao.
+  if (vidPick !== 'all' && !vidAll.some((a) => vidSource(a) === vidPick)) vidPick = 'all';
+  drawVidFilter();
+  drawVidGrid();
+}
+
+/*
+ * CỬA CHO MÁY CHẠY THỬ. Lộ đúng một hàm vẽ và danh sách đang hiện, không lộ gì để sửa dữ liệu.
+ *
+ * Có nó vì phần cửa sổ video chỉ chạy được khi extension đã bơm kết quả TikTok vào, mà Chrome
+ * 151 thì không cho nạp extension trong máy tự động — không có cửa này thì toàn bộ hàng lọc,
+ * hàng thống kê và lớp phủ phát KHÔNG kiểm được bằng máy, chỉ còn cách nhìn bằng mắt.
+ */
+window.__rsVid = { render: renderVideos, get shown() { return vidShown; } };
+
+$('vidFilter').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-src]');
+  if (!b) return;
+  vidPick = b.getAttribute('data-src');
+  drawVidFilter();
+  drawVidGrid();
+});
+
+// ===== LỚP PHỦ PHÁT VIDEO =====
+//
+// Bấm ▶ mở player ở một lớp phủ riêng, KHÔNG nhét iframe vào ô ảnh của thẻ. Ô ấy là hình vuông
+// cỡ ba trăm pixel, còn player TikTok là khung dọc có chiều cao tối thiểu — nhét vào đó thì nó
+// cắt cụt hoặc rơi về màn hình "Watch more exciting videos on TikTok".
+//
+// Đã đo: `embed/v2`, `embed` và `player/v1` đều trả 200, không có `X-Frame-Options` cũng không
+// có `frame-ancestors`. Nhúng chưa bao giờ bị chặn; chỉ là cái khung quá nhỏ.
+//
+// Lớp phủ mang theo THÔNG TIN VIDEO bên cạnh và hai nút ‹ › để đi tiếp — trước đây muốn biết
+// đang xem của ai, bao nhiêu tim, thì phải đóng ra tìm lại đúng cái thẻ vừa bấm.
+let tkAt = -1; // vị trí trong `vidShown` của video đang phát
+
+function tkInfoHTML(ad) {
+  const stats =
+    stat('❤️', 'Lượt tim', ad.likeCount) +
+    stat('💬', 'Bình luận', ad.commentCount) +
+    stat('↗', 'Chia sẻ', ad.shareCount) +
+    stat('▶', 'Lượt xem', ad.playCount);
+  return (
+    `<h3>${esc(ad.advertiser || '—')}</h3>` +
+    (stats ? `<div class="cstats">${stats}</div>` : '') +
+    `<div class="desc">${esc(ad.title || ad.body || '')}</div>` +
+    (ad.startedAt ? `<div class="sub">📅 ${fmtRelDate(ad.startedAt)}</div>` : '') +
+    (ad.permalink ? `<a href="${esc(ad.permalink)}" target="_blank" rel="noreferrer">Mở trên TikTok ↗</a>` : '')
+  );
+}
+
+function openTkPlayer(idx) {
+  const ad = vidShown[idx];
+  if (!ad || !ad.id) return;
+  tkAt = idx;
+  const khung = $('tkFrame');
+  khung.innerHTML = '';
+  const f = document.createElement('iframe');
+  f.src = `https://www.tiktok.com/embed/v2/${encodeURIComponent(ad.id)}`;
+  f.allow = 'autoplay; encrypted-media; fullscreen';
+  f.setAttribute('scrolling', 'no');
+  khung.appendChild(f);
+  $('tkInfo').innerHTML = tkInfoHTML(ad);
+
+  // Chỉ đi tới video TikTok khác — thẻ Facebook/Sàn không có player để nhảy sang.
+  const co = (d) => {
+    for (let i = idx + d; i >= 0 && i < vidShown.length; i += d) {
+      if (vidShown[i] && vidShown[i].platform === 'tiktok' && vidShown[i].id) return i;
+    }
+    return -1;
+  };
+  $('tkPrev').disabled = co(-1) < 0;
+  $('tkNext').disabled = co(1) < 0;
+  $('tkPlay').classList.add('on');
+}
+
+function tkStep(d) {
+  for (let i = tkAt + d; i >= 0 && i < vidShown.length; i += d) {
+    if (vidShown[i] && vidShown[i].platform === 'tiktok' && vidShown[i].id) { openTkPlayer(i); return; }
   }
 }
 
-// Bấm ▶ trên thẻ TikTok → mở player TRONG LỚP PHỦ riêng, không nhét vào ô ảnh của thẻ.
-//
-// Bản trước thay thẳng ô ảnh bằng iframe. Ô ấy là hình VUÔNG cỡ ba trăm pixel
-// (`aspect-ratio: 1/1`), còn player TikTok là khung DỌC và có chiều cao tối thiểu — nhét vào
-// đó thì nó cắt cụt hoặc rơi về màn hình "Watch more exciting videos on TikTok". Bấm xong vẫn
-// không xem được gì, đúng như người dùng báo.
-//
-// Đã đo trên trang thật: `tiktok.com/embed/v2/<id>` gắn được, có thẻ <video>, không header nào
-// cấm nhúng — nên vấn đề chưa bao giờ là TikTok chặn, mà là cái khung quá nhỏ.
-function openTkPlayer(id) {
-  const box = $('tkPlay');
-  const cu = box.querySelector('iframe');
-  if (cu) cu.remove();
-  const f = document.createElement('iframe');
-  f.src = `https://www.tiktok.com/embed/v2/${encodeURIComponent(id)}`;
-  f.allow = 'autoplay; encrypted-media; fullscreen';
-  f.setAttribute('scrolling', 'no');
-  box.appendChild(f);
-  box.classList.add('on');
-}
-
 function closeTkPlayer() {
-  const box = $('tkPlay');
-  box.classList.remove('on');
+  $('tkPlay').classList.remove('on');
   // XOÁ HẲN iframe chứ không chỉ ẩn: để nguyên thì video chạy tiếp và tiếng vẫn phát sau lưng
   // một lớp phủ đã đóng — người dùng không có cách nào tắt ngoài việc tải lại trang.
-  const f = box.querySelector('iframe');
-  if (f) f.remove();
+  $('tkFrame').innerHTML = '';
+  $('tkInfo').innerHTML = '';
+  tkAt = -1;
 }
 
 $('vidGrid').addEventListener('click', (e) => {
-  const btn = e.target.closest('.play-overlay[data-tkid]');
+  const btn = e.target.closest('.play-overlay[data-idx]');
   if (!btn) return;
-  const id = btn.getAttribute('data-tkid');
-  if (id) openTkPlayer(id);
+  openTkPlayer(Number(btn.getAttribute('data-idx')));
 });
 $('tkPlayClose').addEventListener('click', closeTkPlayer);
+$('tkPrev').addEventListener('click', () => tkStep(-1));
+$('tkNext').addEventListener('click', () => tkStep(1));
 // Bấm ra nền tối cũng đóng — nhưng chỉ khi bấm đúng cái nền, không phải bấm trong player.
 $('tkPlay').addEventListener('click', (e) => { if (e.target === $('tkPlay')) closeTkPlayer(); });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('tkPlay').classList.contains('on')) closeTkPlayer(); });
+document.addEventListener('keydown', (e) => {
+  if (!$('tkPlay').classList.contains('on')) return;
+  if (e.key === 'Escape') closeTkPlayer();
+  else if (e.key === 'ArrowLeft') tkStep(-1);
+  else if (e.key === 'ArrowRight') tkStep(1);
+});
 
 $('vidClose').addEventListener('click', closeVideoModal);
 // Đổi NƯỚC TikTok → dịch keyword + hashtag sang ngôn ngữ nước đó rồi tìm lại (FB/Sàn giữ nguyên).
