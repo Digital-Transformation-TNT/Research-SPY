@@ -171,64 +171,93 @@ export function chonGiaThapNhat<T extends DongCoGia>(
   rows: (T & { vnSkip: VnSkip })[]
   used: number
   skipped: number
+  /**
+   * Những luật đã bị TẮT ở lượt này vì áp vào là hết sạch ứng viên.
+   *
+   * Phải nói ra, không được nuốt: một con số tính trong lúc luật bị tắt kém tin hơn hẳn con
+   * số bình thường, và người đọc có quyền biết điều đó.
+   */
+  noiLong: Exclude<VnSkip, null>[]
 } {
   const mucTieu = (ma || '').toUpperCase()
 
   // Bước 1 — cửa sổ liên quan. Dòng ngoài cửa sổ KHÔNG bị gắn cờ: chúng không sai, chỉ là
   // không đủ liên quan để tin. Gắn cờ chúng sẽ thổi con số "đã bỏ" lên tới bốn chục.
   let trongCuaSo = 0
-  const buoc1 = rows.map((row) => {
+  type Dong = T & { vnSkip: VnSkip; _xet: boolean }
+  let hienTai: Dong[] = rows.map((row) => {
     if (!row.codeHit) return { ...row, vnSkip: null as VnSkip, _xet: false }
     trongCuaSo += 1
     return { ...row, vnSkip: null as VnSkip, _xet: trongCuaSo <= CUA_SO_LIEN_QUAN }
   })
 
-  // Bước 2 — hai luật đọc chữ.
-  const buoc2 = buoc1.map((row) => {
-    if (!row._xet) return row
-    if (laPhuKienVn(row.title || '')) return { ...row, vnSkip: 'phu-kien' as VnSkip }
-    if (mucTieu) {
-      const khac = maTrongTieuDe(row.title || '').filter((m) => m !== mucTieu)
-      if (khac.length) return { ...row, vnSkip: 'ma-khac' as VnSkip }
-    }
-    return row
-  })
+  const conLai = (ds: Dong[]) => ds.filter((r) => r._xet && !r.vnSkip)
+  const noiLong: Exclude<VnSkip, null>[] = []
 
-  // Bước 3 — giá lạc, so với trung vị của chính những dòng còn sống.
-  const con = buoc2.filter((r) => r._xet && !r.vnSkip && typeof r.priceValue === 'number')
-  const gia = con.map((r) => r.priceValue as number).sort((a, b) => a - b)
-  const trungVi = gia.length
-    ? gia.length % 2
-      ? gia[(gia.length - 1) / 2]
-      : (gia[gia.length / 2 - 1] + gia[gia.length / 2]) / 2
-    : null
-  const buoc3 = buoc2.map((row) => {
-    if (!row._xet || row.vnSkip || trungVi === null) return row
-    if (typeof row.priceValue === 'number' && row.priceValue < trungVi * NGUONG_LAC) {
-      return { ...row, vnSkip: 'gia-lac' as VnSkip }
+  /**
+   * Áp một luật, NHƯNG CHỈ KHI nó còn chừa lại ít nhất một dòng.
+   *
+   * Đây là chốt chặn quan trọng nhất của cả hàm. Không có nó, một luật quá tay sẽ gạch sạch
+   * ứng viên, `price` thành null, và giao diện in ra "không có ở sàn Việt" — một câu SAI về
+   * một món đang bày bán đầy trên Shopee. Đã xảy ra thật với G305: người bán hay ghi
+   * "G304/G305" chung một tiêu đề, nên luật "mã khác" gạch hết cả bảng.
+   *
+   * Thà giữ một con số kém chắc còn hơn tuyên bố một điều sai. Luật bị tắt được ghi lại để
+   * nói ra, chứ không im lặng.
+   */
+  const apDung = (ten: Exclude<VnSkip, null>, dinh: (r: Dong) => boolean) => {
+    // Chưa từng có ứng viên nào thì không có luật nào để nới. Không chặn ở đây thì một lượt
+    // tra mà Shopee không trả dòng nào mang mã sẽ báo "đã phải tắt cả ba luật" — nghe như
+    // công cụ vừa xoay xở chật vật, trong khi thật ra nó chẳng làm gì cả.
+    if (conLai(hienTai).length === 0) return
+    const thu = hienTai.map((r) =>
+      r._xet && !r.vnSkip && dinh(r) ? { ...r, vnSkip: ten as VnSkip } : r,
+    )
+    if (conLai(thu).length === 0) {
+      noiLong.push(ten)
+      return
     }
-    return row
-  })
+    hienTai = thu
+  }
 
-  const dungDuoc = buoc3.filter((r) => r._xet && !r.vnSkip && typeof r.priceValue === 'number')
-  // Giữ luôn DÒNG rẻ nhất chứ không chỉ con số: mất dòng thì mất cả link sản phẩm, và cột
-  // giá lại phải mở về trang tìm kiếm.
-  const re = dungDuoc.reduce<(typeof dungDuoc)[number] | null>(
-    (best, row) => (best === null || (row.priceValue as number) < (best.priceValue as number) ? row : best),
+  apDung('phu-kien', (r) => laPhuKienVn(r.title || ''))
+
+  if (mucTieu) {
+    apDung('ma-khac', (r) =>
+      maTrongTieuDe(r.title || '').some((m) => m !== mucTieu),
+    )
+  }
+
+  // Giá lạc — so với trung vị của chính những dòng còn sống SAU hai luật trên.
+  const gia = conLai(hienTai)
+    .map((r) => r.priceValue)
+    .filter((v): v is number => typeof v === 'number')
+    .sort((a, b) => a - b)
+  if (gia.length) {
+    const trungVi =
+      gia.length % 2 ? gia[(gia.length - 1) / 2] : (gia[gia.length / 2 - 1] + gia[gia.length / 2]) / 2
+    apDung('gia-lac', (r) => typeof r.priceValue === 'number' && r.priceValue < trungVi * NGUONG_LAC)
+  }
+
+  const dungDuoc = conLai(hienTai).filter((r) => typeof r.priceValue === 'number')
+  const re = dungDuoc.reduce<Dong | null>(
+    (best, row) =>
+      best === null || (row.priceValue as number) < (best.priceValue as number) ? row : best,
     null,
   )
 
   // `_xet` là chuyện nội bộ của hàm này, không để nó rò ra ngoài.
-  const bo = (r: T & { vnSkip: VnSkip; _xet: boolean }): T & { vnSkip: VnSkip } => {
+  const bo = (r: Dong): T & { vnSkip: VnSkip } => {
     const { _xet, ...rest } = r
     return rest as T & { vnSkip: VnSkip }
   }
-  const sach = buoc3.map(bo)
+  const sach = hienTai.map(bo)
   return {
     price: re ? (re.priceValue as number) : null,
     winner: re ? bo(re) : null,
     rows: sach,
     used: dungDuoc.length,
     skipped: sach.filter((r) => r.vnSkip).length,
+    noiLong,
   }
 }

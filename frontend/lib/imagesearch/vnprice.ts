@@ -107,6 +107,13 @@ export type VnCodePrice = {
   link: string | null
   /** Tiêu đề của chính sản phẩm ấy, để tooltip nói rõ con số này là của món nào. */
   title: string
+  /**
+   * Luật đã phải TẮT ở lượt này vì áp vào là hết sạch ứng viên. Rỗng = mọi luật đều chạy đủ.
+   *
+   * Hiện ra cho người dùng, vì nó nói con số này kém chắc hơn bình thường. Nuốt đi thì hai
+   * con số trông y hệt nhau trong khi độ tin khác hẳn.
+   */
+  noiLong: string[]
   /** Link mở Shopee ở tab Liên Quan — đường dự phòng khi không có `link`. */
   url: string
 }

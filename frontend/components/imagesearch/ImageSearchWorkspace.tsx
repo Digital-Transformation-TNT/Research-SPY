@@ -375,6 +375,18 @@ function vnTooltip(found: VnCodePrice): string {
     }
     dong.push('', `Chỉ đọc ${CUA_SO_LIEN_QUAN} kết quả đầu của tab Liên Quan — phần đuôi là hàng vơ vét.`)
   }
+  if (found.noiLong.length) {
+    const ten: Record<string, string> = {
+      'phu-kien': 'lọc phụ kiện',
+      'ma-khac': 'lọc tiêu đề nhắc model khác',
+      'gia-lac': 'lọc giá lạc',
+    }
+    dong.push(
+      '',
+      `Đã phải TẮT ${found.noiLong.map((k) => ten[k] || k).join(', ')} — áp vào là không còn ` +
+        'dòng nào. Con số này kém chắc hơn bình thường.',
+    )
+  }
   dong.push(
     '',
     found.link
@@ -669,7 +681,7 @@ export default function ImageSearchWorkspace() {
         const one = await shopeePrices(term)
         const hits = one.rows.filter((row) => row.codeHit)
         // Sàn giá: rẻ hơn cả giá sỉ tại xưởng Trung Quốc thì không phải cùng một món.
-        const { price: low, winner, rows: daCham, skipped } = chonGiaThapNhat(one.rows, code)
+        const { price: low, winner, rows: daCham, skipped, noiLong } = chonGiaThapNhat(one.rows, code)
         // GHI CẢ KHI KHÔNG CÓ GIÁ (`price: null`) — nhờ vậy chú giải phân biệt được "hỏi rồi,
         // sàn Việt không có" với "chưa hỏi tới". Hai câu ấy khác hẳn nhau.
         gia[code] = {
@@ -677,6 +689,7 @@ export default function ImageSearchWorkspace() {
           price: low,
           hits: hits.length,
           skipped,
+          noiLong,
           link: winner?.link || null,
           title: winner?.title || '',
           // Chỉ giữ vài dòng đầu: đây là tooltip, không phải bảng. Đủ để kiểm luật đoán đúng

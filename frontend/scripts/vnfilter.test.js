@@ -139,5 +139,35 @@ for (const [t, mong] of caMa) {
   bao(mong.every((m) => duoc.includes(m)), `rút được ${mong.join(', ')}`, `ra: ${duoc.join(', ')}`)
 }
 
+// -----------------------------------------------------------------------------
+console.log('')
+console.log('=== 5. KHÔNG LUẬT NÀO ĐƯỢC LỌC ĐẾN RỖNG ===')
+// Đã xảy ra thật, người dùng chụp màn hình: G305 hay được bán kèm G304 trong cùng một
+// tiêu đề, nên luật "mã khác" gạch sạch cả bảng, `price` thành null, và giao diện in ra
+// "không có ở sàn Việt" cho một món đang bày bán đầy trên Shopee.
+// Thà giữ một con số kém chắc còn hơn tuyên bố một điều sai.
+const deuNhacMaKhac = [
+  { title: 'Chuột Logitech G304/G305 không dây chính hãng', priceValue: 700000, codeHit: true, link: 'https://shopee.vn/product/1/1' },
+  { title: 'Chuột G305 và G304 Lightspeed bản quốc tế', priceValue: 800000, codeHit: true, link: 'https://shopee.vn/product/2/2' },
+]
+const r5 = chonGiaThapNhat(deuNhacMaKhac, 'G305')
+bao(r5.price === 700000, 'vẫn ra giá thay vì null', `ra ${r5.price}`)
+bao(r5.noiLong.includes('ma-khac'), 'nói ra là đã phải tắt luật "mã khác"', JSON.stringify(r5.noiLong))
+bao(!!r5.winner && !!r5.winner.link, 'vẫn giữ được link sản phẩm')
+
+// Thật sự KHÔNG có dòng nào mang mã -> null MỚI đúng, và đó mới là câu "không có ở sàn Việt".
+const khongCo = chonGiaThapNhat(
+  [{ title: 'Chuột Logitech G102 chính hãng', priceValue: 289000, codeHit: false }],
+  'G305',
+)
+bao(khongCo.price === null && khongCo.noiLong.length === 0,
+    'không dòng nào mang mã thì null mới đúng')
+
+// Nới lỏng không được lây sang lượt bình thường.
+for (const maX of ['G304', 'G102', 'G305']) {
+  const rX = chonGiaThapNhat(shopee[maX], maX)
+  bao(rX.noiLong.length === 0, `${maX}: dữ liệu thật vẫn chạy đủ cả ba luật`, JSON.stringify(rX.noiLong))
+}
+
 console.log(hong === 0 ? '\n>>> TAT CA DAT\n' : `\n>>> ${hong} PHEP DO HONG\n`)
 process.exit(hong === 0 ? 0 : 1)
