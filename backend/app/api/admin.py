@@ -19,6 +19,7 @@ xử lý dưới 100ms trên free tier. Nếu scale >100k event/tuần → thêm
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Any
 
@@ -104,6 +105,8 @@ async def create_user(body: CreateUserBody, request: Request) -> JSONResponse:
     try:
         # Admin tạo tay → duyệt luôn (status='approved'), không phải chờ.
         res = supa.table("users").insert({
+            # username legacy = email làm sạch (thoả NOT NULL + UNIQUE + CHECK); định danh thật là email
+            "username": re.sub(r"[^a-z0-9._-]", "-", email.lower()),
             "email": email,
             "full_name": body.full_name.strip() or None,
             "position": body.position.strip() or None,

@@ -102,9 +102,9 @@
       <label for="regName">Tên</label>
       <input id="regName" type="text" placeholder="Họ và tên" maxlength="120" />
       <label for="regPos">Vị trí</label>
-      <input id="regPos" type="text" placeholder="vd: Nhân viên Research" maxlength="120" />
+      <input id="regPos" type="text" placeholder="vd: R&D" maxlength="120" />
       <label for="regBu">BU (đơn vị làm việc)</label>
-      <input id="regBu" type="text" placeholder="vd: Ecom" maxlength="120" />
+      <input id="regBu" type="text" placeholder="vd: BU1" maxlength="120" />
       <button class="primary" type="submit">Gửi yêu cầu →</button>
       <button class="ghost" type="button" id="regBack">← Đổi email khác</button>
     </form>
@@ -123,7 +123,7 @@
 
   <script>
     const ENTER_URL = '/ads';           // trang chính sau khi đăng nhập
-    const POLL_MS = 15000;              // chu kỳ hỏi lại xem đã duyệt chưa
+    const POLL_MS = 4000;               // chu kỳ hỏi lại xem đã duyệt chưa (login là DB lookup rẻ ~1ms)
 
     // Đã có token → vào thẳng.
     if (localStorage.getItem('rs_token')) window.location.replace(ENTER_URL);
@@ -228,6 +228,7 @@
           // còn pending → tiếp tục chờ
         } catch (err) { /* mạng chập chờn — thử lại lần sau */ }
       };
+      poll();                              // kiểm NGAY (phòng khi admin đã duyệt trước lúc mở màn chờ)
       pollTimer = setInterval(poll, POLL_MS);
     }
   </script>

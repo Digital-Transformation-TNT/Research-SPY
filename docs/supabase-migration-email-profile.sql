@@ -14,6 +14,11 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS bu        TEXT;
 -- 2. Email là định danh đăng nhập → duy nhất (chỉ ràng buộc khi có giá trị, cho phép NULL cũ).
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL;
 
+-- 2b. Cột `username` cũ giờ THỪA (đã chuyển sang email làm định danh). Nó còn NOT NULL từ schema
+--     gốc, làm luồng /register (chỉ ghi email + hồ sơ) fail: "null value in column username".
+--     Bỏ NOT NULL để đăng ký chạy. Không xoá hẳn cột để giữ tương thích dữ liệu cũ.
+ALTER TABLE users ALTER COLUMN username DROP NOT NULL;
+
 -- 3. Admin hiện có (seed cũ 'titus') → gán EMAIL + hồ sơ để đăng nhập theo luồng mới.
 --    LƯU Ý: `position` = CHỨC DANH công việc (Trưởng nhóm, Chuyên viên...), KHÔNG phải role hệ
 --    thống (admin/user). role nằm ở cột `role` riêng. Đổi các giá trị dưới cho đúng người.

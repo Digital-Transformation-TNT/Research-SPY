@@ -56,6 +56,15 @@ def _norm_email(raw: str) -> str:
     return (raw or "").strip().lower()
 
 
+def _legacy_username(email: str) -> str:
+    """
+    Sinh giá trị cho cột `username` legacy từ email, thoả CHECK(~ '^[a-z0-9._-]+$').
+    Thay mọi ký tự ngoài [a-z0-9._-] (gồm '@') bằng '-'. Đơn ánh gần như tuyệt đối với email
+    công ty thật (local-part chỉ chữ/số/dấu chấm) nên không đụng UNIQUE.
+    """
+    return re.sub(r"[^a-z0-9._-]", "-", email.lower())
+
+
 def _valid_company_email(email: str) -> bool:
     return bool(_EMAIL_RE.match(email)) and email.endswith("@" + _ALLOWED_DOMAIN)
 
@@ -160,6 +169,10 @@ async def register(body: RegisterBody) -> JSONResponse:
 
     try:
         supa.table("users").insert({
+            # Cột `username` cũ còn 3 ràng buộc legacy: NOT NULL + UNIQUE + CHECK(~ '^[a-z0-9._-]+$').
+            # Đặt = email ĐÃ LÀM SẠCH (thay @ và ký tự lạ bằng '-') để qua cả CHECK lẫn NOT NULL mà
+            # vẫn unique theo email. Định danh thật của luồng mới là `email`; username chỉ để thoả legacy.
+            "username": _legacy_username(email),
             "email": email,
             "full_name": full_name,
             "position": position,
