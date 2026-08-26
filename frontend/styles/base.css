@@ -13,8 +13,8 @@
   --border: #e9eaee;
   --border-strong: #d8dae0;
 
-  --text: #1f2329;
-  --text-dim: #666e7a;
+  --text: #12161d;
+  --text-dim: #5b6472;
   --text-mute: #98a0ab;
 
   --good: #17915a;
@@ -27,6 +27,17 @@
   --info-soft: #eff5fd;
   --info-line: #cbdcf6;
   --info: #1f6fd0;
+
+  /* Recon teal — accent phụ, bù màu cho cam. Dùng cho tín hiệu THÔNG TIN (link, chip phụ),
+     không bao giờ tranh chỗ với cam (cam là "signal" chính). */
+  --recon: #0e9aa5;
+  --recon-ink: #0b7b84;
+  --recon-soft: #e6f6f7;
+
+  /* Họ chữ — biến do next/font bơm vào <html>. Có fallback để trang không vỡ nếu font chưa tải. */
+  --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Instrument Sans', ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
 
   --radius: 12px;
   --radius-sm: 8px;
@@ -45,10 +56,11 @@ body {
   padding: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: ui-sans-serif, system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  font-family: var(--font-body);
   font-size: 14px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 button,

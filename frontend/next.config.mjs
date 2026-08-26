@@ -53,12 +53,9 @@ const nextConfig = {
   async rewrites() {
     return [
       { source: '/api/:path*', destination: `${BACKEND_URL}/api/:path*` },
-      // Trang đăng nhập + quản trị là HTML tĩnh trong `public/` (đầy đủ style riêng, KHÔNG có
-      // sidebar). Rewrite để URL sạch `/login` và `/admin` serve thẳng file `index.html` tương
-      // ứng — không phải gõ `.html`, không dính chuẩn-hoá-trailing-slash của Next (vốn biến
-      // `/login/` thành `/login` rồi 404 vì không có route). Research thì khác: nó là route thật
-      // `/ads` (app/ads/page.tsx) vì cần khung sidebar bọc ngoài.
-      { source: '/login', destination: '/login/index.html' },
+      // `/login` giờ là route Next thật (app/(auth)/login) nên KHÔNG rewrite nữa.
+      // `/admin` vẫn là HTML tĩnh trong `public/` (chưa migrate) — giữ rewrite để URL sạch
+      // `/admin` serve thẳng file, không dính chuẩn-hoá-trailing-slash của Next.
       { source: '/admin', destination: '/admin/index.html' },
     ]
   },

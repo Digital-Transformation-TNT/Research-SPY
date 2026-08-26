@@ -258,7 +258,9 @@ const PLATFORMS = {
 };
 
 const loginStatus = {}; // "pf:CODE" -> true | false | undefined
-const selectedPlatforms = new Set(['shopee']);
+// Mặc định KHÔNG chọn sàn nào — người dùng tự bấm sàn muốn chạy (chọn 1 → chạy 1, chọn nhiều →
+// chạy nhiều). Trước đây Shopee được chọn sẵn; bỏ để khởi đầu là một bảng trắng, không giả định.
+const selectedPlatforms = new Set();
 // Sàn cần đăng nhập (Cách A) → check tức thì qua một cookie đặc trưng của phiên. Sàn công khai
 // (Amazon) không có ở đây. Thêm sàn login = thêm 1 dòng {domain, cookie, ok}.
 const LOGIN = {
@@ -267,7 +269,9 @@ const LOGIN = {
 };
 // Region chọn theo TỪNG sàn — key "pf:CODE". Mỗi sàn có bộ region riêng (Shopee 11 nước, Amazon
 // 8 nước…) nên KHÔNG dùng chung một tập region; nhờ vậy Shopee-VN và Amazon-US độc lập với nhau.
-const selectedRegions = new Set(['shopee:VN']);
+// Rỗng lúc đầu — chưa có sàn nào được chọn nên chưa có nước. Khi user chọn một sàn có region,
+// `updateRegionSection` tự thêm nước đầu tiên của sàn đó (giữ tối thiểu 1 nước/sàn để chạy được).
+const selectedRegions = new Set();
 function curOf(p) { return p.currency || CURRENCY[p.region] || 'VND'; }
 
 // Các sàn (tab Sản phẩm) đang chọn mà CÓ region — để gom nhóm region theo sàn.
@@ -1080,7 +1084,8 @@ $('regions').addEventListener('click', (e) => {
 // Hai chế độ, cho cả SÀN lẫn NƯỚC. Mặc định chọn-một: bấm cái nào thì THAY THẾ hẳn cái đang
 // chọn, như một nhóm nút radio. Chuyển sang "Nhiều" thì quay lại kiểu cộng dồn — cần khi muốn
 // xếp Shopee cạnh TikTok Shop, hay so Việt Nam với Thái Lan trong cùng một bảng.
-let multiPlatform = false;
+// Sàn: không còn công tắc "Một/Nhiều" — luôn chọn tự do (xem handler #platforms). Nước vẫn có
+// hai chế độ vì region gom theo sàn và đổi-một-nước bằng một bấm là thao tác thường dùng.
 let multiRegion = false;
 
 /** Gắn một nút hai nấc vào một biến chế độ. Trả về hàm để đọc lại trạng thái khi cần vẽ lại. */
@@ -1093,20 +1098,6 @@ function bindMode(id, onChange) {
     onChange(btn.dataset.multi === '1');
   });
 }
-
-bindMode('pfMode', (multi) => {
-  multiPlatform = multi;
-  if (!multi && selectedPlatforms.size > 1) {
-    // Về lại một sàn thì GIỮ cái đầu tiên. Bỏ hết rồi bắt chọn lại là phạt người dùng vì đã
-    // thử một chế độ — cùng lập luận với `switchMode` ở `ImageSearchWorkspace.tsx`.
-    const keep = [...selectedPlatforms][0];
-    selectedPlatforms.clear();
-    selectedPlatforms.add(keep);
-  }
-  renderPlatforms();
-  updateRegionSection();
-  refreshLogin();
-});
 
 bindMode('rgMode', (multi) => {
   multiRegion = multi;
@@ -1125,13 +1116,10 @@ $('platforms').addEventListener('click', (e) => {
   if (!chip) return;
   const id = chip.dataset.pf, cfg = PLATFORMS[id];
   if (!cfg || !cfg.active) return; // sàn chưa hỗ trợ → không chọn được
-  if (multiPlatform) {
-    if (selectedPlatforms.has(id)) { if (selectedPlatforms.size > 1) selectedPlatforms.delete(id); }
-    else selectedPlatforms.add(id);
-  } else if (!(selectedPlatforms.size === 1 && selectedPlatforms.has(id))) {
-    selectedPlatforms.clear();
-    selectedPlatforms.add(id);
-  }
+  // Chọn tự do: bấm để bật/tắt. Được phép bỏ hết (bảng trắng) — Research sẽ nhắc "chọn ít nhất
+  // 1 sàn". Số sàn đang bật quyết định chạy 1 hay nhiều, không cần công tắc chế độ.
+  if (selectedPlatforms.has(id)) selectedPlatforms.delete(id);
+  else selectedPlatforms.add(id);
   renderPlatforms();
   updateRegionSection();
   refreshLogin();
