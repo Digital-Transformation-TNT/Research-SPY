@@ -53,10 +53,8 @@ const nextConfig = {
   async rewrites() {
     return [
       { source: '/api/:path*', destination: `${BACKEND_URL}/api/:path*` },
-      // `/login` giờ là route Next thật (app/(auth)/login) nên KHÔNG rewrite nữa.
-      // `/admin` vẫn là HTML tĩnh trong `public/` (chưa migrate) — giữ rewrite để URL sạch
-      // `/admin` serve thẳng file, không dính chuẩn-hoá-trailing-slash của Next.
-      { source: '/admin', destination: '/admin/index.html' },
+      // `/login` và `/admin` giờ đều là route Next thật (app/(auth)/login, app/(dashboard)/admin)
+      // nên KHÔNG còn rewrite tới HTML tĩnh nữa.
     ]
   },
 }

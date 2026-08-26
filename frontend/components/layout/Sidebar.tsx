@@ -115,7 +115,7 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
   },
 ]
 
-/** Nhóm chỉ hiện với admin — trang quản lý user + thống kê. `/admin` là HTML tĩnh (rewrite). */
+/** Nhóm chỉ hiện với admin — trang quản lý user + thống kê. `/admin` là route Next thật. */
 const ADMIN_GROUP: { label: string; items: NavItem[] } = {
   label: 'Quản trị',
   items: [
@@ -179,17 +179,7 @@ export default function Sidebar() {
             <span className="nav-label">{group.label}</span>
             {group.items.map((item) => {
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`)
-              return item.href === '/admin' ? (
-                // Trang admin là HTML tĩnh ngoài Next router — dùng <a> thường để tải cả trang,
-                // không phải <Link> (client-nav sẽ 404 vì không có route React tương ứng).
-                <a key={item.href} href={item.href} className="nav-item" title={item.hint}>
-                  <span className="nav-icon">{icons[item.icon]}</span>
-                  <span className="nav-text">
-                    {item.label}
-                    <small>{item.hint}</small>
-                  </span>
-                </a>
-              ) : (
+              return (
                 <Link key={item.href} href={item.href} className="nav-item" data-active={active} title={item.hint}>
                   <span className="nav-icon">{icons[item.icon]}</span>
                   <span className="nav-text">
