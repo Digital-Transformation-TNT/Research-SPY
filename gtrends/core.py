@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable, TypeVar
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from playwright.async_api import BrowserContext, Page, Response
 
@@ -110,22 +110,37 @@ def parse_batchexecute(raw_text: str, rpc_id: str) -> Any | None:
 TRENDS_HOST = env_string("TRENDS_HOST", "trends.google.com.vn")
 
 
+#: Trang Khám phá nào được mở. `/trends/explore` là trang CŨ — trang duy nhất còn phục vụ bảng
+#: truy vấn liên quan tính đến 2026-08-26. `/explore` là trang mới; đổi về đó nếu ngày nào Google
+#: trả `fXqlme` lại cho nó. Xem docstring `explore_url` để biết vì sao đã đổi ba lần.
+EXPLORE_PATH = "/trends/explore"
+
+
 def explore_url(terms: list[str], geo: str, time_range: str, gprop: str = "") -> str:
     """
-    Đường dẫn /explore cho một nhóm so sánh — TRANG KHÁM PHÁ MỚI.
+    Đường dẫn Khám phá cho một nhóm so sánh — TRANG CŨ `/trends/explore`.
 
-    ĐÃ QUAY LẠI TRANG MỚI SAU MỘT VÒNG ĐI VÀ VỀ, và cả vòng đó là do đo trên dữ liệu bẩn.
+    ĐÃ ĐỔI QUA ĐỔI LẠI BA LẦN. Chép đủ lịch sử ở đây vì mỗi lần đổi đều có một phép đo đúng
+    đứng sau nó, và không có lịch sử thì lần sau sẽ lại đi hết cả vòng.
 
-    Sáng 2026-08-04 tôi đo thấy trang mới trả `[]` còn trang cũ (`/trends/explore`, dùng
-    `widgetdata`) trả dữ liệu, nên chuyển sang trang cũ. Kết luận ấy SAI về nguyên nhân:
-    tài khoản lúc đó đã bị hạn chế tần suất, và hai trang chỉ biểu hiện khác nhau —
-    trang cũ báo `HTTP 429` kèm trang chặn bot, trang mới báo `HTTP 200` kèm mảng rỗng.
+    2026-08-04 sáng  trang mới trả `[]`, trang cũ trả dữ liệu -> chuyển sang trang cũ.
+                     Kết luận SAI về nguyên nhân: tài khoản lúc đó đang bị hạn chế tần suất,
+                     hai trang chỉ biểu hiện khác nhau (cũ: 429 + trang chặn bot; mới: 200 +
+                     mảng rỗng).
+    2026-08-04 chiều tài khoản MỚI TINH, cùng máy/IP/trình duyệt: trang mới trả đủ hai bảng
+                     kèm cột "Thay đổi" -> quay lại trang mới. Chặn bám theo TÀI KHOẢN.
+    2026-08-26       trang mới KHÔNG CÒN BẮN `fXqlme` NỮA. Đo bằng phiên đang dùng, đếm tận
+                     nơi: `/explore` phát `DqDTgb`, `Tnt4U`, `qrLOJd`, `UZBRtc`, `g4kJzf` —
+                     tức biểu đồ vẫn còn, nhưng bảng truy vấn liên quan thì không. Google đã
+                     thay mục đó bằng bản chạy Gemini (banner "Chuyển đến trang Khám phá
+                     mới"). Cùng lúc `/trends/explore` trả `widgetdata/relatedsearches`
+                     HTTP 200 kèm đủ 25 hàng đầu + 25 đang tăng.
 
-    Đo lại cuối ngày bằng một tài khoản Google MỚI TINH, cùng máy, cùng IP, cùng trình duyệt
-    tự động: `trends.google.com.vn/explore` trả về đầy đủ bảng hàng đầu và bảng đang tăng,
-    kèm cột "Thay đổi" mà `widgetdata` của trang cũ không có. Cùng lúc đó trang cũ vẫn 429.
+    Nên lần này về trang cũ. Cột "Thay đổi" KHÔNG mất: bảng đang tăng của `widgetdata` mang
+    sẵn phần trăm ở `value` — xem `parse_related_widget`.
 
-    Nên: chặn bám theo TÀI KHOẢN, và trang mới là trang còn sống.
+    ĐỔI LẠI CHỈ TỐN MỘT DÒNG: `EXPLORE_PATH`. Bộ nghe response đã nhận CẢ HAI đường (RPC
+    `fXqlme` và `widgetdata`), nên đổi đường đi không phải sửa gì thêm.
 
     Các cụm ngăn nhau bằng dấu phẩy KHÔNG escape — đó là cú pháp trang dùng để tách nhóm, nên
     escape nó lại thành một cụm duy nhất chứa dấu phẩy và cả nhóm so sánh biến mất.
@@ -134,7 +149,7 @@ def explore_url(terms: list[str], geo: str, time_range: str, gprop: str = "") ->
     ra toàn thế giới, nhưng bỏ hẳn là đúng thứ giao diện thật phát ra.
     """
     q = ",".join(quote(term, safe="") for term in terms)
-    url = f"https://{TRENDS_HOST}/explore?q={q}&date={quote(time_range, safe='')}&hl=vi"
+    url = f"https://{TRENDS_HOST}{EXPLORE_PATH}?q={q}&date={quote(time_range, safe='')}&hl=vi"
     if geo and geo != WORLDWIDE:
         url += f"&geo={quote(geo, safe='')}"
     if gprop:
@@ -340,7 +355,7 @@ EMPTY_PAYLOAD_HINT = (
 _EMPTY_PAYLOAD_SIZE = 4
 
 
-def _is_empty_payload(raw_text: str, rpc_id: str) -> bool:
+def _is_empty_payload(raw_text: str, rpc_id: str, widget: bool = False) -> bool:
     """
     RPC trả lời nhưng payload rỗng — coi như bị hạn chế tần suất.
 
@@ -351,6 +366,18 @@ def _is_empty_payload(raw_text: str, rpc_id: str) -> bool:
     Trả `False` khi không bóc được: một phản hồi lạ không phải bằng chứng bị chặn, và quy nhầm
     nó thành "đang bị chặn" sẽ khoá cả tiến trình mười phút vì một lỗi phân tích cú pháp.
     """
+    if widget:
+        # Hình dạng widgetdata: rỗng là `{"default":{"rankedList":[]}}`. Vẫn hỏi "có mục nào
+        # không" chứ không đo độ dài, đúng lý do đã viết ở trên.
+        start = raw_text.find("{")
+        if start < 0:
+            return False
+        try:
+            data = json.loads(raw_text[start:])
+        except Exception:
+            return False
+        ranked = (data.get("default") or {}).get("rankedList")
+        return isinstance(ranked, list) and not ranked
     payload = parse_batchexecute(raw_text, rpc_id)
     return isinstance(payload, list) and not payload
 
@@ -404,6 +431,91 @@ class RelatedQuery:
     rising: bool
     #: Phần trăm thay đổi so với kỳ trước, đúng con số giao diện hiện ở cột "Thay đổi".
     change_percent: float = 0.0
+
+
+#: ĐƯỜNG THỨ HAI cho bảng truy vấn liên quan, và từ 2026-08-26 nó là đường DUY NHẤT còn chạy.
+#:
+#: Ghi chú 2026-07-29 ở đầu file nói `widgetdata` đã chết (429 + trang chặn bot) nên đã gỡ đi và
+#: chuyển hẳn sang RPC `fXqlme` của `batchexecute`. Điều đó ĐÚNG LÚC ĐÓ. Đo lại 2026-08-26 bằng
+#: chính phiên đang dùng: /explore bắn ra `widgetdata/relatedsearches` HTTP 200 kèm đủ 25+25 mục,
+#: và bắn `batchexecute` ĐÚNG 0 LẦN. Google đã quay ngược lại.
+#:
+#: KHÁC BIỆT VỚI LẦN BỊ 429: lần đó code TỰ DỰNG request tới widgetdata. Ở đây ta chỉ ĐỌC phản hồi
+#: mà chính trang tự gọi — cùng kiểu an toàn đang dùng cho `batchexecute`, không thêm một lượt gọi
+#: nào ra ngoài.
+#:
+#: GIỮ CẢ HAI ĐƯỜNG, không thay thế: Google đã đổi qua đổi lại hai lần trong một tháng, nên bám
+#: đúng một đường là hẹn ngày lỗi này quay lại.
+WIDGET_RELATED_PATH = "/trends/api/widgetdata/relatedsearches"
+
+#: CÙNG một endpoint phục vụ HAI widget, phân biệt bằng `keywordType` trong tham số `req`:
+#: `QUERY` là "Truy vấn liên quan" (thứ ta cần), `ENTITY` là "Chủ đề liên quan".
+#:
+#: Phải lọc, không được nhận bừa: đo 2026-08-26 thì widget ENTITY trả về đúng 35 byte
+#: `{"default":{"rankedList":[]}}`. Nhận nhầm nó là bảng rỗng của ta thì công cụ sẽ kết luận
+#: "tài khoản đang bị chặn" và đi đổi tài khoản, trong khi bảng thật vừa về đầy đủ ngay sau đó.
+WIDGET_QUERY_MARK = '"keywordType":"QUERY"'
+
+
+def is_related_widget(url: str) -> bool:
+    """Response này có phải bảng TRUY VẤN liên quan đi qua đường widgetdata không."""
+    if WIDGET_RELATED_PATH not in url:
+        return False
+    # `req` nằm trong query string nên đã bị mã hoá phần trăm — phải giải mã rồi mới so.
+    return WIDGET_QUERY_MARK in unquote(url)
+
+
+def parse_related_widget(raw_text: str) -> list[RelatedQuery]:
+    """
+    Tách phản hồi `widgetdata/relatedsearches` thành hai bảng: hàng đầu và đang tăng.
+
+    Hình dạng: `{"default":{"rankedList":[{"rankedKeyword":[…]}, {"rankedKeyword":[…]}]}}`,
+    mỗi mục có `query`, `value`, `formattedValue`.
+
+    THỨ TỰ NGƯỢC VỚI `batchexecute`, và đây là chỗ dễ gán nhầm nhãn cho toàn bộ dữ liệu mà kết
+    quả vẫn trông hợp lý:
+
+        batchexecute   [0] đang tăng, [1] hàng đầu
+        widgetdata     [0] HÀNG ĐẦU,  [1] đang tăng
+
+    Đo 2026-08-26 với "jeans": bảng 0 là `quần jeans 100 · new jeans 60` (thang 0-100, đúng kiểu
+    hàng đầu), bảng 1 là `how to patch jeans 491350 "Đột phá"` (số phần trăm tăng, đúng kiểu
+    đang tăng). Hai thang đo khác hẳn nhau nên nhận ra được mà không phải tin vào thứ tự.
+
+    Cột "Thay đổi" của đường này chính là `value` của bảng đang tăng, nên `change_percent` lấy
+    luôn từ đó — không mất thông tin so với đường `batchexecute`.
+    """
+    start = raw_text.find("{")
+    if start < 0:
+        return []
+    try:
+        data = json.loads(raw_text[start:])
+    except Exception:
+        return []
+    ranked = (data.get("default") or {}).get("rankedList") or []
+    if not isinstance(ranked, list):
+        return []
+
+    out: list[RelatedQuery] = []
+    for index, block in enumerate(ranked[:2]):
+        rising = index == 1
+        for item in (block or {}).get("rankedKeyword") or []:
+            query = str(item.get("query") or "").strip()
+            if not query:
+                continue
+            try:
+                value = float(item.get("value") or 0)
+            except (TypeError, ValueError):
+                value = 0.0
+            out.append(
+                RelatedQuery(
+                    query=query,
+                    value=value,
+                    rising=rising,
+                    change_percent=value if rising else 0.0,
+                )
+            )
+    return out
 
 
 @dataclass
@@ -534,21 +646,26 @@ async def fetch_related_queries(seed: str, ctx: TrendsContext) -> RelatedOutcome
                         pass
                     return
 
-                if captured.done() or RELATED_RPC not in response.url:
+                # HAI ĐƯỜNG cùng chở một thứ. `batchexecute` là đường của giao diện /explore
+                # bản mới; `widgetdata` là đường Google quay lại dùng từ 2026-08-26 — xem
+                # `WIDGET_RELATED_PATH`. Nghe cả hai để một lần Google đổi ý nữa không làm
+                # chết tính năng, và để không phải đoán hôm nay nó đang dùng đường nào.
+                qua_widget = is_related_widget(response.url)
+                if captured.done() or not (qua_widget or RELATED_RPC in response.url):
                     return
                 try:
                     text = await response.text()
                 except Exception:
                     return  # một response lạ không được phép làm hỏng cả lần lấy
                 replies += 1
-                if _is_empty_payload(text, RELATED_RPC):
+                if _is_empty_payload(text, RELATED_RPC, widget=qua_widget):
                     # CHỈ ghi nhận thời điểm. Việc đếm chuỗi rỗng để lo là "bị chặn" phải đợi
                     # tới lúc biết biểu đồ có vẽ được không — ba từ khoá quá nhỏ liên tiếp là
                     # chuyện bình thường và không được đọc thành ba lần bị chặn.
                     empty_at = time.monotonic()
                     return
                 try:
-                    queries = parse_related(text)
+                    queries = parse_related_widget(text) if qua_widget else parse_related(text)
                 except Exception:
                     return
                 if queries and not captured.done():
@@ -647,7 +764,9 @@ async def fetch_related_queries(seed: str, ctx: TrendsContext) -> RelatedOutcome
                 return RelatedOutcome(
                     message=(
                         f'Google Trends không phát bảng truy vấn liên quan cho "{seed}" trong '
-                        f"{RELATED_TIMEOUT_SECONDS}s — trang không cuộn tới được hoặc quá chậm"
+                        f"{RELATED_TIMEOUT_SECONDS}s — không thấy phản hồi nào trên CẢ HAI đường "
+                        f"(batchexecute và widgetdata). Có thể trang quá chậm, cũng có thể "
+                        f"Google vừa đổi endpoint lần nữa; xem WIDGET_RELATED_PATH."
                     ),
                     exhausted=not timeline_ok,
                     took_ms=elapsed(),
