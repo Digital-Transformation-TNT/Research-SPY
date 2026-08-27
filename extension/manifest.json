@@ -57,8 +57,13 @@
   "content_scripts": [
     {
       "matches": [
+        "http://localhost/*",
+        "http://127.0.0.1/*",
         "http://localhost:3000/*",
-        "http://127.0.0.1:3000/*"
+        "http://127.0.0.1:3000/*",
+        "http://localhost:3001/*",
+        "http://localhost:3010/*",
+        "http://localhost:3013/*"
       ],
       "js": [
         "content.js"
