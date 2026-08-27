@@ -134,6 +134,8 @@ export default function Sidebar() {
   // (tránh hydration mismatch: server không biết localStorage). Trước mounted: coi như chưa rõ.
   const [mounted, setMounted] = useState(false)
   const [display, setDisplay] = useState('')
+  //: Có phiên đăng nhập hay không — TÁCH khỏi `display`, và đó là cả vấn đề. Xem chỗ render.
+  const [signedIn, setSignedIn] = useState(false)
   const [role, setRole] = useState('user')
 
   useEffect(() => {
@@ -148,8 +150,12 @@ export default function Sidebar() {
       window.location.replace('/login')
       return
     }
-    // Tên hiển thị = "Tên · Vị trí · BU" (ghép sẵn ở backend, lưu rs_display). Thiếu thì rơi về email.
-    setDisplay(localStorage.getItem('rs_display') || email)
+    // Tên hiển thị = "Tên · Vị trí · BU" (ghép sẵn ở backend, lưu rs_display). Thiếu thì rơi về
+    // email, rồi tới `rs_username` — key của trang đăng nhập CŨ, bản username (`git show e29977f`).
+    // Phiên tạo trước khi chuyển sang đăng nhập bằng email CHỈ có token + rs_username, nên nếu
+    // không đọc key này thì cả chân sidebar biến mất mà không có lấy một dòng báo. Đo 2026-08-27.
+    setDisplay(localStorage.getItem('rs_display') || email || localStorage.getItem('rs_username') || '')
+    setSignedIn(true)
     setRole(r)
   }, [])
 
@@ -193,12 +199,18 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Chân sidebar: tên (Tên · Vị trí · BU) + đăng xuất. Chỉ hiện sau mounted (cần localStorage). */}
-      {mounted && display ? (
+      {/* Chân sidebar: tên (Tên · Vị trí · BU) + đăng xuất.
+          ĐIỀU KIỆN LÀ `signedIn`, KHÔNG PHẢI `display` — và đây chính là chỗ đã hỏng. Bám vào
+          `display` nghĩa là một phiên thiếu tên sẽ nuốt luôn nút Đăng xuất, tức là giấu đúng
+          cái lối thoát duy nhất khỏi trạng thái ấy. Thà hiện một cái tên chưa rõ còn hơn hiện
+          một khoảng trống không giải thích được. */}
+      {mounted && signedIn ? (
         <div className="sidebar-user">
-          <span className="user-name" title={display}>
-            <b>{display}</b>
-            <small>{role === 'admin' ? 'Quản trị viên' : 'Người dùng'}</small>
+          <span className="user-name" title={display || 'Phiên đăng nhập cũ — chưa có tên hiển thị'}>
+            <b>{display || 'Chưa rõ tài khoản'}</b>
+            <small>
+              {display ? (role === 'admin' ? 'Quản trị viên' : 'Người dùng') : 'Đăng nhập lại để hiện tên'}
+            </small>
           </span>
           <button type="button" className="user-logout" onClick={logout} title="Đăng xuất">
             Đăng xuất
