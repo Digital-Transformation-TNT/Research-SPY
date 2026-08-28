@@ -136,6 +136,8 @@ export default function Sidebar() {
   const [loggedIn, setLoggedIn] = useState(false)
   const [display, setDisplay] = useState('')
   const [role, setRole] = useState('user')
+  // Logo hãng mẹ TNT Group. Tự ẩn nếu chưa có file (không hiện icon ảnh vỡ) — xem public/brand/.
+  const [orgLogoOk, setOrgLogoOk] = useState(true)
 
   useEffect(() => {
     setMounted(true)
@@ -208,6 +210,19 @@ export default function Sidebar() {
           <button type="button" className="user-logout" onClick={logout} title="Đăng xuất">
             Đăng xuất
           </button>
+        </div>
+      ) : null}
+
+      {/* Thương hiệu hãng mẹ — luôn hiện (không phụ thuộc đăng nhập). Ẩn gọn nếu thiếu file logo. */}
+      {orgLogoOk ? (
+        <div className="sidebar-org">
+          <span className="org-cap">Một sản phẩm của</span>
+          <img
+            className="org-logo"
+            src="/brand/tnt-group.png"
+            alt="TNT Group"
+            onError={() => setOrgLogoOk(false)}
+          />
         </div>
       ) : null}
     </aside>
