@@ -15,7 +15,8 @@ const PRICE_SCALE = 100000;
 // Địa chỉ webtool. Nút "Research đầy đủ" mở trang Research ở đây chứ không mở trang trong
 // extension nữa — trang đó đã chuyển hẳn sang webtool để chỉ còn MỘT bản, không phải hai bản
 // trôi dạt khỏi nhau. Đổi khi deploy lên server thật.
-const WEBAPP = 'http://localhost:3000';
+// Deploy: trỏ về VPS. Dev cục bộ: đổi lại thành 'http://localhost:3000'.
+const WEBAPP = 'http://157.66.101.73:3000';
 
 function searchUrl(domain, keyword) {
   const q = new URLSearchParams({
