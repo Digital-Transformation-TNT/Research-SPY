@@ -133,9 +133,8 @@ export default function Sidebar() {
   // Auth đọc từ localStorage — chỉ có ở client, nên chờ mounted rồi mới quyết định hiển thị gì
   // (tránh hydration mismatch: server không biết localStorage). Trước mounted: coi như chưa rõ.
   const [mounted, setMounted] = useState(false)
+  const [loggedIn, setLoggedIn] = useState(false)
   const [display, setDisplay] = useState('')
-  //: Có phiên đăng nhập hay không — TÁCH khỏi `display`, và đó là cả vấn đề. Xem chỗ render.
-  const [signedIn, setSignedIn] = useState(false)
   const [role, setRole] = useState('user')
 
   useEffect(() => {
@@ -144,18 +143,17 @@ export default function Sidebar() {
     const email = localStorage.getItem('rs_email') || ''
     const r = localStorage.getItem('rs_role') || 'user'
     // Auth gate cho TOÀN app: chưa đăng nhập (không token và không email) → về trang login.
-    // Sidebar chỉ render trong layout bọc /ads,/keywords,... nên không đụng trang /login,/admin
-    // (chúng là HTML tĩnh riêng) → không sợ vòng lặp redirect.
+    // Sidebar chỉ render trong layout (dashboard) bọc /ads,/keywords,... — không bọc /login
+    // (route (auth) riêng) → không sợ vòng lặp redirect.
     if (!token && !email) {
       window.location.replace('/login')
       return
     }
-    // Tên hiển thị = "Tên · Vị trí · BU" (ghép sẵn ở backend, lưu rs_display). Thiếu thì rơi về
-    // email, rồi tới `rs_username` — key của trang đăng nhập CŨ, bản username (`git show e29977f`).
-    // Phiên tạo trước khi chuyển sang đăng nhập bằng email CHỈ có token + rs_username, nên nếu
-    // không đọc key này thì cả chân sidebar biến mất mà không có lấy một dòng báo. Đo 2026-08-27.
-    setDisplay(localStorage.getItem('rs_display') || email || localStorage.getItem('rs_username') || '')
-    setSignedIn(true)
+    // Đã qua cổng gate = ĐANG đăng nhập → luôn cho hiện chân sidebar (nút Đăng xuất). Không phụ
+    // thuộc việc có tên hay không: thiếu rs_display/rs_email vẫn phải đăng xuất được.
+    setLoggedIn(true)
+    // Tên hiển thị = "Tên · Vị trí · BU" (ghép sẵn ở backend, lưu rs_display). Thiếu thì rơi về email.
+    setDisplay(localStorage.getItem('rs_display') || email)
     setRole(r)
   }, [])
 
@@ -199,18 +197,13 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Chân sidebar: tên (Tên · Vị trí · BU) + đăng xuất.
-          ĐIỀU KIỆN LÀ `signedIn`, KHÔNG PHẢI `display` — và đây chính là chỗ đã hỏng. Bám vào
-          `display` nghĩa là một phiên thiếu tên sẽ nuốt luôn nút Đăng xuất, tức là giấu đúng
-          cái lối thoát duy nhất khỏi trạng thái ấy. Thà hiện một cái tên chưa rõ còn hơn hiện
-          một khoảng trống không giải thích được. */}
-      {mounted && signedIn ? (
+      {/* Chân sidebar: tên (Tên · Vị trí · BU) + đăng xuất. Hiện khi ĐÃ đăng nhập — nút Đăng xuất
+          luôn có, kể cả khi thiếu tên (rơi về "Tài khoản"). */}
+      {mounted && loggedIn ? (
         <div className="sidebar-user">
-          <span className="user-name" title={display || 'Phiên đăng nhập cũ — chưa có tên hiển thị'}>
-            <b>{display || 'Chưa rõ tài khoản'}</b>
-            <small>
-              {display ? (role === 'admin' ? 'Quản trị viên' : 'Người dùng') : 'Đăng nhập lại để hiện tên'}
-            </small>
+          <span className="user-name" title={display || 'Tài khoản'}>
+            <b>{display || 'Tài khoản'}</b>
+            <small>{role === 'admin' ? 'Quản trị viên' : 'Người dùng'}</small>
           </span>
           <button type="button" className="user-logout" onClick={logout} title="Đăng xuất">
             Đăng xuất
