@@ -1019,7 +1019,6 @@ function render() {
     `<td class="num">${fmtInt(p.sold)}</td>` +
     `<td class="num">${p.rating != null ? p.rating.toFixed(1) + '★' : '—'}${p.ratingCount != null ? `<div class="sub">${fmtInt(p.ratingCount)}</div>` : ''}</td>` +
     `<td class="num"><span class="price">${fmtPrice(p.price, curOf(p))}</span>${p.strike ? `<div class="sub strike">${fmtInt(p.strike)}</div>` : ''}</td>` +
-    `<td class="num">${p.discount ? `<span class="disc">-${p.discount}%</span>` : '—'}</td>` +
     `<td><button class="sim cost" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}">💰 Giá vốn</button> ` +
     `<button class="sim vid" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-region="${esc(p.region || '')}">🎬 Video</button></td>` +
     `</tr>`

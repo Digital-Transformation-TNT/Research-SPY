@@ -41,6 +41,12 @@ ALLOWED: list[_Allowed] = [
     for suffix in AD_PLATFORMS[platform_id].media.host_suffixes  # type: ignore[union-attr]
 ]
 
+# Ảnh của mục "Giá vốn theo ảnh" (chào hàng 1688) đến từ CDN alicdn — 1688 không phải AD
+# platform nên không tự có trong danh sách trên. CDN công khai, referer 1688 cho chắc.
+ALLOWED += [
+    _Allowed(suffix="alicdn.com", referer="https://www.1688.com"),
+]
+
 #: Header cần giữ nguyên để trình phát biết cách đọc dòng byte. `content-encoding` không có
 #: trong bản TypeScript vì `fetch` của Node đã tự giải nén; ở đây byte được chuyển tiếp
 #: nguyên trạng nên nhãn nén phải đi cùng, nếu không trình duyệt sẽ đọc byte nén như video.
