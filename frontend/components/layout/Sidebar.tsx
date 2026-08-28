@@ -133,6 +133,7 @@ export default function Sidebar() {
   // Auth đọc từ localStorage — chỉ có ở client, nên chờ mounted rồi mới quyết định hiển thị gì
   // (tránh hydration mismatch: server không biết localStorage). Trước mounted: coi như chưa rõ.
   const [mounted, setMounted] = useState(false)
+  const [loggedIn, setLoggedIn] = useState(false)
   const [display, setDisplay] = useState('')
   const [role, setRole] = useState('user')
 
@@ -142,12 +143,15 @@ export default function Sidebar() {
     const email = localStorage.getItem('rs_email') || ''
     const r = localStorage.getItem('rs_role') || 'user'
     // Auth gate cho TOÀN app: chưa đăng nhập (không token và không email) → về trang login.
-    // Sidebar chỉ render trong layout bọc /ads,/keywords,... nên không đụng trang /login,/admin
-    // (chúng là HTML tĩnh riêng) → không sợ vòng lặp redirect.
+    // Sidebar chỉ render trong layout (dashboard) bọc /ads,/keywords,... — không bọc /login
+    // (route (auth) riêng) → không sợ vòng lặp redirect.
     if (!token && !email) {
       window.location.replace('/login')
       return
     }
+    // Đã qua cổng gate = ĐANG đăng nhập → luôn cho hiện chân sidebar (nút Đăng xuất). Không phụ
+    // thuộc việc có tên hay không: thiếu rs_display/rs_email vẫn phải đăng xuất được.
+    setLoggedIn(true)
     // Tên hiển thị = "Tên · Vị trí · BU" (ghép sẵn ở backend, lưu rs_display). Thiếu thì rơi về email.
     setDisplay(localStorage.getItem('rs_display') || email)
     setRole(r)
@@ -193,11 +197,12 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Chân sidebar: tên (Tên · Vị trí · BU) + đăng xuất. Chỉ hiện sau mounted (cần localStorage). */}
-      {mounted && display ? (
+      {/* Chân sidebar: tên (Tên · Vị trí · BU) + đăng xuất. Hiện khi ĐÃ đăng nhập — nút Đăng xuất
+          luôn có, kể cả khi thiếu tên (rơi về "Tài khoản"). */}
+      {mounted && loggedIn ? (
         <div className="sidebar-user">
-          <span className="user-name" title={display}>
-            <b>{display}</b>
+          <span className="user-name" title={display || 'Tài khoản'}>
+            <b>{display || 'Tài khoản'}</b>
             <small>{role === 'admin' ? 'Quản trị viên' : 'Người dùng'}</small>
           </span>
           <button type="button" className="user-logout" onClick={logout} title="Đăng xuất">
