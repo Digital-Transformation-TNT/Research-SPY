@@ -85,3 +85,6 @@ backend/hub_data.db-wal
 # Model CLIP cho khớp ảnh (`backend/models/clip-vision.onnx`, ~350MB). Tải lúc chạy, không
 # commit — git không phải nơi chứa trọng số model, và thiếu nó thì luồng tự rơi về pHash.
 backend/models/
+
+# Binary nssm — vps-setup.ps1 tự tải, không commit
+deploy/nssm.exe

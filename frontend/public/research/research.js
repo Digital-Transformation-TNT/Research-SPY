@@ -145,10 +145,42 @@ function rsSend(msg) {
   });
 }
 
+/**
+ * RELAY: không có extension trên MÁY NÀY, nhưng có một máy-thợ (trình duyệt khác đã cài
+ * extension + đăng nhập sàn, ở IP dân cư) đang online. Khi đó mọi lệnh `RS_*` được đẩy qua
+ * `/api/relay/submit` tới máy-thợ thay vì `postMessage` cục bộ. Bật ở `DOMContentLoaded` bên
+ * dưới, chỉ khi PING cục bộ trượt MÀ `/api/relay/status` báo có thợ.
+ *
+ * `relaySend` trả về ĐÚNG hình dạng như `rsSend`: chính object mà `background.js` trả cho lệnh
+ * đó (vd Shopee: { ok, texts, videoItems, blocked, error }), nên phần parse phía dưới không
+ * phân biệt được nó tới từ extension cục bộ hay từ máy-thợ.
+ */
+let RELAY_MODE = false;
+
+async function relaySend(msg) {
+  try {
+    const r = await fetch('/api/relay/submit', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(msg),
+    });
+    const j = await r.json();
+    return j && j.ok ? j.result : null;
+  } catch (e) {
+    console.warn('[research] relay lỗi:', e);
+    return null;
+  }
+}
+
+/** Gửi một lệnh tới extension — cục bộ (postMessage) hoặc qua máy-thợ (relay). */
+function dispatch(msg) {
+  return RELAY_MODE ? relaySend(msg) : rsSend(msg);
+}
+
 const chrome = {
   runtime: {
     sendMessage(msg, callback) {
-      rsSend(msg).then((result) => { if (callback) callback(result); });
+      dispatch(msg).then((result) => { if (callback) callback(result); });
     },
   },
   tabs: {
@@ -183,7 +215,7 @@ const chrome = {
     // và vì `research()` bỏ qua sàn nào có `loginStatus === false`, Shopee với TikTok Shop sẽ
     // im lặng không bao giờ chạy. Đã sập đúng vào đó một lần, 2026-08-24.
     get({ url, name }, callback) {
-      rsSend({ type: 'RS_COOKIE', url, name }).then((r) => callback((r && r.cookie) || null));
+      dispatch({ type: 'RS_COOKIE', url, name }).then((r) => callback((r && r.cookie) || null));
     },
   },
 };
@@ -197,17 +229,43 @@ async function rsExtensionReady() {
   return !!(resp && resp.ok);
 }
 
-window.addEventListener('DOMContentLoaded', async () => {
+// Quyết định đi đường nào: extension cục bộ, hay relay tới máy-thợ. PHẢI await xong TRƯỚC khi
+// gọi `refreshLogin()` lần đầu — nếu không, login check ban đầu chạy lúc RELAY_MODE còn false,
+// đi đường local (không extension) và trả ✕ cho mọi sàn. Gọi ở cuối file: `detectMode().then(refreshLogin)`.
+async function detectMode() {
+  // 1) Có extension NGAY TRÊN MÁY NÀY → dùng thẳng, không cần relay.
   if (await rsExtensionReady()) return;
+
+  // 2) Không có extension cục bộ → thử máy-thợ qua relay. Có thợ thì chạy bình thường (im lặng),
+  //    chỉ đổi đường đi ở `dispatch`. User không cần biết crawl chạy ở máy khác.
+  try {
+    const r = await fetch('/api/relay/status', { cache: 'no-store' });
+    const s = await r.json();
+    if (s && s.workerOnline) {
+      RELAY_MODE = true;
+      const bar2 = document.getElementById('status');
+      const text2 = document.getElementById('statusText');
+      if (bar2 && text2) {
+        bar2.classList.remove('err');
+        text2.textContent = '🔗 Máy này không có extension — đang dùng máy-thợ chung (relay). Bấm Research như bình thường.';
+      }
+      return;
+    }
+  } catch (e) {
+    /* backend không phản hồi — rơi xuống thông báo bên dưới */
+  }
+
+  // 3) Không extension, không thợ → nói rõ CẢ HAI đường.
   const bar = document.getElementById('status');
   const text = document.getElementById('statusText');
   if (!bar || !text) return;
   bar.classList.add('err');
   text.textContent =
-    'Chưa thấy extension Research-SPY Fetcher. Các sàn cần phiên đăng nhập của bạn (Shopee, ' +
-    'TikTok Shop, Amazon, Taobao, 1688, Temu) sẽ không chạy. Cài ở chrome://extensions → ' +
-    'Developer mode → Load unpacked → chọn thư mục extension/, rồi tải lại trang.';
-});
+    'Các sàn cần phiên đăng nhập (Shopee, TikTok Shop, Amazon, Taobao, 1688, Temu) sẽ không chạy: ' +
+    'máy này chưa cài extension, và cũng chưa có máy-thợ nào online. Cách 1: cài extension ở ' +
+    'chrome://extensions → Developer mode → Load unpacked → thư mục extension/. Cách 2: mở trang ' +
+    '/worker trên một máy đã cài extension + đăng nhập sàn để nó làm máy-thợ chung.';
+}
 
 const DOMAIN = { VN: 'shopee.vn', TH: 'shopee.co.th', PH: 'shopee.ph', MY: 'shopee.com.my', ID: 'shopee.co.id', SG: 'shopee.sg', TW: 'shopee.tw', BR: 'shopee.com.br', MX: 'shopee.com.mx', CO: 'shopee.com.co', CL: 'shopee.cl' };
 const IMG_REGION = { VN: 'vn', TH: 'th', PH: 'ph', MY: 'my', ID: 'id', SG: 'sg', TW: 'tw', BR: 'br', MX: 'mx', CO: 'co', CL: 'cl' };
@@ -1222,7 +1280,8 @@ renderPlatforms();
 updateRegionSection();
 const _kw = new URLSearchParams(location.search).get('kw');
 if (_kw) $('kw').value = _kw;
-refreshLogin(); // KHÔNG tự research — chờ user bấm
+// Xác định extension/relay TRƯỚC, rồi mới kiểm tra đăng nhập (để chạy đúng đường). KHÔNG tự research.
+detectMode().then(refreshLogin);
 
 // ===== TAB CONTENT (Facebook Ads) + TAB TÌM BẰNG ẢNH =====
 // ===== MODAL VIDEO — "video quảng cáo khớp ẢNH sản phẩm" cho một dòng ở tab Sản phẩm =====

@@ -44,7 +44,7 @@ from lib.core.browser import close_all_sessions
 from lib.core.http import close_client
 from lib.core.jwt_util import verify as verify_jwt, JWTError, is_configured as jwt_ready
 
-from .api import admin, ads, analytics, auth, imagesearch, keywords, media, opportunity
+from .api import admin, ads, analytics, auth, imagesearch, keywords, media, opportunity, relay
 
 # Mục Trend Signal Hub. Import ĐƯỢC PHÉP TRƯỢT: gói này kéo theo pandas/pytrends/anthropic,
 # và một máy thiếu chúng thì cả backend chết theo — mất luôn Quảng cáo, Từ khoá, Tìm bằng ảnh
@@ -116,6 +116,7 @@ app.include_router(imagesearch.router)
 app.include_router(keywords.router)
 app.include_router(media.router)
 app.include_router(opportunity.router)
+app.include_router(relay.router)
 
 if hub_router is not None:
     app.include_router(hub_router)
