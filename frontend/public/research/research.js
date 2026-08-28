@@ -962,7 +962,7 @@ function render() {
     `<td class="num">${p.rating != null ? p.rating.toFixed(1) + '★' : '—'}${p.ratingCount != null ? `<div class="sub">${fmtInt(p.ratingCount)}</div>` : ''}</td>` +
     `<td class="num"><span class="price">${fmtPrice(p.price, curOf(p))}</span>${p.strike ? `<div class="sub strike">${fmtInt(p.strike)}</div>` : ''}</td>` +
     `<td class="num">${p.discount ? `<span class="disc">-${p.discount}%</span>` : '—'}</td>` +
-    `<td><button class="sim" data-url="${esc(p.similarUrl)}">↗ Tương tự</button> ` +
+    `<td><button class="sim cost" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}">💰 Giá vốn</button> ` +
     `<button class="sim vid" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-region="${esc(p.region || '')}">🎬 Video</button></td>` +
     `</tr>`
   ).join('');
@@ -990,16 +990,108 @@ $('rows').addEventListener('mouseover', (e) => {
 $('rows').addEventListener('mousemove', (e) => { if (zoom.style.display === 'block') positionZoom(e.clientX, e.clientY); });
 $('rows').addEventListener('mouseout', (e) => { if (e.target.closest('img.thumb')) zoom.style.display = 'none'; });
 
-// ---- Click trong bảng: "Video" (mở modal video quảng cáo khớp ảnh) hoặc "Tương tự" ----
+// ---- Click trong bảng: "Giá vốn" (tìm bằng ảnh trên 1688) hoặc "Video" (modal video khớp ảnh) ----
 $('rows').addEventListener('click', (e) => {
+  const cost = e.target.closest('button.cost');
+  if (cost) {
+    openCostModal({ img: cost.dataset.img, name: cost.dataset.name });
+    return;
+  }
   const vid = e.target.closest('button.vid');
   if (vid) {
     openVideoModal({ img: vid.dataset.img, name: vid.dataset.name, region: vid.dataset.region });
     return;
   }
-  const sim = e.target.closest('button.sim');
-  if (sim && sim.dataset.url) chrome.tabs.create({ url: sim.dataset.url });
 });
+
+// ===== MODAL GIÁ VỐN — tìm bằng ẢNH sản phẩm trên 1688, lấy chào hàng RẺ NHẤT (giá sỉ ¥ = giá vốn) =====
+// Dùng lại endpoint /api/imagesearch (mục Tìm bằng ảnh), chỉ hỏi nguồn '1688'. Ảnh của dòng là URL
+// → tải bytes qua proxy /api/media (tránh CORS) → gửi multipart. `sourcing` trả về = bảng 1688.
+let costToken = 0; // chống race: mỗi lần mở gắn token, chỉ render kết quả của token mới nhất.
+function setCostStatus(msg, kind) { $('costStatusText').textContent = msg || ''; $('costStatus').className = 'status' + (kind ? ' ' + kind : ''); }
+function closeCostModal() {
+  $('costModal').classList.remove('on');
+  $('costGrid').innerHTML = '';
+  $('costHeadline').innerHTML = '';
+  $('costTitle').textContent = '';
+  setCostStatus('');
+}
+
+async function openCostModal(p) {
+  const my = ++costToken;
+  $('costTitle').textContent = p.name || '(không tên)';
+  $('costHeadline').innerHTML = '';
+  $('costGrid').innerHTML = '';
+  $('costModal').classList.add('on');
+  setCostStatus('Đang tìm giá vốn trên 1688 theo ảnh… (lần đầu hơi chậm)');
+
+  // 1) Lấy BYTES ảnh qua proxy để tránh CORS (ảnh sàn không cho fetch chéo origin).
+  let blob;
+  try {
+    const ir = await fetch(proxyMedia(p.img));
+    if (!ir.ok) throw new Error('HTTP ' + ir.status);
+    blob = await ir.blob();
+  } catch (e) {
+    if (my !== costToken) return;
+    setCostStatus('Không tải được ảnh sản phẩm để tìm: ' + e.message, 'err');
+    return;
+  }
+  if (my !== costToken) return;
+
+  // 2) Gửi ảnh sang tìm-bằng-ảnh, CHỈ nguồn 1688.
+  let data;
+  try {
+    const form = new FormData();
+    // Backend chỉ nhận jpeg/png/webp và đọc content-type TỪ phần multipart (= blob.type). Proxy đôi
+    // khi trả 'application/octet-stream' → bọc lại blob với type chuẩn để không bị từ chối oan.
+    const type = /^image\/(jpeg|png|webp)$/.test(blob.type) ? blob.type : 'image/jpeg';
+    const typed = blob.type === type ? blob : new Blob([blob], { type });
+    form.append('file', typed, 'product.' + type.split('/')[1]);
+    form.append('geo', 'VN');
+    form.append('sources', '1688');
+    const r = await fetch(`${BACKEND}/api/imagesearch`, { method: 'POST', body: form });
+    data = await r.json().catch(() => ({}));
+    if (my !== costToken) return;
+    if (!r.ok) { setCostStatus((data && data.error) || `backend HTTP ${r.status}`, 'err'); return; }
+  } catch (e) {
+    if (my !== costToken) return;
+    setCostStatus('Lỗi gọi tìm-bằng-ảnh: ' + e.message, 'err');
+    return;
+  }
+
+  // 3) sourcing = chào hàng 1688. Loại PHỤ KIỆN (miếng dán ¥2 cho ra "giá vốn" giả) và dòng
+  //    không có giá; sắp tăng dần → dòng đầu = giá vốn nhỏ nhất.
+  const offers = (data.sourcing || [])
+    .filter((o) => o.priceValue != null && !o.isAccessory)
+    .sort((a, b) => a.priceValue - b.priceValue);
+
+  if (data.identity && data.identity.product) $('costTitle').textContent = data.identity.product;
+
+  if (!offers.length) {
+    setCostStatus(data.message || '1688 không tìm thấy hàng khớp ảnh này. Thử tra tay bằng ảnh/từ khoá.', 'err');
+    return;
+  }
+
+  const min = offers[0];
+  $('costHeadline').innerHTML = `Giá vốn nhỏ nhất <b>${esc(min.price || ('¥' + min.priceValue))}</b>`;
+  setCostStatus(`${offers.length} chào hàng 1688${data.cached ? ' (cache)' : ''}. Giá theo ¥ — nhân tỷ giá để ra ₫.`, 'ok');
+
+  $('costGrid').innerHTML = offers.map((o, i) => (
+    `<a class="ccard" href="${esc(o.link)}" target="_blank" rel="noreferrer">` +
+    `<div class="media">${o.thumbnail ? `<img src="${esc(proxyMedia(o.thumbnail))}" loading="lazy" alt="" />` : ''}` +
+    `${i === 0 ? '<span class="mbadge">Rẻ nhất</span>' : ''}</div>` +
+    `<div class="cbody">` +
+    `<div class="cost-price">${esc(o.price || ('¥' + o.priceValue))}</div>` +
+    `<div class="ccopy">${esc(o.title || '')}</div>` +
+    `<div class="cmeta">${[o.supplier, o.location, o.sold != null ? 'đã bán ' + fmtInt(o.sold) : o.note]
+      .filter(Boolean).map(esc).join(' · ')}</div>` +
+    `</div></a>`
+  )).join('');
+}
+
+$('costClose').addEventListener('click', closeCostModal);
+$('costModal').addEventListener('click', (e) => { if (e.target === $('costModal')) closeCostModal(); }); // bấm nền tối để đóng
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('costModal').classList.contains('on')) closeCostModal(); });
 
 // Giá vốn NHANH: một tab find_similar duy nhất → gọi recommend_post cho top N cùng lúc trong tab
 // đó (nếu trang tự ký fetch). Nhanh hơn nhiều lần mở tab từng sản phẩm.

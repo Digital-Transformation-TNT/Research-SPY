@@ -221,6 +221,16 @@
     button.vid { border-color: var(--accent); color: var(--accent); margin-left: 4px; }
     button.vid:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 
+    /* Nút "Giá vốn" — hành động chính mới của mỗi dòng, nhấn đậm hơn nút Video. */
+    button.cost { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); font-weight: 700; }
+    button.cost:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); border-color: var(--accent); }
+
+    /* Panel giá vốn: số giá vốn nhỏ nhất nổi ở đầu + thẻ chào hàng 1688. */
+    .cost-headline { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); white-space: nowrap; margin-left: auto; align-self: center; }
+    .cost-headline b { font-family: var(--font-display); font-size: 20px; color: var(--accent-ink); margin-left: 7px; letter-spacing: -.02em; }
+    a.ccard { text-decoration: none; color: inherit; }
+    .cost-price { font-family: var(--font-mono); font-weight: 700; font-size: 15px; color: var(--accent-ink); }
+
     /* Modal video quảng cáo khớp ảnh */
     .vidmodal { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.55); display: none; align-items: flex-start; justify-content: center; padding: 32px 20px; overflow-y: auto; }
     .vidmodal.on { display: flex; }
@@ -369,7 +379,7 @@
             <th data-k="rating" class="num">Rating</th>
             <th data-k="price" class="num">Giá</th>
             <th data-k="discount" class="num">Giảm</th>
-            <th class="plain">Tương tự</th>
+            <th class="plain">Thao tác</th>
           </tr>
         </thead>
         <tbody id="rows"></tbody>
@@ -415,9 +425,29 @@
   </div>
 
   <div id="zoom"><img alt="" /></div>
+
+  <!-- Modal GIÁ VỐN: bấm 💰 ở một dòng → tìm bằng ẢNH sản phẩm trên 1688, lấy chào hàng rẻ nhất
+       (giá sỉ ¥ = giá vốn). Dùng lại khung .vidmodal cho đồng bộ. -->
+  <div id="costModal" class="vidmodal">
+    <div class="vidpanel">
+      <div class="vidhead">
+        <div>
+          <div class="vk">💰 Giá vốn theo ảnh — 1688 (giá sỉ)</div>
+          <h2 id="costTitle"></h2>
+        </div>
+        <div id="costHeadline" class="cost-headline"></div>
+        <button id="costClose">✕ Đóng</button>
+      </div>
+      <div class="status" id="costStatus"><span id="costStatusText"></span></div>
+      <div class="vidbody">
+        <div class="cgrid" id="costGrid"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ?v= để phá cache: research.js nhúng tĩnh, không có hash tên file như bundle của Next, nên
        khi sửa JS phải BUMP số này — nếu không trình duyệt chạy bản cũ trong cache (HTML mới +
        JS cũ = lỗi khó hiểu, vd sàn vẫn chọn sẵn dù mặc định đã đổi thành rỗng). -->
-  <script src="research.js?v=20260826"></script>
+  <script src="research.js?v=20260827"></script>
 </body>
 </html>
