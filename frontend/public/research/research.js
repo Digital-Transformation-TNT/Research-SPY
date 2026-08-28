@@ -1118,11 +1118,33 @@ async function openCostModal(p) {
 
   // 3) sourcing = chào hàng 1688. Loại PHỤ KIỆN (miếng dán ¥2 cho ra "giá vốn" giả) và dòng
   //    không có giá; sắp tăng dần → dòng đầu = giá vốn nhỏ nhất.
-  const offers = (data.sourcing || [])
+  let offers = (data.sourcing || [])
     .filter((o) => o.priceValue != null && !o.isAccessory)
     .sort((a, b) => a.priceValue - b.priceValue);
 
   if (data.identity && data.identity.product) $('costTitle').textContent = data.identity.product;
+
+  // Lọc theo Gemini: tìm bằng ảnh trả về hàng NHÌN GIỐNG, nên rẻ nhất có thể là món KHÁC loại
+  // (vd tra "tai nghe" ra "kệ đựng tai nghe" ¥3, leo lên đầu vì rẻ). Hỏi model tiêu đề nào ĐÚNG
+  // loại sản phẩm gốc rồi chỉ lấy rẻ nhất TRONG SỐ đó. Thiếu khoá / model lỗi → giữ nguyên như cũ.
+  if (offers.length > 1) {
+    setCostStatus('Đang đọc tiêu đề để chọn đúng loại sản phẩm…');
+    try {
+      const productHint = (data.identity && data.identity.product) || p.name || '';
+      const rr = await fetch(`${BACKEND}/api/cost/rank`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ product: productHint, titles: offers.map((o) => o.title || '') }),
+      });
+      const rj = await rr.json().catch(() => ({}));
+      if (my !== costToken) return;
+      if (Array.isArray(rj.relevant) && rj.relevant.length) {
+        const keep = new Set(rj.relevant);
+        const filtered = offers.filter((_, idx) => keep.has(idx)); // giữ nguyên thứ tự giá tăng dần
+        if (filtered.length) offers = filtered;
+      }
+    } catch (e) { /* Gemini lỗi/không cấu hình → giữ nguyên danh sách, lấy rẻ nhất như trước */ }
+  }
 
   if (!offers.length) {
     setCostStatus(data.message || '1688 không tìm thấy hàng khớp ảnh này. Thử tra tay bằng ảnh/từ khoá.', 'err');
