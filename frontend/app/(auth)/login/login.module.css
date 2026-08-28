@@ -44,6 +44,23 @@
   align-items: center;
   gap: 14px;
 }
+/* Logo hãng mẹ trên panel tối — chữ nâu chìm vào nền, nên đặt trên chip sáng bo tròn cho đọc rõ. */
+.brandLogo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: 8px 11px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.32);
+}
+.brandLogo img {
+  height: 26px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+}
 .eyebrow {
   font-family: var(--font-mono);
   font-size: 11px;

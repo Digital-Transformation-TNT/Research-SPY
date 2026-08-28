@@ -199,6 +199,11 @@ export default function LoginPage() {
       {/* ------- bảng radar (chữ ký thị giác) ------- */}
       <section className={s.recon}>
         <div className={s.brandLock}>
+          {orgLogoOk ? (
+            <span className={s.brandLogo}>
+              <img src="/brand/tnt-group.png" alt="TNT Group" onError={() => setOrgLogoOk(false)} />
+            </span>
+          ) : null}
           <div>
             <p className={s.eyebrow}>Reconnaissance console</p>
             <div className={s.wordmark}>
