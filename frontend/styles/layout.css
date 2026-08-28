@@ -233,6 +233,35 @@
   color: var(--brand-hover);
 }
 
+/* ==================== logo hãng mẹ (TNT Group) ==================== */
+
+.sidebar-org {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 12px 10px 2px;
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.org-cap {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+}
+
+.org-logo {
+  height: 30px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  display: block;
+}
+
 /* ==================== page header ==================== */
 
 .page-head {

@@ -185,9 +185,33 @@
   justify-content: center;
   padding: 40px 32px;
 }
+.formInner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 26px;
+  width: 100%;
+}
 .card {
   width: 100%;
   max-width: 360px;
+}
+
+/* Logo hãng mẹ dưới form — nền sáng nên logo nâu đọc rõ. */
+.orgMark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-mute);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.orgMark img {
+  height: 26px;
+  width: auto;
+  object-fit: contain;
 }
 .cardHead {
   margin-bottom: 26px;

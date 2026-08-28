@@ -75,6 +75,7 @@ function Radar() {
 
 export default function LoginPage() {
   const [ready, setReady] = useState(false)
+  const [orgLogoOk, setOrgLogoOk] = useState(true) // logo TNT Group — tự ẩn nếu thiếu file
   const [mode, setMode] = useState<Mode>('email')
   const [status, setStatus] = useState<Status>(null)
   const [busy, setBusy] = useState(false)
@@ -229,6 +230,7 @@ export default function LoginPage() {
       {/* ------- form ------- */}
       <section className={s.formPane}>
         {ready ? (
+          <div className={s.formInner}>
           <div className={s.card}>
             {mode === 'email' && (
               <form onSubmit={submitEmail}>
@@ -328,6 +330,13 @@ export default function LoginPage() {
             )}
 
             {status && <div className={`${s.status} ${s[status.kind]}`}>{status.text}</div>}
+          </div>
+          {orgLogoOk ? (
+            <div className={s.orgMark}>
+              <span>Nội bộ</span>
+              <img src="/brand/tnt-group.png" alt="TNT Group" onError={() => setOrgLogoOk(false)} />
+            </div>
+          ) : null}
           </div>
         ) : null}
       </section>
