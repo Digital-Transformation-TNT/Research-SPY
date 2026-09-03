@@ -37,14 +37,17 @@ export default function GuidePage() {
             <li>
               <div>
                 <strong>Đọc cột &ldquo;Lượng tìm 12 tháng&rdquo;.</strong> Đường vẽ hình dạng nhu cầu theo thời gian, kèm
-                tháng cao điểm — đó mới là thứ quyết định nên test lúc nào. Cột &ldquo;Bảng xếp hạng&rdquo; cho biết nền
-                tảng nào gợi ý từ khoá đó và ở vị trí mấy; từ được nhiều nguồn cùng công nhận thì đáng tin hơn.
+                tháng cao điểm — đó mới là thứ quyết định nên test lúc nào. Cột bên phải cho biết nền tảng nào
+                gợi ý từ khoá đó; từ được nhiều nguồn cùng công nhận thì đáng tin hơn. Cột ấy tên là &ldquo;Bảng xếp
+                hạng&rdquo; kèm số thứ hạng khi Google Trends đang bật, và đổi thành &ldquo;Nguồn tham khảo&rdquo; không
+                kèm số khi tắt Trends — vì lúc đó không nguồn nào đo được nhu cầu để mà xếp hạng.
               </div>
             </li>
             <li>
               <div>
-                <strong>Bấm &ldquo;tìm ads&rdquo;</strong> để nhảy sang tab Quảng cáo với từ khoá đó, xem có ai đang chạy
-                quảng cáo cho sản phẩm này không.
+                <strong>Bấm &ldquo;Tìm sản phẩm&rdquo;</strong> để nhảy sang tab Sản phẩm với từ khoá đó điền sẵn, xem ai đang
+                bán và ai đang chạy quảng cáo cho món này. Từ khoá được điền sẵn nhưng KHÔNG tự chạy — bấm Research
+                khi đã chọn xong sàn và quốc gia.
               </div>
             </li>
             <li>

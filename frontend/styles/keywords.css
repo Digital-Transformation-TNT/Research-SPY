@@ -41,11 +41,16 @@
 
 /* Từ khoá · Lượng tìm 12 tháng · Bảng xếp hạng · hành động.
    Cột cuối chỉ còn đúng một liên kết từ khi nút "vì sao?" bị gỡ, nên nó được ghim hẹp —
-   để `auto` thì nó nuốt phần thừa và đẩy ba cột dữ liệu dồn về bên trái. */
+   để `auto` thì nó nuốt phần thừa và đẩy ba cột dữ liệu dồn về bên trái.
+
+   132px chứ không phải 84px như trước: 84 vừa khít chữ "tìm ads", và đúng lúc nhãn đổi thành
+   "Tìm sản phẩm" thì mọi dòng gãy làm hai. Một bề rộng vừa khít đúng một chuỗi cụ thể là cái
+   bẫy chỉ lộ ra khi chuỗi đó đổi, nên `.actions a` bên dưới thêm `white-space: nowrap` —
+   lần sau nhãn có dài thêm thì cột bị đẩy rộng ra, không phải chữ bị bẻ đôi. */
 .kwtable td:nth-child(2) { width: 34%; }
 .kwtable td:nth-child(3) { width: 22%; }
 .kwtable td:nth-child(4) { width: 28%; }
-.kwtable td:nth-child(5) { width: 84px; }
+.kwtable td:nth-child(5) { width: 132px; }
 
 /* Chỉ Shopee/TikTok: cột lượng tìm không tồn tại, vì hai sàn không đo được nhu cầu.
    Xem `KeywordTable`.
@@ -61,7 +66,34 @@
    ô của nó thì mắt không nhận ra; một lỗ hổng giữa hai cột có nội dung thì có. */
 .kwtable.no-trend td:nth-child(2) { width: auto; }
 .kwtable.no-trend td:nth-child(3) { width: 260px; }
-.kwtable.no-trend td:nth-child(4) { width: 84px; }
+.kwtable.no-trend td:nth-child(4) { width: 132px; }
+
+/* Không có nguồn chấm chính: cột `#` cũng biến mất (xem `KeywordTable`), nên mọi thứ trượt
+   thêm một chỗ nữa — ba cột còn lại là Từ khoá · Nguồn tham khảo · hành động.
+
+   Phải khai lại lần nữa vì cùng lý do đã ghi ở trên: các quy tắc chốt theo VỊ TRÍ. Bỏ cột `#`
+   mà không sửa ở đây thì cột Từ khoá lĩnh `width: auto` của vị trí 2 — đúng thứ nó cần, nhưng
+   cột "Nguồn tham khảo" lĩnh 260px của vị trí 3 rồi cột hành động lĩnh 84px của vị trí 4 là
+   trùng khớp NGẪU NHIÊN chứ không phải cố ý, và sẽ lệch ngay lần một trong hai bảng đổi cột.
+   Ba dòng dưới nói thẳng ra ý định, không dựa vào sự trùng khớp ấy.
+
+   Thực tế hai cờ luôn đi cùng nhau (`showDemand` và `hasPrimary` đều suy từ cùng một danh
+   sách nguồn), nhưng chúng là hai câu hỏi khác nhau nên CSS khai riêng từng cái. */
+/* `100%` chứ không phải `auto`: với bảng ba cột, `auto` để trình duyệt chia phần dư theo nội
+   dung, và phần dư rơi vào cột hành động — chữ "Tìm sản phẩm" dạt sang trái còn mép phải hở
+   một khoảng trắng rộng bằng cả cột. `100%` nói thẳng cột Từ khoá là cột nuốt phần thừa; hai
+   cột kia đã ghim cứng nên không có gì để tranh. */
+.kwtable.no-trend.no-rank td:nth-child(1) { width: 100%; }
+/* 260px ở dạng trên là chỗ cho NHIỀU chip đứng cạnh nhau. Ở dạng này không bao giờ có
+   nhiều: chip nguồn là radio (`pick`), còn "Tổng hợp" luôn kéo theo Google vì `markets` của
+   Google là `null` nên nó phục vụ mọi thị trường — tức là hễ có từ hai nguồn trở lên thì đã
+   có nguồn chấm chính, và bảng đã sang dạng khác. Ở đây luôn đúng MỘT chip.
+   `min-width` chứ không chỉ `width`: cột đầu lấy `100%` sẽ ép mọi cột khác về bề rộng nội
+   dung, và chip "Shopee" hẹp hơn chính cái tiêu đề cột — bỏ chặn dưới thì "Nguồn tham khảo"
+   gãy làm ba dòng. */
+.kwtable.no-trend.no-rank td:nth-child(2) { width: 160px; min-width: 160px; }
+.kwtable.no-trend.no-rank th:nth-child(2) { min-width: 160px; }
+.kwtable.no-trend.no-rank td:nth-child(3) { width: 132px; }
 
 /* Từ khoá là NHÂN VẬT CHÍNH của mỗi dòng — đây là chuỗi người ta thật sự gõ vào ô tìm kiếm,
    thứ duy nhất trong ô này kiểm chứng được. Nó phải thắng dòng nghĩa bên dưới ở cả ba mặt:
@@ -238,6 +270,7 @@
   font-size: 12px;
   font-weight: 500;
   text-decoration: none;
+  white-space: nowrap;
 }
 .actions a:hover { text-decoration: underline; }
 

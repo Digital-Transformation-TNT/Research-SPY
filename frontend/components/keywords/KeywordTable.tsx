@@ -187,6 +187,7 @@ function PresenceCell({
 function Row({
   item,
   rank,
+  showRank,
   sources,
   sourceTotals,
   showDemand,
@@ -195,6 +196,8 @@ function Row({
 }: {
   item: KeywordCandidate
   rank: number
+  /** Xem `showRank` ở `KeywordTable` — cột `#` biến mất khi không có nguồn chấm chính. */
+  showRank: boolean
   sources: SourceInfo[]
   sourceTotals: Partial<Record<KeywordSource, number>>
   showDemand: boolean
@@ -203,7 +206,7 @@ function Row({
 }) {
   return (
     <tr className={item.intent === 'informational' ? 'info-row' : undefined}>
-      <td className="rank">{rank}</td>
+      {showRank && <td className="rank">{rank}</td>}
       <td>
         <div className="kw">{item.display}</div>
         {/* Nghĩa nằm ngay dưới từ khoá chứ không thành một cột riêng: đọc một dòng ngoại ngữ
@@ -231,8 +234,12 @@ function Row({
         <PresenceCell item={item} sources={sources} sourceTotals={sourceTotals} />
       </td>
       <td className="actions">
-        <a href={`/ads?keyword=${encodeURIComponent(item.display)}`} title="Mở tab Quảng cáo với từ khoá này">
-          tìm ads ↗
+        {/* Sang tab Sản phẩm với từ khoá điền sẵn. `?keyword=` được `app/(dashboard)/ads/page.tsx`
+            chuyển tiếp thành `?kw=` của trang research bên trong iframe — không có bước đó thì
+            người dùng nhảy sang tab rồi phải gõ lại đúng cụm vừa bấm. KHÔNG tự chạy research:
+            mỗi lượt là một loạt lượt crawl thật, phải do người dùng bấm. */}
+        <a href={`/ads?keyword=${encodeURIComponent(item.display)}`} title="Mở tab Sản phẩm với từ khoá này điền sẵn">
+          Tìm sản phẩm ↗
         </a>
       </td>
     </tr>
@@ -273,22 +280,41 @@ export default function KeywordTable({
   gloss?: Record<string, KeywordGloss>
   glossLoading?: boolean
 }) {
+  // Cùng phép suy như `PresenceCell`, và cùng lý do: nguồn nào là chính do backend công bố,
+  // nên chỗ này đọc từ danh sách nguồn đang bật chứ không viết cứng chuỗi "trends".
+  const hasPrimary = sources.some((s) => s.primary)
+
   return (
     // Bề rộng các cột được ghim theo vị trí trong `keywords.css`, nên bỏ một cột đi phải báo
     // cho CSS biết — nếu không thì cột xếp hạng lĩnh bề rộng của cột lượng tìm vừa biến mất.
-    <table className={showDemand ? 'kwtable' : 'kwtable no-trend'}>
+    // `no-rank` là lời báo thứ hai, cho lần cột `#` biến mất.
+    <table className={`kwtable${showDemand ? '' : ' no-trend'}${hasPrimary ? '' : ' no-rank'}`}>
       <thead>
         <tr>
-          <th>#</th>
+          {/* Cột `#` chỉ có nghĩa khi có nguồn chấm chính. Không có Google Trends thì thứ tự
+              các dòng không đến từ một phép đo nhu cầu nào — đánh số 1, 2, 3 lên nó là dựng ra
+              một bảng xếp hạng mà không nguồn nào đứng sau. Cùng lý do với việc chip của các
+              sàn không hiện `#`; xem `rankHint`. */}
+          {hasPrimary && <th>#</th>}
           <th>Từ khoá</th>
           {showDemand && (
             <th title="Thang 0–100 so với cụm được tìm nhiều nhất trong nhóm truy vấn liên quan — KHÔNG phải số lượt tìm tuyệt đối. Kèm phần trăm thay đổi so với kỳ trước. Cả hai đúng như Google Trends công bố.">
               Lượng tìm — {timeLabel}
             </th>
           )}
-          <th title="Thứ hạng của từ khoá trong TOÀN BỘ danh sách mà nguồn đó trả về — không phải thứ tự ở cột # bên trái. Đưa chuột vào từng chip để xem mẫu số và cách nguồn đó xếp.">
-            Bảng xếp hạng
-          </th>
+          {/* Tên cột đổi theo việc có nguồn chấm chính hay không, vì nội dung cột đổi thật:
+              có Google Trends thì mỗi chip mang một thứ hạng đo được, còn lại thì chip chỉ nói
+              "nguồn này có gợi ý từ khoá đó" — gọi chỗ ấy là "Bảng xếp hạng" là hứa một thứ
+              hạng không tồn tại. */}
+          {hasPrimary ? (
+            <th title="Thứ hạng của từ khoá trong TOÀN BỘ danh sách mà nguồn đó trả về — không phải thứ tự ở cột # bên trái. Đưa chuột vào từng chip để xem mẫu số và cách nguồn đó xếp.">
+              Bảng xếp hạng
+            </th>
+          ) : (
+            <th title="Những nguồn có gợi ý từ khoá này. KHÔNG phải thứ hạng: đây là API gợi ý gõ, thứ tự chúng trả về chỉ phản ánh cách hoàn thiện tiền tố ta tự gieo, không phản ánh có bao nhiêu người tìm.">
+              Nguồn tham khảo
+            </th>
+          )}
           <th />
         </tr>
       </thead>
@@ -298,6 +324,7 @@ export default function KeywordTable({
             key={item.keyword}
             item={item}
             rank={i + 1}
+            showRank={hasPrimary}
             sources={sources}
             sourceTotals={sourceTotals}
             showDemand={showDemand}

@@ -21,6 +21,23 @@ export const metadata: Metadata = {
  * `all_frames: true`, nếu không content script chỉ chạy ở khung ngoài và cầu postMessage
  * không có ai nghe — trang sẽ báo "chưa cài extension" dù đã cài.
  */
-export default function ResearchPage() {
-  return <iframe src="/research/index.html" className="research-frame" title="Research đa sàn" />
+export default async function ResearchPage({
+  searchParams,
+}: {
+  /** Promise từ Next 15 — `searchParams` không còn đọc đồng bộ được nữa. */
+  searchParams: Promise<{ keyword?: string | string[] }>
+}) {
+  // Cầu nối từ tab Keyword: liên kết "Tìm sản phẩm" của mỗi dòng gọi `/ads?keyword=...`.
+  //
+  // Bước chuyển tiếp này là thứ đã THIẾU, và thiếu một cách lặng lẽ: `?keyword=` nằm ở URL
+  // khung ngoài, còn ô tìm kiếm nằm trong iframe `/research/index.html` — một tài liệu khác,
+  // không thấy query string của khung cha. Trang research vốn ĐÃ biết đọc `?kw=` (nó nhận từ
+  // popup extension), nên chỉ cần chuyền tham số qua đúng ranh giới đó.
+  //
+  // Lấy phần tử đầu khi Next trả về mảng (`?keyword=a&keyword=b`) — ô tìm kiếm chỉ có một.
+  const { keyword } = await searchParams
+  const seed = (Array.isArray(keyword) ? keyword[0] : keyword)?.trim()
+  const src = seed ? `/research/index.html?kw=${encodeURIComponent(seed)}` : '/research/index.html'
+
+  return <iframe src={src} className="research-frame" title="Research đa sàn" />
 }

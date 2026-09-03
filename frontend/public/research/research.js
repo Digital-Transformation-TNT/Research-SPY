@@ -1298,7 +1298,10 @@ $('platforms').addEventListener('click', (e) => {
   refreshLogin();
 });
 
-// Khởi tạo: vẽ chip sàn + region theo sàn + check đăng nhập; ?kw từ popup thì chạy sau khi check.
+// Khởi tạo: vẽ chip sàn + region theo sàn + check đăng nhập.
+// ?kw đến từ HAI nơi: popup của extension, và nút "Tìm sản phẩm" ở tab Keyword — nút đó gọi
+// `/ads?keyword=...` rồi `app/(dashboard)/ads/page.tsx` chuyền tiếp vào src của iframe này.
+// Chỉ ĐIỀN sẵn, không tự bấm Research: mỗi lượt là một loạt crawl thật lên các sàn.
 renderPlatforms();
 updateRegionSection();
 const _kw = new URLSearchParams(location.search).get('kw');
