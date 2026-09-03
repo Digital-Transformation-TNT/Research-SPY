@@ -88,3 +88,6 @@ backend/models/
 
 # Binary nssm — vps-setup.ps1 tự tải, không commit
 deploy/nssm.exe
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+graft/

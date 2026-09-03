@@ -1,0 +1,127 @@
+// =============================================================================
+//  Research SPY — các sơ đồ (views)
+//  Mở bằng:  npx likec4 start   → chọn view ở thanh bên
+// =============================================================================
+
+views {
+
+  // --------------------------------------------------------------------------
+  //  1) LANDSCAPE — toàn cảnh: người dùng, hệ thống, mọi nguồn ngoài
+  // --------------------------------------------------------------------------
+  view index {
+    title 'Toàn cảnh — Research SPY & các nguồn dữ liệu'
+    include *
+    autoLayout LeftRight
+  }
+
+  // --------------------------------------------------------------------------
+  //  2) SYSTEM CONTEXT — Research SPY nói chuyện với ai
+  // --------------------------------------------------------------------------
+  view context of spy {
+    title 'Bối cảnh hệ thống — Research SPY'
+    include *
+    autoLayout LeftRight
+  }
+
+  // --------------------------------------------------------------------------
+  //  3) CONTAINERS — bốn khối chạy: extension, frontend, backend, hub
+  // --------------------------------------------------------------------------
+  view containers of spy {
+    title 'Các container — trình duyệt (extension + Next.js) · FastAPI · Hub'
+    include *
+    // gộp các nguồn ngoài lại cho gọn ở tầng container
+    include extShopee, extTtShop, extAmazon, ext1688, extTaobao, extTemu, extDouyin
+    include extFacebook, extTiktokCC, extYoutube, extEtsy, extGoogle, extMtop, extGemini, extSupabase
+    autoLayout TopBottom
+  }
+
+  // --------------------------------------------------------------------------
+  //  4) BACKEND — các component bên trong FastAPI
+  // --------------------------------------------------------------------------
+  view backend of spy.be {
+    title 'Bên trong Backend (FastAPI) — bốn mục + hạ tầng dùng chung'
+    include *
+    include spy.hub
+    autoLayout LeftRight
+  }
+
+  // --------------------------------------------------------------------------
+  //  5) EXTENSION — service worker & các hook
+  // --------------------------------------------------------------------------
+  view extension of spy.ext {
+    title 'Bên trong Extension Chrome (MV3) — client-fetch'
+    include *
+    include spy.fe.feBridge
+    autoLayout LeftRight
+  }
+
+  // --------------------------------------------------------------------------
+  //  6) HUB — Trend Signal Hub
+  // --------------------------------------------------------------------------
+  view hub of spy.hub {
+    title 'Bên trong Trend Signal Hub'
+    include *
+    include spy.hubDb
+    autoLayout LeftRight
+  }
+
+  // --------------------------------------------------------------------------
+  //  7) DYNAMIC — luồng hai pha của mục Quảng cáo (client-fetch)
+  //     Server dựng lệnh → extension chạy trong phiên người dùng → nộp raw về
+  // --------------------------------------------------------------------------
+  dynamic view adsClientFetch {
+    title 'Luồng hai pha — Quảng cáo qua extension (Shopee & TikTok Shop)'
+
+    staff -> spy.fe.feDash 'mở mục Quảng cáo, nhập từ khoá'
+    spy.fe.feDash -> spy.fe.feProxy 'POST /api/ads/search'
+    spy.fe.feProxy -> spy.be.beApi 'chuyển tiếp'
+    spy.be.beApi -> spy.be.beAds 'run_ad_search()'
+
+    // Pha 1: nguồn server tự fetch được
+    spy.be.beAds -> extFacebook 'fetch trực tiếp'
+    spy.be.beAds -> extGemini 'trích cụm từ khoá từ tiêu đề'
+
+    // Pha 1b: nguồn client → trả về ClientJob cho trình duyệt tự chạy
+    spy.be.beAds -> spy.be.beApi 'kèm ClientJob (RequestSpec)'
+    spy.be.beApi -> spy.fe.feBridge 'ClientJob về trình duyệt'
+
+    // Pha 2: extension chạy trong tab đã đăng nhập
+    spy.fe.feBridge -> spy.ext.extContent 'postMessage(ClientJob)'
+    spy.ext.extContent -> spy.ext.extSw 'chuyển job'
+    spy.ext.extSw -> extShopee 'fetch same-origin, phiên người dùng'
+    extShopee -> spy.ext.extSw 'raw JSON'
+    spy.ext.extSw -> spy.fe.feBridge 'raw về web app'
+
+    // Nộp raw về server để parse + chấm điểm
+    spy.fe.feBridge -> spy.be.beApi 'POST /api/ads/ingest (raw)'
+    spy.be.beApi -> spy.be.beAds 'ingest_client_results() — parse & chấm điểm'
+    spy.be.beAds -> spy.fe.feDash 'AdSearchResult đã xếp hạng'
+
+    autoLayout TopBottom
+  }
+
+  // --------------------------------------------------------------------------
+  //  8) DYNAMIC — đường RELAY: user KHÔNG có extension, mượn máy-thợ dùng chung
+  // --------------------------------------------------------------------------
+  dynamic view relayFlow {
+    title 'Đường relay — user không có extension mượn máy-thợ chung'
+
+    staff -> spy.fe.feDash 'Bấm Research (máy này KHÔNG có extension)'
+    spy.fe.feDash -> spy.fe.feBridge 'không thấy extension cục bộ → thử relay'
+    spy.fe.feBridge -> spy.be.beRelay 'POST /api/relay/submit (kèm JWT) — GIỮ kết nối'
+    spy.be.beRelay -> spy.memState 'đưa job vào hàng đợi RAM'
+
+    spy.worker.wkPage -> spy.be.beRelay 'GET /api/relay/next (long-poll)'
+    spy.be.beRelay -> spy.worker.wkPage 'giao job'
+    spy.worker.wkPage -> spy.ext.extContent 'chạy job qua extension (postMessage)'
+    spy.ext.extContent -> spy.ext.extSw 'chuyển job'
+    spy.ext.extSw -> extShopee 'fetch same-origin, phiên máy-thợ'
+    extShopee -> spy.ext.extSw 'raw JSON'
+    spy.ext.extSw -> spy.worker.wkPage 'raw về trang /worker'
+    spy.worker.wkPage -> spy.be.beRelay 'POST /api/relay/result'
+    spy.be.beRelay -> spy.fe.feBridge 'đánh thức /submit → trả kết quả đúng user'
+    spy.fe.feBridge -> spy.fe.feDash 'kết quả (giống hệt đường extension cục bộ)'
+
+    autoLayout TopBottom
+  }
+}

@@ -1,0 +1,314 @@
+// =============================================================================
+//  Research SPY — mô hình kiến trúc (model)
+//  Công cụ nội bộ nghiên cứu sản phẩm cho phòng test. Bốn mục lớn độc lập:
+//  Quảng cáo, Từ khoá, Tìm bằng ảnh, Cơ hội — cộng Trend Signal Hub.
+// =============================================================================
+
+model {
+
+  // ==========================================================================
+  //  NGƯỜI DÙNG
+  // ==========================================================================
+  staff = person 'Nhân viên test sản phẩm' {
+    description 'Nghiên cứu top sản phẩm, từ khoá, nguồn hàng và khoảng trống thị trường trước khi quyết định test.'
+  }
+
+  admin = person 'Quản trị viên' {
+    description 'Quản lý tài khoản người dùng và xem thống kê sử dụng ở trang Quản trị.'
+  }
+
+  // ==========================================================================
+  //  HỆ THỐNG RESEARCH SPY
+  // ==========================================================================
+  spy = system 'Research SPY' {
+    description 'Tầng dữ liệu + giao diện cho nghiên cứu quảng cáo, từ khoá, ảnh và cơ hội thị trường.'
+
+    // ------------------------------------------------------------------------
+    //  CONTAINER 1 — Extension Chrome (chạy trong trình duyệt người dùng)
+    // ------------------------------------------------------------------------
+    ext = container 'Chrome Extension (MV3)' {
+      description 'Chạy fetch NGAY TRONG tab của sàn nên same-origin và mượn đúng phiên đăng nhập; cookie không bao giờ rời trình duyệt.'
+      technology 'JavaScript · Manifest V3'
+
+      extSw = component 'background.js — service worker' {
+        description 'Nhận ClientJob, chạy fetch trong tab của sàn (Shopee, TikTok Shop, Amazon, 1688, Taobao, Temu), trả raw về.'
+      }
+      extContent = component 'content.js — cầu nối' {
+        description 'Bắc cầu web app ↔ service worker qua postMessage.'
+      }
+      extPageHook = component 'page-hook.js / similar-hook.js' {
+        description 'Chộp phản hồi mà chính trang tự gọi (Taobao, Temu, "sản phẩm tương tự" Shopee).'
+      }
+      extPopup = component 'popup — tự test' {
+        description 'Tự kiểm tra một sàn mà không cần web app.'
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    //  CONTAINER 2 — Frontend Next.js (cổng 3000, chỉ giao diện)
+    // ------------------------------------------------------------------------
+    fe = container 'Frontend (Next.js)' {
+      description 'Chỉ giao diện, không có logic nghiệp vụ. Trình duyệt chỉ nói chuyện với cổng này.'
+      technology 'TypeScript · Next.js · cổng 3000'
+
+      feDash = component 'Trang Dashboard' {
+        description 'Các trang: /ads /keywords /image /opportunity /trend-signal /admin /guide + đăng nhập.'
+      }
+      feResearch = component 'Trang Research (HTML/JS thuần)' {
+        description 'public/research — chuyển từ extension sang, nhúng nguyên vào /ads. Cố ý KHÔNG viết lại thành React.'
+      }
+      feBridge = component 'Cầu nối Extension (lib/ads/extension.ts)' {
+        description 'Đẩy ClientJob sang extension và nhận raw trả về.'
+      }
+      feProxy = component 'API proxy (next.config rewrite)' {
+        description 'Chuyển tiếp mọi /api/* sang backend cổng 8000 — cùng origin, không CORS.'
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    //  CONTAINER 3 — Backend FastAPI (cổng 8000, toàn bộ tầng dữ liệu)
+    // ------------------------------------------------------------------------
+    be = container 'Backend API (FastAPI)' {
+      description 'Gọi nguồn, chấm điểm, cache, proxy media. Giữ trạng thái trong bộ nhớ nên CHỈ chạy một tiến trình.'
+      technology 'Python · FastAPI · cổng 8000'
+
+      // --- Tầng HTTP mỏng ---
+      beApi = component 'HTTP / Routers (app/api)' {
+        description 'Tầng mỏng: ads, keywords, imagesearch, opportunity, media, auth, admin, analytics. Không chứa logic nghiệp vụ.'
+      }
+      beAuth = component 'Auth (JWT + Supabase)' {
+        #infra
+        description 'Đăng nhập/đăng ký/me/logout; JWT là middleware TÙY CHỌN, mỗi endpoint nhạy cảm tự enforce.'
+      }
+
+      // --- Bốn mục lớn (lib/) ---
+      beAds = component 'Mục Quảng cáo (lib/ads)' {
+        #feature
+        description 'Điều phối hai pha: server fetch nguồn công khai, extension nộp raw về; rồi chấm điểm & khớp ảnh (pHash/CLIP).'
+      }
+      beKw = component 'Mục Từ khoá (lib/keywords)' {
+        #feature
+        description 'Mở rộng long-tail, chuẩn hoá theo thị trường, chấm bằng Trends, bắc cầu bản địa & dịch nghĩa.'
+      }
+      beImg = component 'Mục Tìm bằng ảnh (lib/imagesearch)' {
+        #feature
+        description 'Một ảnh → nguồn hàng & sáu tầng giá ở năm sàn (1688, Alibaba, AliExpress, Taobao, Lens).'
+      }
+      beOpp = component 'Mục Cơ hội (lib/opportunity)' {
+        #feature
+        description 'Hỏi đáp về khoảng trống thị trường trên dữ liệu đã thu (demand map).'
+      }
+
+      // --- Hạ tầng dùng chung (lib/core) ---
+      beBrowser = component 'Browser pool (lib/core/browser)' {
+        #infra
+        description 'Kho phiên Playwright/Chromium, chạy theo "recipe" nguồn tự khai.'
+      }
+      beHttp = component 'HTTP client (lib/core/http)' {
+        #infra
+        description 'Gọi JSON cho nguồn không cần trình duyệt.'
+      }
+      beMtop = component 'MTOP signer (lib/core/mtop)' {
+        #infra
+        description 'Ký request cho cổng MTOP của Alibaba (1688/Taobao/Tmall/AliExpress).'
+      }
+      beMedia = component 'Media proxy (app/api/media)' {
+        #infra
+        description 'Proxy phát video từ cùng origin, có danh sách host cho phép.'
+      }
+      beRelay = component 'Relay (app/api/relay)' {
+        #infra
+        description 'Hàng đợi job trong RAM: user /submit (chờ kết quả) — máy-thợ /next (long-poll) + /result. Gác auth: /submit đòi đăng nhập khi JWT bật; /next+/result theo RELAY_WORKER_TOKEN (tùy chọn).'
+      }
+      beCost = component 'Cost/rank (app/api/cost)' {
+        #feature
+        description 'Giá vốn: hỏi Gemini lọc chào hàng 1688 đúng loại sản phẩm gốc (không đụng ảnh, nhanh & rẻ).'
+      }
+      beCore = component 'Cache · rate-limit · store · config' {
+        #infra
+        description 'Cache TTL trong bộ nhớ, hàng đợi giữ nhịp gọi ra ngoài, kho trên đĩa cho kết quả tốn kém.'
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    //  CONTAINER 4 — Trend Signal Hub (import được phép trượt)
+    // ------------------------------------------------------------------------
+    hub = container 'Trend Signal Hub (hub/)' {
+      description 'Thu thập listing, chấm điểm cơ hội, dashboard & copilot. Kéo theo pandas/pytrends — import trượt được để không kéo sập backend.'
+      technology 'Python · pandas · SQLite'
+
+      hubRoutes = component 'Routes (/api/hub/*)' {
+        description 'taxonomy, opportunities, dashboard, catalogue, gallery, ingest, trends/discover, export, copilot…'
+      }
+      hubEngines = component 'Engines' {
+        description 'scoring, analysis, market, catalogue, learning — chấm điểm & tổng hợp insight.'
+      }
+      hubIngestion = component 'Ingestion + Workers' {
+        description 'seedgen, trends_browser — sinh seed và nạp Google Trends nền.'
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    //  CONTAINER 5 — Máy thợ crawl (trình duyệt-thợ dùng chung, IP dân cư)
+    // ------------------------------------------------------------------------
+    worker = container 'Máy thợ crawl (trình duyệt-thợ)' {
+      description 'Một trình duyệt đã cài extension + đăng nhập sàn, mở trang /worker và GIỮ tab. Phục vụ cả những user không có extension trên máy mình.'
+      technology 'Chrome + extension · trang /worker'
+
+      wkPage = component '/worker — long-poll' {
+        #client-fetch
+        description 'Long-poll /api/relay/next, chạy job qua chính extension trong tab này, POST /api/relay/result. Gửi X-Worker-Token nếu được cấu hình.'
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    //  KHO DỮ LIỆU
+    // ------------------------------------------------------------------------
+    hubDb = store 'Hub DB (SQLite)' {
+      description 'raw_listings, crawl_runs, reports, trends_cache, discovered_keywords, events.'
+      technology 'SQLite'
+    }
+    memState = store 'Trạng thái trong bộ nhớ' {
+      description 'Cache TTL dùng chung + kho phiên trình duyệt. Lý do phải chạy một tiến trình duy nhất.'
+      technology 'In-memory'
+    }
+  }
+
+  // ==========================================================================
+  //  HỆ THỐNG NGOÀI
+  // ==========================================================================
+
+  // --- Nguồn gọi THẲNG TỪ SERVER (API chính thức / ẩn danh) ---
+  extFacebook = external 'Facebook Ads Library' {
+    #server-fetch
+    description 'Content quảng cáo đang chạy.'
+  }
+  extTiktokCC = external 'TikTok Creative Center' {
+    #server-fetch
+    description 'Top ads / xu hướng.'
+  }
+  extYoutube = external 'YouTube Data API' {
+    #server-fetch
+    description 'Video theo sản phẩm (cần YOUTUBE_API_KEY).'
+  }
+  extEtsy = external 'Etsy API' {
+    #server-fetch
+    description 'Sản phẩm Etsy (cần ETSY_*).'
+  }
+  extGoogle = external 'Google (Suggest · Trends · Lens)' {
+    #server-fetch
+    description 'Gợi ý từ khoá, xu hướng tìm kiếm, tìm bằng ảnh.'
+  }
+  extMtop = external 'Alibaba MTOP gateway' {
+    #server-fetch
+    description '1688 · Taobao · Tmall · AliExpress — API mtop JSON ẩn danh.'
+  }
+  extGemini = external 'Google Gemini' {
+    #llm
+    description 'Trích từ khoá, dịch nghĩa, đề cử bản địa, đọc ảnh, tổng hợp insight/copilot.'
+  }
+  extSupabase = external 'Supabase' {
+    #server-fetch
+    description 'Postgres — bảng users cho đăng nhập/đăng ký.'
+  }
+
+  // --- Nguồn gọi QUA EXTENSION (trong phiên đăng nhập của người dùng) ---
+  extShopee  = external 'Shopee'        { #client-fetch; description 'Trả 403 cho server ẩn danh → phải fetch client.' }
+  extTtShop  = external 'TikTok Shop'   { #client-fetch; description 'Fetch client trong phiên người dùng.' }
+  extAmazon  = external 'Amazon'        { #client-fetch; description 'Fetch client trong phiên người dùng.' }
+  ext1688    = external '1688 (web)'    { #client-fetch; description 'Giá vốn / tìm bằng ảnh trong phiên người dùng.' }
+  extTaobao  = external 'Taobao (web)'  { #client-fetch; description 'Fetch client qua page-hook.' }
+  extTemu    = external 'Temu'          { #client-fetch; description 'Fetch client qua page-hook.' }
+  extDouyin  = external 'Douyin'        { #client-fetch; description 'Video / từ khoá tiếng Trung.' }
+
+
+  // ==========================================================================
+  //  QUAN HỆ
+  // ==========================================================================
+
+  // --- Người dùng ---
+  staff -> spy.fe.feDash 'Dùng công cụ qua trình duyệt' 'HTTPS'
+  admin -> spy.fe.feDash 'Quản lý user & xem thống kê' 'HTTPS'
+  staff -> spy.ext 'Cài & đăng nhập sẵn tab sàn'
+
+  // --- Trong trình duyệt: web app ↔ extension ---
+  spy.fe.feBridge -> spy.ext.extContent 'Gửi ClientJob / nhận raw' 'postMessage'
+  spy.ext.extContent -> spy.ext.extSw 'Chuyển job' 'postMessage'
+  spy.ext.extSw -> spy.ext.extPageHook 'Chộp phản hồi trang tự gọi'
+
+  // --- Frontend → Backend ---
+  spy.fe.feDash -> spy.fe.feProxy 'Gọi /api/*'
+  spy.fe.feResearch -> spy.fe.feProxy 'Gọi /api/ads/*'
+  spy.fe.feProxy -> spy.be.beApi 'Chuyển tiếp /api/*' 'HTTP · cổng 8000'
+  spy.fe.feProxy -> spy.hub.hubRoutes 'Chuyển tiếp /api/hub/*' 'HTTP'
+
+  // --- Extension nộp raw về backend ---
+  spy.fe.feBridge -> spy.be.beApi 'Nộp raw client → /api/ads/ingest'
+
+  // --- Trong backend: routers → mục ---
+  spy.be.beApi -> spy.be.beAuth 'Đăng nhập / phân quyền'
+  spy.be.beApi -> spy.be.beAds 'search / ingest / match-image'
+  spy.be.beApi -> spy.be.beKw 'expand / trends / gloss / bridge'
+  spy.be.beApi -> spy.be.beImg 'một ảnh → năm sàn'
+  spy.be.beApi -> spy.be.beOpp 'ask'
+  spy.be.beApi -> spy.be.beMedia 'proxy video'
+  spy.be.beApi -> spy.be.beRelay 'submit / next / result'
+  spy.be.beApi -> spy.be.beCost 'rank offer 1688'
+
+  // --- Đường RELAY: user không có extension → máy-thợ dùng chung ---
+  staff -> spy.worker 'Mở & giữ tab /worker (máy có extension)'
+  spy.fe.feBridge -> spy.be.beRelay 'submit job khi máy user không có extension'
+  spy.worker.wkPage -> spy.be.beRelay '/next (long-poll) · /result' 'HTTP'
+  spy.worker.wkPage -> spy.ext.extContent 'chạy job qua extension trong tab này' 'postMessage'
+  spy.be.beRelay -> spy.memState 'hàng đợi job trong RAM'
+
+  // --- Mục → hạ tầng dùng chung ---
+  spy.be.beAds -> spy.be.beBrowser 'fetch cần trình duyệt'
+  spy.be.beAds -> spy.be.beHttp 'fetch JSON'
+  spy.be.beAds -> spy.be.beCore 'cache · rate-limit · store'
+  spy.be.beKw  -> spy.be.beHttp 'fetch JSON'
+  spy.be.beKw  -> spy.be.beCore 'cache · store'
+  spy.be.beImg -> spy.be.beMtop 'ký request MTOP'
+  spy.be.beImg -> spy.be.beHttp 'fetch JSON'
+  spy.be.beMtop -> spy.be.beHttp 'gửi request đã ký'
+  spy.be.beCore -> spy.memState 'đọc/ghi cache & phiên'
+  spy.be.beBrowser -> spy.memState 'giữ phiên Chromium'
+
+  // --- Backend → Hub ---
+  spy.be.beApi -> spy.hub.hubRoutes 'Trend Signal Hub' { style { line dotted } }
+  spy.hub.hubRoutes -> spy.hub.hubEngines 'chấm điểm & tổng hợp'
+  spy.hub.hubRoutes -> spy.hub.hubIngestion 'nạp seed & trends'
+  spy.hub.hubEngines -> spy.hubDb 'đọc/ghi'
+  spy.hub.hubIngestion -> spy.hubDb 'ghi listing / trends'
+
+  // --- Backend → nguồn gọi thẳng từ server ---
+  spy.be.beAds -> extFacebook 'fetch quảng cáo'
+  spy.be.beAds -> extTiktokCC 'fetch top ads'
+  spy.be.beAds -> extYoutube 'API video'
+  spy.be.beAds -> extEtsy 'API sản phẩm'
+  spy.be.beKw  -> extGoogle 'Suggest · Trends'
+  spy.be.beImg -> extGoogle 'Google Lens'
+  spy.be.beImg -> extMtop 'giá sỉ 1688/Taobao/AliExpress'
+  spy.be.beKw  -> extMtop '1688 / Amazon suggest'
+  spy.hub.hubIngestion -> extGoogle 'Google Trends nền'
+
+  // --- LLM (Gemini) ---
+  spy.be.beAds -> extGemini 'trích từ khoá tiêu đề' { style { line dashed } }
+  spy.be.beKw  -> extGemini 'dịch nghĩa · bắc cầu bản địa' { style { line dashed } }
+  spy.be.beImg -> extGemini 'đọc & nhận diện ảnh' { style { line dashed } }
+  spy.be.beOpp -> extGemini 'demand map' { style { line dashed } }
+  spy.be.beCost -> extGemini 'lọc độ liên quan chào hàng 1688' { style { line dashed } }
+  spy.hub.hubEngines -> extGemini 'insight · forecast · copilot' { style { line dashed } }
+
+  // --- Auth → Supabase ---
+  spy.be.beAuth -> extSupabase 'đọc/ghi bảng users'
+
+  // --- Extension → sàn (client-fetch, trong phiên người dùng) ---
+  spy.ext.extSw -> extShopee 'fetch same-origin'
+  spy.ext.extSw -> extTtShop 'fetch same-origin'
+  spy.ext.extSw -> extAmazon 'fetch same-origin'
+  spy.ext.extSw -> ext1688 'fetch / tìm bằng ảnh'
+  spy.ext.extSw -> extTaobao 'fetch qua page-hook'
+  spy.ext.extSw -> extTemu 'fetch qua page-hook'
+  spy.ext.extSw -> extDouyin 'video / từ khoá'
+}

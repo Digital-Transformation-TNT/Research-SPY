@@ -1,0 +1,65 @@
+// =============================================================================
+//  Research SPY — LikeC4 specification
+//  Định nghĩa các loại phần tử (element kinds), quan hệ và tag dùng chung.
+//  Render:  npx likec4 start   (hoặc dùng extension LikeC4 cho VS Code)
+// =============================================================================
+
+specification {
+
+  // ----- Người dùng ---------------------------------------------------------
+  element person {
+    style {
+      shape person
+      color green
+    }
+  }
+
+  // ----- Hệ thống của mình --------------------------------------------------
+  element system {
+    style {
+      color primary
+    }
+  }
+
+  // ----- Hệ thống ngoài (nguồn dữ liệu, dịch vụ bên thứ ba) -----------------
+  element external {
+    style {
+      color gray
+      shape rectangle
+    }
+  }
+
+  // ----- Container: đơn vị chạy độc lập (tiến trình / trình duyệt) ----------
+  element container {
+    style {
+      color primary
+    }
+  }
+
+  // ----- Component: module bên trong một container --------------------------
+  element component {
+    style {
+      color sky
+    }
+  }
+
+  // ----- Kho dữ liệu --------------------------------------------------------
+  element store {
+    style {
+      shape storage
+      color amber
+    }
+  }
+
+  // ----- Quan hệ -----------------------------------------------------------
+  relationship async {
+    line dashed
+  }
+
+  // ----- Tag phân loại ------------------------------------------------------
+  tag client-fetch   // chạy trong trình duyệt người dùng, mượn phiên đăng nhập
+  tag server-fetch   // gọi thẳng từ server (API/ẩn danh)
+  tag llm            // gọi mô hình ngôn ngữ
+  tag feature        // một trong bốn mục lớn
+  tag infra          // hạ tầng dùng chung
+}

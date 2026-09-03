@@ -1,0 +1,3 @@
+# Ảnh render + build của LikeC4 — tái tạo được bằng `npx likec4 export png likec4 -o likec4/out`
+out/
+dist/
