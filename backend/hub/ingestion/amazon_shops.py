@@ -55,46 +55,50 @@ async def _scrape(asins: list[str], workers: int = 4) -> dict[str, str]:
 
     async with async_playwright() as p:
         b = await p.chromium.launch(channel="chrome", headless=True)
-        ctx = await b.new_context(
-            locale="en-US",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        # `finally` chứ không phải dòng cuối: một `gather` ném lỗi là bỏ lại nguyên con
+        # Chrome. Trên máy thợ chạy dài ngày, mỗi lần như vậy là vài trăm MB không ai đòi.
+        try:
+            ctx = await b.new_context(
+                locale="en-US",
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                           "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
-        async def worker():
-            pg = await ctx.new_page()
-            # chặn ảnh/font cho nhanh — chỉ cần HTML
-            await pg.route("**/*", lambda r: asyncio.ensure_future(
-                r.abort() if r.request.resource_type in ("image", "media", "font")
-                else r.continue_()))
-            while queue:
-                try:
-                    asin = queue.pop()
-                except IndexError:
-                    break
-                try:
-                    await pg.goto(f"https://www.amazon.com/dp/{asin}",
-                                  wait_until="domcontentloaded", timeout=25000)
-                    # Amazon có nhiều layout; thêm bảng thông số (tr.po-brand)
-                    # cho các trang không có #sellerProfileTriggerId/#bylineInfo.
-                    got = await pg.evaluate("""()=>{
-                      const pick = s => { const e=document.querySelector(s);
-                        return e? e.textContent.trim().slice(0,60) : null; };
-                      return {seller: pick('#sellerProfileTriggerId'),
-                              byline: pick('#bylineInfo'),
-                              brand:  pick('tr.po-brand td.a-span9 span')
-                                   || pick('#brand')
-                                   || pick('[data-feature-name="brandSnapshot"] a')};
-                    }""")
-                    name = (_clean(got.get("seller")) or _clean(got.get("byline"))
-                            or _clean(got.get("brand")))
-                    if name:
-                        found[asin] = name
-                except Exception:
-                    continue
-            await pg.close()
+            async def worker():
+                pg = await ctx.new_page()
+                # chặn ảnh/font cho nhanh — chỉ cần HTML
+                await pg.route("**/*", lambda r: asyncio.ensure_future(
+                    r.abort() if r.request.resource_type in ("image", "media", "font")
+                    else r.continue_()))
+                while queue:
+                    try:
+                        asin = queue.pop()
+                    except IndexError:
+                        break
+                    try:
+                        await pg.goto(f"https://www.amazon.com/dp/{asin}",
+                                      wait_until="domcontentloaded", timeout=25000)
+                        # Amazon có nhiều layout; thêm bảng thông số (tr.po-brand)
+                        # cho các trang không có #sellerProfileTriggerId/#bylineInfo.
+                        got = await pg.evaluate("""()=>{
+                          const pick = s => { const e=document.querySelector(s);
+                            return e? e.textContent.trim().slice(0,60) : null; };
+                          return {seller: pick('#sellerProfileTriggerId'),
+                                  byline: pick('#bylineInfo'),
+                                  brand:  pick('tr.po-brand td.a-span9 span')
+                                       || pick('#brand')
+                                       || pick('[data-feature-name="brandSnapshot"] a')};
+                        }""")
+                        name = (_clean(got.get("seller")) or _clean(got.get("byline"))
+                                or _clean(got.get("brand")))
+                        if name:
+                            found[asin] = name
+                    except Exception:
+                        continue
+                await pg.close()
 
-        await asyncio.gather(*[worker() for _ in range(workers)])
-        await b.close()
+            await asyncio.gather(*[worker() for _ in range(workers)])
+        finally:
+            await b.close()
     return found
 
 

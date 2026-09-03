@@ -55,40 +55,43 @@ async def _fetch_many(keywords: list[str], geo: str = "US",
     got: dict[str, list[float]] = {}
     async with async_playwright() as p:
         browser = await p.chromium.launch(channel="chrome", headless=True)
-        ctx = await browser.new_context(
-            storage_state=str(AUTH) if AUTH.exists() else None, locale="en-US")
-        page = await ctx.new_page()
+        # `finally` chứ không phải dòng cuối — xem ghi chú cùng loại ở `amazon_shops.py`.
+        try:
+            ctx = await browser.new_context(
+                storage_state=str(AUTH) if AUTH.exists() else None, locale="en-US")
+            page = await ctx.new_page()
 
-        current: dict = {"kw": None, "series": None}
+            current: dict = {"kw": None, "series": None}
 
-        async def on_resp(r):
-            if MULTILINE not in r.url:
-                return
-            try:
-                series = _parse(await r.text())
-            except Exception:
-                return
-            if series:
-                current["series"] = series
+            async def on_resp(r):
+                if MULTILINE not in r.url:
+                    return
+                try:
+                    series = _parse(await r.text())
+                except Exception:
+                    return
+                if series:
+                    current["series"] = series
 
-        page.on("response", on_resp)
+            page.on("response", on_resp)
 
-        for kw in keywords:
-            current["kw"], current["series"] = kw, None
-            url = (f"{EXPLORE}?q={urllib.parse.quote(kw)}"
-                   f"&geo={geo}&date={urllib.parse.quote(date_range)}")
-            try:
-                await page.goto(url, timeout=45000)
-                # chờ RPC multiline về; 8s là đủ cho mạng bình thường
-                for _ in range(16):
-                    if current["series"]:
-                        break
-                    await page.wait_for_timeout(500)
-            except Exception:
-                pass
-            if current["series"]:
-                got[kw] = _downsample(current["series"])
-        await browser.close()
+            for kw in keywords:
+                current["kw"], current["series"] = kw, None
+                url = (f"{EXPLORE}?q={urllib.parse.quote(kw)}"
+                       f"&geo={geo}&date={urllib.parse.quote(date_range)}")
+                try:
+                    await page.goto(url, timeout=45000)
+                    # chờ RPC multiline về; 8s là đủ cho mạng bình thường
+                    for _ in range(16):
+                        if current["series"]:
+                            break
+                        await page.wait_for_timeout(500)
+                except Exception:
+                    pass
+                if current["series"]:
+                    got[kw] = _downsample(current["series"])
+        finally:
+            await browser.close()
     return got
 
 

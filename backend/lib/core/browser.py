@@ -18,12 +18,13 @@ from __future__ import annotations
 import asyncio
 import sys
 import time
+from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from playwright.async_api import Browser, BrowserContext, Page, Playwright, Request, async_playwright
 
-from .config import config
+from .config import config, env_number
 
 # Bản TypeScript gọi thẳng `chromium.launch()`; API Python đòi phải khởi động driver trước,
 # nên nó được giữ ở đây và dùng chung cho cả `lib/keywords/trends.py`.
@@ -217,6 +218,9 @@ class Session:
     browser: Browser = field(repr=False)
     context: BrowserContext = field(repr=False)
     ttl_ms: float = 0.0
+    #: Lần gần nhất phiên này được đụng tới. Người dọn đọc mốc này để biết phiên đã quá hạn
+    #: có đang được dùng dở hay không — xem `_REAP_IDLE_MS`.
+    last_used_at: float = 0.0
 
 
 # Mỗi key giữ một Task chứ không phải một Session, để nhiều request cùng lúc chờ chung một
@@ -311,13 +315,15 @@ async def _launch(recipe: SessionRecipe, country: str) -> Session:
         seconds = round(config.warmup_timeout_ms / 1000)
         raise RuntimeError(f"{recipe.id} không phát ra request đã ký nào trong {seconds}s — {hint}")
 
+    now = _now_ms()
     return Session(
         page=page,
         harvest=harvest[0],
-        created_at=_now_ms(),
+        created_at=now,
         browser=browser,
         context=context,
         ttl_ms=recipe.ttl_ms,
+        last_used_at=now,
     )
 
 
@@ -336,6 +342,129 @@ async def _dispose(task: asyncio.Task[Session]) -> None:
     await _close_quietly(session.browser)
 
 
+#: Bao lâu quét hồ phiên một lần.
+_REAP_INTERVAL_S = 30.0
+
+#: Phiên đã quá hạn còn phải NGỒI YÊN đủ lâu nữa mới bị dọn.
+#:
+#: Hồ phiên đánh dấu thời điểm dùng gần nhất chứ không khoá, nên khoảng nghỉ này là thứ duy
+#: nhất ngăn người dọn đóng trình duyệt ngay giữa một lượt tìm đang chạy ngon: `search` của
+#: Facebook lấy phiên MỘT lần rồi giữ suốt vòng phân trang, mỗi trang một lần `fetch_in_page`,
+#: và cả vòng đó thừa sức dài hơn TTL 10 phút của nó.
+#:
+#: 60 giây là con số suy ra chứ không phải chọn cho tròn: `fetch_in_page` chạy qua
+#: `page.evaluate`, hạn mặc định của Playwright là 30 giây, và dấu thời gian được đóng TRƯỚC
+#: khi gọi — nên một lệnh gọi đang bay có tuổi tối đa 30 giây, tức luôn nằm trong khoảng nghỉ.
+_REAP_IDLE_MS = 60_000.0
+
+#: Trần MỀM cho số phiên sống cùng lúc — mỗi phiên là một Chrome 0,4–0,7 GB.
+#:
+#: TTL một mình KHÔNG chặn được RAM, vì nó đếm theo thời gian chứ không theo số lượng: hồ giữ
+#: một trình duyệt cho MỖI cặp (sàn × quốc gia), và với TTL 10 phút của Facebook thì năm người
+#: tìm năm thị trường khác nhau trong mười phút là mười trình duyệt cùng sống — dù tại mỗi thời
+#: điểm chỉ có một người đang thật sự chờ. Đo 2026-09-03 trên máy 8 GB: một phiên nạp trang thật
+#: tốn 683 MB, nên mười phiên là vượt ngân sách và máy bắt đầu swap.
+#:
+#: 4 là chỗ đứng giữa: đủ để các thị trường hay dùng (VN, US, TH…) không phải dựng lại liên tục,
+#: mà bốn Chrome thì vẫn nằm gọn trong ~2,7 GB. Đổi bằng `BROWSER_POOL_MAX` nếu máy khác.
+_POOL_MAX = int(env_number("BROWSER_POOL_MAX", 4))
+
+#: Người dọn chạy nền. Sinh ra khi có phiên đầu tiên, chết trong `close_all_sessions`.
+_reaper: asyncio.Task[None] | None = None
+
+
+async def _reap_sessions() -> None:
+    """
+    Đóng những phiên đã quá hạn mà không ai còn dùng.
+
+    VÌ SAO CẦN: `get_session` chỉ dọn phiên cũ khi có người hỏi ĐÚNG cái key đó. Không ai hỏi
+    lại thì trình duyệt cứ nằm đấy tới lúc restart server — mà đó chính là lúc ít người dùng,
+    tức là lúc không ai để ý. Trên máy thợ chạy dài ngày, mỗi phiên bỏ quên là một Chrome vài
+    trăm MB; đo ngày 2026-09-03 thì Chrome trên server đã giữ 1.66 GB sau sáu ngày.
+
+    Vòng lặp KHÔNG được phép chết vì một lần quét lỗi: chết một lần là mất người dọn cho tới
+    khi restart, đúng cái tình trạng nó sinh ra để chữa.
+    """
+    while True:
+        try:
+            await asyncio.sleep(_REAP_INTERVAL_S)
+            now = _now_ms()
+            for key, task in list(_pool.items()):
+                if not task.done():
+                    continue  # đang làm nóng — chưa có phiên để mà dọn
+                if task.cancelled() or task.exception() is not None:
+                    if _pool.get(key) is task:
+                        del _pool[key]
+                    continue
+                session = task.result()
+                expired = now - session.created_at >= session.ttl_ms
+                idle = now - session.last_used_at >= _REAP_IDLE_MS
+                if not (session.page.is_closed() or (expired and idle)):
+                    continue
+                if _pool.get(key) is task:
+                    del _pool[key]
+                _close_in_background(task)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            pass  # một lần quét hỏng không đáng để mất luôn người dọn
+
+
+def _lru_idle_key() -> str | None:
+    """
+    Phiên rảnh lâu nhất, hoặc `None` nếu không có phiên nào nhường chỗ được.
+
+    Chỉ xét phiên đã ngồi yên quá `_REAP_IDLE_MS` — cùng một thước đo với người dọn, và vì
+    cùng một lý do: đóng trình duyệt của một lượt tìm đang chạy dở thì tiết kiệm được RAM
+    nhưng đổi lấy một lỗi mà người dùng không hiểu nổi.
+    """
+    now = _now_ms()
+    oldest_key: str | None = None
+    oldest_at = 0.0
+    for key, task in _pool.items():
+        # Chưa xong = đang làm nóng; hỏng = `_forget_on_failure` sắp gỡ đi. Cả hai đều không
+        # có trình duyệt để mà nhường.
+        if not task.done() or task.cancelled() or task.exception() is not None:
+            continue
+        session = task.result()
+        if now - session.last_used_at < _REAP_IDLE_MS:
+            continue
+        if oldest_key is None or session.last_used_at < oldest_at:
+            oldest_key, oldest_at = key, session.last_used_at
+    return oldest_key
+
+
+def _make_room() -> None:
+    """
+    Dọn chỗ trước khi dựng phiên mới, để số Chrome sống cùng lúc không vượt `_POOL_MAX`.
+
+    TRẦN MỀM CÓ CHỦ Ý: hết chỗ mà không phiên nào rảnh thì vẫn cho mở thêm, chứ không bắt
+    người dùng chờ hay trả lỗi. Tình huống ấy nghĩa là ngần ấy người đang thật sự chờ kết quả
+    cùng lúc — từ chối một người trong số đó là đổi một vấn đề nhìn thấy được (máy chậm) lấy
+    một vấn đề khó hiểu (công cụ thỉnh thoảng báo bận). Trần này sinh ra để chặn phiên NẰM LẠI,
+    và đó mới là hình dạng thật của việc phình RAM ở đây.
+
+    In ra khi phải vượt trần: đó là dấu hiệu máy đang thiếu RAM cho số người đang dùng, và
+    người vận hành cần biết chứ không nên để nó xảy ra im lặng.
+    """
+    while len(_pool) >= _POOL_MAX:
+        victim = _lru_idle_key()
+        if victim is None:
+            print(
+                f"  (hồ phiên đã {len(_pool)}/{_POOL_MAX} và không phiên nào rảnh — "
+                f"mở thêm; máy có thể thiếu RAM)"
+            )
+            return
+        _close_in_background(_pool.pop(victim))
+
+
+def _ensure_reaper() -> None:
+    """Bật người dọn ở lần cần phiên đầu tiên, để script cũng được dọn chứ không riêng server."""
+    global _reaper
+    if _reaper is None or _reaper.done():
+        _reaper = asyncio.create_task(_reap_sessions())
+
+
 def _forget_on_failure(key: str, task: asyncio.Task[Session]) -> None:
     if task.cancelled() or task.exception() is not None:
         if _pool.get(key) is task:
@@ -344,6 +473,7 @@ def _forget_on_failure(key: str, task: asyncio.Task[Session]) -> None:
 
 async def get_session(recipe: SessionRecipe, country: str) -> Session:
     """Lấy một phiên còn sống, dựng lại nếu vật liệu đã quá hạn."""
+    _ensure_reaper()
     key = _pool_key(recipe.id, country)
     existing = _pool.get(key)
 
@@ -352,6 +482,7 @@ async def get_session(recipe: SessionRecipe, country: str) -> Session:
             session = await existing
             age = _now_ms() - session.created_at
             if age < session.ttl_ms and not session.page.is_closed():
+                session.last_used_at = _now_ms()
                 return session
         except Exception:
             pass  # lần làm nóng trước đã lỗi; rơi xuống dưới để dựng lại
@@ -359,6 +490,7 @@ async def get_session(recipe: SessionRecipe, country: str) -> Session:
             del _pool[key]
         _close_in_background(existing)
 
+    _make_room()
     created = asyncio.create_task(_launch(recipe, country))
     _pool[key] = created
     created.add_done_callback(lambda task: _forget_on_failure(key, task))
@@ -392,7 +524,11 @@ async def fetch_in_page(
     """
     Gọi fetch từ *bên trong* trang đã làm nóng, để thừa hưởng origin, cookie và dấu vân tay
     TLS của trang đó. Trả về text thô; nơi gọi tự parse.
+
+    Đóng dấu TRƯỚC khi gọi chứ không phải sau: dấu này để người dọn biết phiên đang được dùng,
+    mà lúc cần biết nhất chính là lúc lệnh gọi còn đang bay.
     """
+    session.last_used_at = _now_ms()
     return await session.page.evaluate(
         _FETCH_IN_PAGE,
         {"url": url, "method": method, "headers": headers or {}, "body": body},
@@ -401,7 +537,12 @@ async def fetch_in_page(
 
 async def close_all_sessions() -> None:
     """Đóng toàn bộ trình duyệt đang mở. Dùng khi tắt server và trong script test."""
-    global _playwright, _playwright_borrowed
+    global _playwright, _playwright_borrowed, _reaper
+    reaper, _reaper = _reaper, None
+    if reaper is not None:
+        reaper.cancel()
+        with suppress(asyncio.CancelledError, Exception):
+            await reaper
     tasks = list(_pool.values())
     _pool.clear()
     await asyncio.gather(*(_dispose(task) for task in tasks), return_exceptions=True)
