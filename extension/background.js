@@ -9,7 +9,7 @@
  * Nếu chưa có tab của sàn, tự mở một tab nền (cookie theo domain nên vẫn đăng nhập sẵn).
  */
 
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
 
 const SHOPEE_DOMAINS = ['shopee.vn', 'shopee.co.th', 'shopee.ph', 'shopee.com.my', 'shopee.co.id', 'shopee.sg', 'shopee.tw', 'shopee.com.br', 'shopee.com.mx', 'shopee.com.co', 'shopee.cl'];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -116,10 +116,204 @@ function waitForComplete(tabId, timeoutMs = 12000) {
   });
 }
 
+// ============================================================================
+// KHO TAB DÙNG CHUNG — giữ tab, nhưng KHÔNG giữ trang
+// ============================================================================
+//
+// Mỗi sàn cần MỘT tab sống lâu: mở tab mất vài giây, và tab nền thừa hưởng cookie đăng nhập
+// của hồ sơ nên không phải đăng nhập lại. Nhưng "giữ tab" từng bị hiểu thành "giữ luôn trang
+// cuối cùng": đo trên máy thợ ngày 2026-09-03, Chrome chạy liền 6 ngày ngốn 1.66 GB, trong đó
+// hai renderer nặng nhất là 301 MB và 282 MB — chính là trang kết quả Amazon và Douyin của lần
+// chạy từ mấy hôm trước, vẫn còn nguyên DOM, ảnh và timer JS.
+//
+// Nên tách làm hai việc:
+//   `coolTab`  — xong job thì đưa tab về trang trống. Renderer được giải phóng NGAY, tab vẫn
+//                còn, và phiên đăng nhập KHÔNG mất: cookie nằm ở hồ sơ Chrome chứ không nằm ở
+//                tab. Không tốn thêm lần tải nào, vì mọi job đều điều hướng lại từ đầu.
+//   `reapTabs` — tab rảnh quá lâu thì đóng hẳn. Các hàm dưới tự mở lại khi cần.
+//
+// VÌ SAO GHI RA `storage.session` CHỨ KHÔNG ĐỂ BIẾN MODULE: service worker của MV3 bị treo sau
+// khoảng 30 giây rảnh, biến module mất theo — nhưng tab thì không. Bản trước giữ tab id trong
+// biến, nên mỗi lần service worker sống lại nó mở tab MỚI và bỏ rơi tab cũ. `storage.session`
+// sống theo phiên trình duyệt nên qua được đúng khe đó.
+const TAB_STORE = 'rs-kept-tabs';        // slot -> { id, usedAt }
+const TAB_IDLE_MS = 10 * 60_000;         // rảnh quá lâu → đóng hẳn
+const TAB_REAP_ALARM = 'rs-reap-tabs';
+
+async function storeRead() {
+  try { const o = await chrome.storage.session.get(TAB_STORE); return o[TAB_STORE] || {}; }
+  catch (e) { return {}; }
+}
+async function storeWrite(store) {
+  try { await chrome.storage.session.set({ [TAB_STORE]: store }); } catch (e) {}
+}
+
+/** Tab đang giữ ở slot này, hoặc null nếu chưa có / đã bị đóng. Có chạm `usedAt`. */
+async function slotTab(slot) {
+  const store = await storeRead();
+  const rec = store[slot];
+  if (!rec || rec.id == null) return null;
+  let tab = null;
+  try { tab = await chrome.tabs.get(rec.id); } catch (e) { tab = null; }
+  if (!tab) { delete store[slot]; await storeWrite(store); return null; }
+  store[slot] = { id: rec.id, usedAt: Date.now() };
+  await storeWrite(store);
+  return tab;
+}
+
+async function slotSet(slot, tabId) {
+  const store = await storeRead();
+  store[slot] = { id: tabId, usedAt: Date.now() };
+  await storeWrite(store);
+}
+
+/**
+ * Tab nền thường trú của một sàn. Mở ở `about:blank` — nơi gọi tự điều hướng tới URL của mình.
+ *
+ * Thay cho tám hàm `amazonTab/ali1688Tab/...` gần như giống hệt nhau trước đây; khác biệt duy
+ * nhất giữa chúng là cái biến giữ id, mà đó chính là thứ nay đã nằm trong kho chung.
+ */
+async function keptTab(slot) {
+  const existing = await slotTab(slot);
+  if (existing) return existing;
+  const tab = await chrome.tabs.create({ url: 'about:blank', active: false });
+  await slotSet(slot, tab.id);
+  return tab;
+}
+
+/**
+ * Hạ nhiệt: đưa tab về `url` (mặc định trang trống) sau khi đã lấy xong kết quả.
+ *
+ * Gọi ở nơi điều phối chứ không nằm trong từng hàm tìm kiếm, để job lỗi hay job bị ném ngoại
+ * lệ cũng được dọn — đó mới là những lần hay để lại trang nặng nhất.
+ *
+ * Nuốt lỗi có chủ đích: hạ nhiệt hụt không phải lý do làm hỏng một kết quả đã lấy được.
+ */
+async function coolTab(slot, url = 'about:blank') {
+  try {
+    const store = await storeRead();
+    const rec = store[slot];
+    if (!rec || rec.id == null) return;
+    const tab = await chrome.tabs.get(rec.id);
+    if (!tab) return;
+    if ((tab.url || '') !== url) await chrome.tabs.update(rec.id, { url });
+  } catch (e) {}
+}
+
+/**
+ * Bọc một lượt chạy: giữ tab khỏi bị dọn khi đang dùng, rồi hạ nhiệt lúc xong.
+ *
+ * Cờ bận là bắt buộc chứ không phải cho chắc: `reapTabs` chạy mỗi phút, mà một lượt Douyin
+ * hay TikTok nhiều cụm từ hoàn toàn có thể lâu hơn `TAB_IDLE_MS`. Thiếu cờ này thì người dọn
+ * sẽ đóng đúng cái tab job đang dùng dở, và job chết oan — một lỗi chỉ hiện ra ở những lượt
+ * tìm dài, tức là đúng những lượt đắt nhất.
+ *
+ * GIỮ TRONG BỘ NHỚ chứ không ghi ra `storage.session`, khác với phần còn lại của kho: cổng
+ * `sendResponse` đang mở giữ cho service worker sống suốt lượt chạy, nên `Set` này chắc chắn
+ * còn. Mà nếu service worker có chết thật thì job cũng chết theo — lúc ấy cờ bay đi cùng là
+ * đúng, tab bỏ hoang phải được dọn chứ không phải được tha.
+ */
+const busySlots = new Set();
+function withCooldown(slot, running, coolUrl) {
+  busySlots.add(slot);
+  return running.finally(() => {
+    busySlots.delete(slot);
+    return coolTab(slot, coolUrl);
+  });
+}
+
+/**
+ * Đóng hẳn những tab đã rảnh quá `TAB_IDLE_MS`.
+ *
+ * BỎ QUA TAB ĐANG HIỆN TRƯỚC: `navAndCapture` cố ý đưa tab ra trước khi vướng slider, và tab
+ * xác minh mở ra chính là để người vận hành ngồi giải. Đóng mất tab người ta đang nhìn là cách
+ * chắc chắn nhất để việc dọn dẹp bị tắt đi. Mỗi cửa sổ chỉ có một tab hiện trước nên ngoại lệ
+ * này không đáng kể.
+ */
+async function reapTabs() {
+  const store = await storeRead();
+  const now = Date.now();
+  let changed = false;
+  for (const slot of Object.keys(store)) {
+    const rec = store[slot];
+    if (!rec || rec.id == null) { delete store[slot]; changed = true; continue; }
+    if (busySlots.has(slot)) continue;
+    if (now - (rec.usedAt || 0) < TAB_IDLE_MS) continue;
+    let tab = null;
+    try { tab = await chrome.tabs.get(rec.id); } catch (e) { tab = null; }
+    if (tab && tab.active) continue;
+    if (tab) { try { await chrome.tabs.remove(rec.id); } catch (e) {} }
+    delete store[slot];
+    changed = true;
+  }
+  if (changed) await storeWrite(store);
+}
+
+// `setInterval` không dùng được: service worker MV3 bị treo giữa chừng và hẹn giờ chết theo.
+// `alarms` là đồng hồ duy nhất đánh thức được service worker đã ngủ.
+// Tạo CÓ ĐIỀU KIỆN: mã ở tầng ngoài này chạy lại mỗi lần service worker thức dậy, mà
+// `alarms.create` trùng tên thì đặt lại lịch từ đầu. Cứ tạo vô điều kiện thì một máy bận
+// (thức dậy liên tục dưới một phút) sẽ đẩy lùi báo thức mãi và không bao giờ dọn.
+chrome.alarms.get(TAB_REAP_ALARM).then((a) => {
+  if (!a) chrome.alarms.create(TAB_REAP_ALARM, { periodInMinutes: 1 });
+});
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === TAB_REAP_ALARM) reapTabs(); });
+
+// Người vận hành tự tay đóng tab thì quên nó đi ngay, đừng đợi `chrome.tabs.get` ném lỗi.
+chrome.tabs.onRemoved.addListener(async (tabId) => {
+  const store = await storeRead();
+  let changed = false;
+  for (const slot of Object.keys(store)) {
+    if (store[slot] && store[slot].id === tabId) { delete store[slot]; changed = true; }
+  }
+  if (changed) await storeWrite(store);
+});
+
+/**
+ * MỘT tab xác minh cho mỗi sàn, dùng lại thay vì mở thêm.
+ *
+ * Bản trước gọi thẳng `tabs.create({active:true})` mỗi lần sàn bắt kéo slider. Trên máy một
+ * người thì không sao; trên máy thợ dùng chung cả công ty thì mười lượt tìm bị chặn là mười
+ * cửa sổ bật lên, không cái nào tự đóng — mà cũng không ai giải mười lần, vì giải một lần là
+ * đủ cho cả máy (cookie xác minh theo hồ sơ).
+ *
+ * Vẫn `active: true` có chủ đích: mở lén ở tab nền thì không ai biết mà giải.
+ */
+async function openVerifyTab(slot, url) {
+  const existing = await slotTab(slot);
+  if (existing) {
+    try { await chrome.tabs.update(existing.id, { url, active: true }); return; } catch (e) {}
+  }
+  try {
+    const tab = await chrome.tabs.create({ url, active: true });
+    await slotSet(slot, tab.id);
+  } catch (e) {}
+}
+
+/**
+ * Tab đang ở đúng origin của `host`, để `fetchInTab` gọi được same-origin.
+ *
+ * Ba nguồn, theo thứ tự: tab của chính ta (kể cả khi đang nằm ở trang trống sau khi hạ nhiệt —
+ * phải đưa về đúng origin trước, nếu không fetch thành cross-origin và sàn trả 403), rồi tab
+ * của sàn mà người dùng đang tự mở, cuối cùng mới mở tab mới.
+ *
+ * Tab mượn của người dùng KHÔNG được ghi vào kho: nó không phải của ta nên không được hạ nhiệt
+ * hay đóng.
+ */
 async function ensureTab(host) {
+  const slot = `site:${host}`;
+  const kept = await slotTab(slot);
+  if (kept) {
+    if (hostOf(kept.url || '') !== host) {
+      await chrome.tabs.update(kept.id, { url: `https://${host}/`, active: false });
+      await waitForComplete(kept.id);
+    }
+    return kept;
+  }
   const existing = await findTab(host);
   if (existing) return existing;
   const tab = await chrome.tabs.create({ url: `https://${host}/`, active: false });
+  await slotSet(slot, tab.id);
   await waitForComplete(tab.id);
   return tab;
 }
@@ -231,15 +425,7 @@ async function costBatch(seedUrl, products) {
 
 // Amazon: SW fetch trần bị captcha. Cách chắc: điều hướng MỘT tab nền riêng tới trang search
 // (Amazon render SSR → tab load như user thật), rồi đọc sản phẩm từ DOM.
-let amazonTabId = null;
-async function amazonTab() {
-  if (amazonTabId != null) {
-    try { const t = await chrome.tabs.get(amazonTabId); if (t) return t; } catch (e) { amazonTabId = null; }
-  }
-  const t = await chrome.tabs.create({ url: 'about:blank', active: false });
-  amazonTabId = t.id;
-  return t;
-}
+const amazonTab = () => keptTab('amazon');
 async function amazonSearch(domain, url) {
   try {
     const tab = await amazonTab();
@@ -333,15 +519,7 @@ async function amazonSearch(domain, url) {
 // Trang React s.1688.com/www.1688.com đá về login.taobao.com khi phiên "lạnh"; nhưng endpoint mtop
 // trả JSON sản phẩm KỂ CẢ ẩn danh (không cần đăng nhập). Chữ ký = md5(token&t&appKey&data), với
 // token = cookie _m_h5_tk (đọc được same-site ở origin h5api.m.1688.com). Không region.
-let ali1688TabId = null;
-async function ali1688Tab() {
-  if (ali1688TabId != null) {
-    try { const t = await chrome.tabs.get(ali1688TabId); if (t) return t; } catch (e) { ali1688TabId = null; }
-  }
-  const t = await chrome.tabs.create({ url: 'about:blank', active: false });
-  ali1688TabId = t.id;
-  return t;
-}
+const ali1688Tab = () => keptTab('ali1688');
 async function search1688(keyword, count) {
   try {
     const tab = await ali1688Tab();
@@ -431,7 +609,7 @@ async function search1688(keyword, count) {
     if (r.error && /VALIDATE/i.test(r.error)) {
       let vurl = r.verifyUrl || 'https://s.1688.com/';
       if (vurl.indexOf('//') === 0) vurl = 'https:' + vurl;
-      try { await chrome.tabs.create({ url: vurl, active: true }); } catch (e) {}
+      await openVerifyTab('verify:1688', vurl);
       return { items: [], blocked: true, error: 'cần xác minh — đã mở tab 1688, kéo slider xong rồi bấm Research lại' };
     }
     return r;
@@ -446,20 +624,8 @@ async function search1688(keyword, count) {
 // EXPERIMENTAL: cần tab đã đăng nhập; Baxia/Temu có thể chặn → báo notice để user xử lý.
 // ============================================================================
 
-let taobaoTabId = null;
-async function taobaoTab() {
-  if (taobaoTabId != null) { try { const t = await chrome.tabs.get(taobaoTabId); if (t) return t; } catch (e) { taobaoTabId = null; } }
-  const t = await chrome.tabs.create({ url: 'about:blank', active: false });
-  taobaoTabId = t.id;
-  return t;
-}
-let temuTabId = null;
-async function temuTab() {
-  if (temuTabId != null) { try { const t = await chrome.tabs.get(temuTabId); if (t) return t; } catch (e) { temuTabId = null; } }
-  const t = await chrome.tabs.create({ url: 'about:blank', active: false });
-  temuTabId = t.id;
-  return t;
-}
+const taobaoTab = () => keptTab('taobao');
+const temuTab = () => keptTab('temu');
 
 // Điều hướng tab tới URL search rồi ĐỢI hook chộp response (trang tự gọi, tự ký). Chạy NGẦM khi trót
 // lọt; khi vướng đăng nhập/xác minh (slider) hoặc quá giờ → ĐƯA TAB RA TRƯỚC để user tự xử 1 lần.
@@ -655,7 +821,7 @@ async function searchTaobao(keyword, count) {
       if (/VALIDATE|RGV587|SM|哎哟|令牌|FORBIDDEN|ILLEGAL/i.test(r.ret || '')) {
         let vurl = r.verifyUrl || ('https://s.taobao.com/search?q=' + encodeURIComponent(keyword));
         if (vurl.indexOf('//') === 0) vurl = 'https:' + vurl;
-        try { await chrome.tabs.create({ url: vurl, active: true }); } catch (e) {}
+        await openVerifyTab('verify:taobao', vurl);
         return { items: [], blocked: true, error: 'cần đăng nhập/xác minh — đã mở tab Taobao, xong rồi bấm Research lại' };
       }
       return { items: [], blocked: false, error: r.ret };
@@ -812,26 +978,14 @@ function parseTemuTexts(texts, count) {
 // Nên: điều hướng tới /search/video, để page-hook (document_start) chộp response, rồi TỰ CUỘN
 // nhanh nhiều lần ép trang bắn tiếp các trang sau (infinite scroll) → gom HẾT, không bắt user cuộn.
 // Đây là cách khắc phục "phải kéo mới ra video": tool cuộn thay, và gom mọi trang một lượt.
-let tiktokTabId = null;
-async function tiktokTab() {
-  if (tiktokTabId != null) { try { const t = await chrome.tabs.get(tiktokTabId); if (t) return t; } catch (e) { tiktokTabId = null; } }
-  const t = await chrome.tabs.create({ url: 'about:blank', active: false });
-  tiktokTabId = t.id;
-  return t;
-}
+const tiktokTab = () => keptTab('tiktok');
 
 // ===== TikTok Creative Center: filter country THẬT (không bám IP user) =====
 // Creative Center là công cụ duy nhất của TikTok cho phép query "top ads theo country" — endpoint
 // `/api/*?biz_id=cc` gộp query dạng batch. V1 KHÔNG reimplement sign — mở tab thật, để trang tự sinh
 // request, hook fetch để capture batch response + scrape DOM cards. Trả cả `raw` (2KB đầu response
 // batch) để lần chạy đầu thấy được shape thật và refine parser vòng sau.
-let tkccTabId = null;
-async function tkccTab() {
-  if (tkccTabId != null) { try { const t = await chrome.tabs.get(tkccTabId); if (t) return t; } catch (e) { tkccTabId = null; } }
-  const t = await chrome.tabs.create({ url: 'about:blank', active: false });
-  tkccTabId = t.id;
-  return t;
-}
+const tkccTab = () => keptTab('tkcc');
 
 // Endpoint URL Creative Center: query string đã gồm region + period; industry (nếu có) truyền tay
 // vào state URL — Creative Center đọc từ URL hash / query khi mount.
@@ -1142,13 +1296,7 @@ async function searchTiktok(keyword, count, keywords, region, mode, anchor) {
 // Douyin siết bot mạnh: hay hiện slider verify sau vài truy vấn. User chưa login vẫn xem được video
 // public, nhưng có thể bị 网络异常/xác minh. Chiến lược: 1 tab riêng, navigate 1 lần, sau đó GÕ vào ô
 // search + Enter cho các cụm sau (SPA đổi route ngầm). Kết quả: DOM scrape <a href="/video/<id>">.
-let douyinTabId = null;
-async function douyinTab() {
-  if (douyinTabId != null) { try { const t = await chrome.tabs.get(douyinTabId); if (t) return t; } catch (e) { douyinTabId = null; } }
-  const t = await chrome.tabs.create({ url: 'about:blank', active: false });
-  douyinTabId = t.id;
-  return t;
-}
+const douyinTab = () => keptTab('douyin');
 
 // Gõ vào ô search Douyin, KHÔNG navigate (giống TikTok). Trả true/false.
 async function dyTypeInSearchBox(tabId, term) {
@@ -1283,14 +1431,10 @@ async function searchDouyin(keyword, count, keywords, anchor) {
 // Shopee: fetch thô /api/v4/search/search_items bị 403 (anti-bot, thiếu header ký JS). Cách chạy:
 // ĐIỀU HƯỚNG tab shopee (đã đăng nhập) tới trang /search — để CHÍNH TRANG gọi search_items (tự ký),
 // page-hook chộp response. Cuộn để lấy thêm trang. Giống Taobao/Temu, chỉ khác domain.
-let shopeeSearchTabId = null;
-async function shopeeSearchTab() {
-  // Tab RIÊNG cho search (không chiếm tab shopee bạn đang mở). Cookie same-domain → vẫn có session login.
-  if (shopeeSearchTabId != null) { try { const t = await chrome.tabs.get(shopeeSearchTabId); if (t) return t; } catch (e) { shopeeSearchTabId = null; } }
-  const t = await chrome.tabs.create({ url: 'about:blank', active: false });
-  shopeeSearchTabId = t.id;
-  return t;
-}
+// Tab RIÊNG cho search (không chiếm tab shopee bạn đang mở). Cookie same-domain → vẫn có session
+// login. CHƯA CÓ NƠI GỌI: `searchShopee` hiện đi qua `ensureTab(domain)`; giữ lại để nếu dùng
+// tới thì cũng nằm trong kho tab chung, không đẻ ra một cái tab id mồ côi nữa.
+const shopeeSearchTab = () => keptTab('shopeeSearch');
 async function searchShopee(keyword, domain) {
   domain = domain || 'shopee.vn';
   try {
@@ -1336,6 +1480,9 @@ async function searchShopee(keyword, domain) {
   } catch (e) { return { texts: [], videoItems: [], blocked: false, error: String(e) }; }
 }
 
+// HẠ NHIỆT NẰM Ở ĐÂY, không nằm trong từng hàm tìm kiếm: chỗ này thấy được mọi đường ra —
+// thành công, lỗi, lẫn ngoại lệ — mà những lần hỏng mới đúng là lúc trang nặng bị bỏ lại.
+// `.finally` chạy SAU `sendResponse`, nên việc dọn không làm chậm kết quả trả về.
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || typeof msg !== 'object') return;
 
@@ -1383,42 +1530,43 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 
   if (msg.type === 'RS_1688') {
-    search1688(msg.keyword, msg.count).then((r) => sendResponse({ ok: true, ...r }));
+    withCooldown('ali1688', search1688(msg.keyword, msg.count).then((r) => sendResponse({ ok: true, ...r })));
     return true;
   }
 
   if (msg.type === 'RS_TAOBAO') {
-    searchTaobao(msg.keyword, msg.count).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: false, error: String(e) }));
+    withCooldown('taobao', searchTaobao(msg.keyword, msg.count).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: false, error: String(e) })));
     return true;
   }
 
   if (msg.type === 'RS_TEMU') {
-    searchTemu(msg.keyword, msg.count).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: false, error: String(e) }));
+    withCooldown('temu', searchTemu(msg.keyword, msg.count).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: false, error: String(e) })));
     return true;
   }
 
   if (msg.type === 'RS_AMAZON') {
-    amazonSearch(msg.domain, msg.url).then((r) => sendResponse({ ok: true, ...r }));
+    withCooldown('amazon', amazonSearch(msg.domain, msg.url).then((r) => sendResponse({ ok: true, ...r })));
     return true;
   }
 
   if (msg.type === 'RS_TIKTOK') {
-    searchTiktok(msg.keyword, msg.count, msg.keywords, msg.region, msg.mode, msg.anchor).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: false, error: String(e) }));
+    withCooldown('tiktok', searchTiktok(msg.keyword, msg.count, msg.keywords, msg.region, msg.mode, msg.anchor).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: false, error: String(e) })));
     return true;
   }
 
   if (msg.type === 'RS_TIKTOK_CC') {
-    searchTiktokCreative(msg.region, msg.keyword, msg.count).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: false, error: String(e) }));
+    withCooldown('tkcc', searchTiktokCreative(msg.region, msg.keyword, msg.count).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: false, error: String(e) })));
     return true;
   }
 
   if (msg.type === 'RS_DOUYIN') {
-    searchDouyin(msg.keyword, msg.count, msg.keywords, msg.anchor).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: false, error: String(e) }));
+    withCooldown('douyin', searchDouyin(msg.keyword, msg.count, msg.keywords, msg.anchor).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: false, error: String(e) })));
     return true;
   }
 
   if (msg.type === 'RS_SHOPEE') {
-    searchShopee(msg.keyword, msg.domain).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, texts: [], blocked: false, error: String(e) }));
+    const shopeeHost = msg.domain || 'shopee.vn';
+    withCooldown(`site:${shopeeHost}`, searchShopee(msg.keyword, msg.domain).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, texts: [], blocked: false, error: String(e) })), `https://${shopeeHost}/`);
     return true;
   }
 });

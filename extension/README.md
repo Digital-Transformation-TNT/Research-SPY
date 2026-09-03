@@ -10,12 +10,13 @@ Server (kể cả Crawlee) gọi API sản phẩm Shopee đều bị **HTTP 403 
 
 | File | Vai trò |
 |---|---|
-| `manifest.json` | MV3, khai `host_permissions` theo tên miền + quyền `scripting`/`tabs`/`cookies` + content script cho web app |
+| `manifest.json` | MV3, khai `host_permissions` theo tên miền + quyền `scripting`/`tabs`/`cookies`/`storage`/`alarms` + content script cho web app |
 | `background.js` | Service worker — điều phối. Chạy fetch **bên trong tab của sàn** qua `executeScript(world:'MAIN')` nên là **same-origin** (fetch từ chính service worker bị Shopee 403 dù có cookie). Tự mở tab nền nếu chưa có |
 | `content.js` | Cầu nối: web app `postMessage` → chuyển tiếp tới background → trả kết quả về trang |
 | `page-hook.js` | Chộp phản hồi mà **chính trang tự gọi** — dùng cho Taobao/Tmall/Temu, nơi request có chữ ký (`mtop x5sec`, `anti-content`) mà mình không tự ký được |
 | `similar-hook.js` | Như trên, cho trang "sản phẩm tương tự" của Shopee |
 | `popup.html` / `popup.js` | **Tự test** một sàn: nhập từ khoá → ra sản phẩm thật, không cần web app |
+| `tabs.test.js` | Kiểm tra vòng đời tab bằng chrome API giả — `node extension/tabs.test.js`, không cần Chrome |
 
 ### Trang Research đã CHUYỂN sang webtool
 
@@ -37,12 +38,42 @@ Chấm điểm trong `public/research/research.js` **soi gương** `backend/lib/
 > `<iframe>` của webtool, mà content script mặc định chỉ chạy ở khung trên cùng. Thiếu dòng đó
 > thì cầu postMessage không có ai nghe, và trang báo "chưa cài extension" dù đã cài.
 
+## Vòng đời tab — giữ tab, KHÔNG giữ trang
+
+Mỗi sàn có một tab nền thường trú (`keptTab`). Giữ tab là cố ý: mở tab mất vài giây, và tab nền
+thừa hưởng cookie đăng nhập của hồ sơ nên không phải đăng nhập lại.
+
+Cái **không** được giữ là **trang**. Đo trên máy thợ ngày 2026-09-03: Chrome chạy liền 6 ngày
+ngốn 1.66 GB, trong đó hai renderer nặng nhất là 301 MB và 282 MB — trang kết quả Amazon và
+Douyin của lần chạy từ mấy hôm trước, vẫn còn nguyên DOM, ảnh và timer JS. Nên:
+
+| Cơ chế | Khi nào | Làm gì |
+|---|---|---|
+| `coolTab` | ngay sau khi trả kết quả (`withCooldown`) | đưa tab về `about:blank` — renderer được giải phóng, **tab và phiên đăng nhập vẫn còn** (cookie nằm ở hồ sơ Chrome, không nằm ở tab) |
+| `reapTabs` | báo thức mỗi phút | đóng hẳn tab đã rảnh quá 10 phút; các hàm trên tự mở lại khi cần |
+| `openVerifyTab` | sàn bắt kéo slider | **một** tab xác minh cho mỗi sàn, dùng lại — trước đây mỗi lượt bị chặn là một cửa sổ mới, mười người dùng chung là mười cửa sổ |
+
+Hai ngoại lệ của `reapTabs`, đều cố ý: tha tab **đang chạy job** (cờ `busySlots` — một lượt tìm
+nhiều cụm từ có thể lâu hơn 10 phút) và tha tab **đang hiện trước** (người vận hành đang giải
+slider ở đó).
+
+Tab Shopee hạ nhiệt về **trang chủ sàn** chứ không về trang trống: `handleFetch` (lấy giá vốn)
+phải fetch same-origin, nên tab cần nằm sẵn trên origin của sàn.
+
+> **Tab id phải ghi ra `chrome.storage.session`, không được để trong biến module.** Service
+> worker MV3 bị treo sau ~30 giây rảnh và biến mất theo — nhưng tab thì không. Bản 0.3.0 giữ id
+> trong biến, nên mỗi lần service worker sống lại nó mở tab MỚI và bỏ rơi tab cũ.
+
 ## Cài (Chrome/Edge, chế độ dev)
 
 1. Mở `chrome://extensions`
 2. Bật **Developer mode** (góc phải trên)
 3. **Load unpacked** → chọn thư mục `extension/` này
 4. Ghim extension cho dễ bấm
+
+Nâng cấp từ bản 0.3.0 trở về trước thì phải bấm **Reload** ở `chrome://extensions` — bản
+0.4.0 thêm quyền `storage` và `alarms`, mà quyền mới chỉ có hiệu lực sau khi nạp lại. Tab
+"Máy thợ crawl" cũng cần F5 để nối lại cầu postMessage.
 
 ## Test nhanh (không cần web app)
 
