@@ -1,5 +1,7 @@
 name: CI
 
+# Kiểm chứng auto-CD 2026-09-03: commit này chỉ sửa comment (không đụng code) để xác nhận
+# push Titus → CI xanh → self-hosted runner tự deploy VPS mà không cần bấm tay.
 # Chỉ chạy những kiểm tra XÁC ĐỊNH ĐƯỢC trong runner — không đụng smoke cần Chrome thật,
 # Google login hay mạng ngoài (scripts/smoke/*), vì chúng sẽ đỏ vì môi trường chứ không phải
 # vì code. Mục tiêu: mỗi lần đỏ là một lỗi thật.
