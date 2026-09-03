@@ -91,3 +91,10 @@ deploy/nssm.exe
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 graft/
+
+# ---------------------------------------------------------------------------
+# Rác lỡ commit ở "up" (35d2777): skill cá nhân của Claude Code + dump DOM một lần.
+# Không thuộc dự án, để đây cho khỏi lỡ commit lại.
+# ---------------------------------------------------------------------------
+.claude/skills/
+shopee_network.txt
