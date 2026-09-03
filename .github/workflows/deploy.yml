@@ -1,8 +1,9 @@
 name: Deploy to VPS
 
-# Deploy vào VPS production (Windows, 157.66.101.73) là việc hướng-ra-ngoài, khó lùi — nên
-# để BẤM TAY (workflow_dispatch), không auto theo mỗi push. Muốn bật auto-deploy sau khi CI
-# xanh: xem .github/workflows/README.md.
+# Deploy vào VPS production (Windows, 157.66.101.73) — đường BẤM TAY / override.
+# Auto-deploy (sau khi CI xanh, push nhánh Titus) NAY nằm ở job `deploy` trong ci.yml.
+# File này để: deploy một SHA/nhánh cụ thể, hoặc deploy lại khi không đổi code. Dùng chung
+# concurrency group `deploy-vps` với ci.yml nên không bao giờ chạy chồng auto-deploy.
 on:
   workflow_dispatch:
     inputs:

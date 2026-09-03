@@ -95,3 +95,27 @@ jobs:
         run: |
           pip install pip-audit
           pip-audit -r backend/requirements.txt || true
+
+  # ---------------------------------------------------------------------------
+  # Auto-deploy vào VPS — CHỈ khi push nhánh Titus VÀ ba job kiểm ở trên xanh.
+  # `needs` khiến job này bị bỏ qua nếu backend/frontend/extension đỏ, nên code
+  # lỗi không bao giờ ra production. security-audit (tư vấn) KHÔNG nằm trong needs.
+  # Chạy trên chính VPS qua self-hosted runner; muốn deploy tay/override nhánh
+  # khác thì dùng .github/workflows/deploy.yml (workflow_dispatch).
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Auto-deploy VPS (push Titus + CI xanh)
+    needs: [backend, frontend, extension]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/Titus'
+    runs-on: [self-hosted, windows]
+    environment: production
+    # Chung group với deploy.yml → auto-deploy và deploy bấm-tay không chồng nhau;
+    # cancel-in-progress:false để một lượt deploy đang chạy không bị lượt sau cắt ngang.
+    concurrency:
+      group: deploy-vps
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Redeploy C:\ResearchSpy
+        shell: powershell
+        run: .\deploy\redeploy.ps1 -Root "C:\ResearchSpy" -Branch "Titus"
