@@ -1,0 +1,34 @@
+name: Deploy to VPS
+
+# Deploy vào VPS production (Windows, 157.66.101.73) là việc hướng-ra-ngoài, khó lùi — nên
+# để BẤM TAY (workflow_dispatch), không auto theo mỗi push. Muốn bật auto-deploy sau khi CI
+# xanh: xem .github/workflows/README.md.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "SHA/branch để deploy (trống = đỉnh nhánh Titus)"
+        required: false
+        default: ""
+
+# Không bao giờ chạy hai lần deploy chồng nhau.
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Kéo code + build + restart service
+    # Runner tự-lưu-trữ cài trên chính VPS Windows (xem README). Không cần SSH/secret: job
+    # chạy NGAY TRÊN máy đích bằng PowerShell.
+    runs-on: [self-hosted, windows]
+    # 'production' cho phép bật Required reviewers trong Settings → Environments để duyệt tay.
+    environment: production
+    steps:
+      - name: Checkout (lấy chính script redeploy)
+        uses: actions/checkout@v4
+      - name: Redeploy C:\ResearchSpy
+        shell: powershell
+        run: |
+          $ref = "${{ github.event.inputs.ref }}"
+          .\deploy\redeploy.ps1 -Root "C:\ResearchSpy" -Branch "Titus" -Ref $ref

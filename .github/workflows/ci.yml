@@ -1,0 +1,97 @@
+name: CI
+
+# Chỉ chạy những kiểm tra XÁC ĐỊNH ĐƯỢC trong runner — không đụng smoke cần Chrome thật,
+# Google login hay mạng ngoài (scripts/smoke/*), vì chúng sẽ đỏ vì môi trường chứ không phải
+# vì code. Mục tiêu: mỗi lần đỏ là một lỗi thật.
+
+on:
+  push:
+    branches: [Titus, main]
+  pull_request:
+  workflow_dispatch:
+
+# Đẩy commit mới lên cùng nhánh → huỷ lần chạy cũ, khỏi xếp hàng tốn runner.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend · import + compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Cài phụ thuộc
+        run: pip install -r backend/requirements.txt
+      - name: Compile toàn bộ (bắt lỗi cú pháp)
+        run: python -m compileall -q backend
+      - name: Import cả app (bắt lỗi import-graph, gồm cả router relay/cost)
+        working-directory: backend
+        run: python -c "import app.main; print('import app.main OK')"
+      - name: Ruff lint (tư vấn — không chặn merge)
+        continue-on-error: true
+        run: pipx run ruff check backend
+
+  frontend:
+    name: Frontend · typecheck + build
+    runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      # Build không gọi backend; đặt sẵn cho chắc, khớp mặc định next.config.mjs.
+      BACKEND_URL: http://127.0.0.1:8000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Cài phụ thuộc (npm ci — khoá theo lockfile)
+        working-directory: frontend
+        run: npm ci
+      - name: Typecheck (tsc --noEmit)
+        working-directory: frontend
+        run: npm run typecheck
+      - name: Build production
+        working-directory: frontend
+        run: npm run build
+
+  extension:
+    name: Extension · test vòng đời tab
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: node extension/tabs.test.js (chrome API giả, không cần Chrome)
+        run: node extension/tabs.test.js
+
+  security-audit:
+    name: Audit phụ thuộc (tư vấn)
+    runs-on: ubuntu-latest
+    # Không chặn merge: repo đang có cảnh báo dependabot, để job này chỉ SOI ra chứ không
+    # đỏ-tường mỗi lần chạy. Nâng cấp gói là một quyết định riêng.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: npm audit (frontend)
+        working-directory: frontend
+        run: npm audit --audit-level=high || true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: pip-audit (backend)
+        run: |
+          pip install pip-audit
+          pip-audit -r backend/requirements.txt || true
