@@ -32,4 +32,4 @@ jobs:
         shell: powershell
         run: |
           $ref = "${{ github.event.inputs.ref }}"
-          .\deploy\redeploy.ps1 -Root "C:\ResearchSpy" -Branch "Titus" -Ref $ref
+          .\deploy\redeploy.ps1 -Root "C:\AI-TNT-Research-SPY" -Branch "Titus" -Ref $ref

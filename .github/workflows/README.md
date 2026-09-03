@@ -42,11 +42,14 @@ build` *nếu* frontend đổi → `Restart-Service` đúng service cần → ki
 
 ### Cài một lần trên VPS
 
-1. **Biến `C:\ResearchSpy` thành bản clone git** (nếu đang là thư mục giải nén .zip):
+1. **Thư mục app phải là bản clone git** (nếu đang là thư mục giải nén .zip):
+   VPS hiện tại đặt ở `C:\AI-TNT-Research-SPY` (2 service `ResearchSpyBackend`/`ResearchSpyFrontend`).
+   Workflow đã truyền `-Root C:\AI-TNT-Research-SPY`; đổi máy/đường dẫn thì sửa `-Root` trong
+   `ci.yml` (job deploy) và `deploy.yml`.
    ```powershell
    # sao lưu .env.local, models/ trước nếu cần
-   git clone https://github.com/Digital-Transformation-TNT/Research-SPY.git C:\ResearchSpy
-   cd C:\ResearchSpy\deploy; .\vps-setup.ps1     # dựng service lần đầu
+   git clone https://github.com/Digital-Transformation-TNT/Research-SPY.git C:\AI-TNT-Research-SPY
+   cd C:\AI-TNT-Research-SPY\deploy; .\vps-setup.ps1     # dựng service lần đầu
    ```
 2. **Đăng ký self-hosted runner** (GitHub → Settings → Actions → Runners → New self-hosted
    runner → Windows). Chạy các lệnh nó đưa, rồi cài runner như một service để tự chạy nền:

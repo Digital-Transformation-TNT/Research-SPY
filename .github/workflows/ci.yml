@@ -118,4 +118,4 @@ jobs:
       - uses: actions/checkout@v4
       - name: Redeploy C:\ResearchSpy
         shell: powershell
-        run: .\deploy\redeploy.ps1 -Root "C:\ResearchSpy" -Branch "Titus"
+        run: .\deploy\redeploy.ps1 -Root "C:\AI-TNT-Research-SPY" -Branch "Titus"
