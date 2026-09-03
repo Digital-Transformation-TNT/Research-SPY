@@ -4,12 +4,18 @@
 #
 # playwright ghim ở 1.56.0 vì bản đó kéo theo pyee==13.0.1 — đúng bản mà TikTokLive đang
 # cài sẵn trên máy cần. Hạ playwright xuống sẽ hạ luôn pyee và làm hỏng gói đó.
-fastapi==0.115.6
+# fastapi 0.138.0 (nâng từ 0.115.6, 2026-09-03) để kéo starlette>=0.46.0 — bản 0.41.3 cũ dính
+# 10 CVE (DoS/multipart, PYSEC-2026-161/248/249/1941/1942/2280/2281). Đây đúng là bộ đang chạy
+# trên máy dev (fastapi 0.138 + starlette 1.3.1 + pydantic 2.11.9), `import app.main` OK. fastapi
+# 0.138 chỉ cần pydantic>=2.9.0 nên pin 2.10.5 dưới đây vẫn hợp lệ.
+fastapi==0.138.0
+starlette>=1.3.1
 uvicorn[standard]==0.34.0
 httpx==0.28.1
 playwright==1.56.0
 pydantic==2.10.5
-python-dotenv==1.0.1
+# python-dotenv 1.2.3 (nâng từ 1.0.1) — 1.0.1 dính PYSEC-2026-2270, vá ở 1.2.2.
+python-dotenv==1.2.3
 
 # Mục Quảng cáo — khớp sản phẩm bằng ẢNH (lib/ads/imagematch.py, clipmatch.py) và mục Tìm bằng
 # ảnh. Hai gói này được import NGAY LÚC KHỞI ĐỘNG, nên thiếu là server không lên được.
