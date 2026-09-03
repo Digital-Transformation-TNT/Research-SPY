@@ -159,7 +159,9 @@ let RELAY_MODE = false;
 
 async function relaySend(msg) {
   try {
-    const r = await fetch('/api/relay/submit', {
+    // rsAuthFetch kèm JWT: khi backend bật auth, /submit đòi đăng nhập (máy-thợ chạy trên IP dân
+    // cư đã đăng nhập sàn, không mở cho ẩn danh). 401 → về login, đúng như mọi lệnh khác.
+    const r = await window.rsAuthFetch('/api/relay/submit', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(msg),

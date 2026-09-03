@@ -28,7 +28,31 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from lib.core.config import env_string
+from lib.core.jwt_util import is_configured as jwt_ready
+
 router = APIRouter(prefix="/api/relay", tags=["relay"])
+
+#: Ai được /submit — tức ai được sai khiến trình duyệt-thợ. KHI JWT bật (production có Supabase),
+#: bắt buộc đăng nhập: máy-thợ chạy trên IP dân cư đã đăng nhập sàn, không thể mở cho ẩn danh trên
+#: một VPS public. KHI JWT tắt (dev, hoặc chế độ chỉ-localStorage) thì không có định danh phía server
+#: để mà bắt — giữ mở như cũ, khớp đúng triết lý middleware ở `app/main.py` (không jwt_ready → cho qua).
+def _require_user(request: Request) -> JSONResponse | None:
+    if jwt_ready() and not getattr(request.state, "user", None):
+        return JSONResponse({"ok": False, "error": "Chưa đăng nhập"}, status_code=401)
+    return None
+
+
+#: Token của máy-thợ, bảo vệ `/next` + `/result` khỏi bị kẻ khác cướp job / nhét kết quả giả.
+#: TÙY CHỌN: đặt `RELAY_WORKER_TOKEN` thì bắt buộc; để trống thì `/next`+`/result` mở như cũ (không
+#: phá các máy-thợ đang chạy). Worker gửi kèm header `X-Worker-Token` — xem `public/worker/index.html`.
+_WORKER_TOKEN = env_string("RELAY_WORKER_TOKEN")
+
+
+def _check_worker(request: Request) -> JSONResponse | None:
+    if _WORKER_TOKEN and request.headers.get("x-worker-token", "") != _WORKER_TOKEN:
+        return JSONResponse({"ok": False, "error": "Máy-thợ sai token"}, status_code=401)
+    return None
 
 #: User chờ tối đa ngần này cho một job. Trên ngân sách chậm nhất của một lệnh sàn (~18s ở
 #: extension) cộng thời gian job nằm chờ worker rảnh.
@@ -93,6 +117,8 @@ async def submit(request: Request) -> JSONResponse:
     Body: { "type": "RS_SHOPEE", ...payload }  — payload đúng như message mà background.js đợi,
     ví dụ Shopee: { "type": "RS_SHOPEE", "keyword": "tai nghe", "domain": "shopee.vn" }.
     """
+    if (deny := _require_user(request)) is not None:
+        return deny
     try:
         body = await request.json()
     except Exception:
@@ -128,8 +154,10 @@ async def submit(request: Request) -> JSONResponse:
 
 
 @router.get("/next")
-async def next_job() -> JSONResponse:
+async def next_job(request: Request) -> JSONResponse:
     """Worker long-poll: trả job kế tiếp, hoặc rỗng sau NEXT_TIMEOUT_S để worker poll lại."""
+    if (deny := _check_worker(request)) is not None:
+        return deny
     global _worker_last_seen
     _worker_last_seen = time.monotonic()
     try:
@@ -145,6 +173,8 @@ async def next_job() -> JSONResponse:
 @router.post("/result")
 async def result(request: Request) -> JSONResponse:
     """Worker trả kết quả cho một job. Body: { "id": "...", "result": <bất kỳ> }."""
+    if (deny := _check_worker(request)) is not None:
+        return deny
     global _worker_last_seen
     _worker_last_seen = time.monotonic()
     try:

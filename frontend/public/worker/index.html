@@ -83,11 +83,19 @@ async function loop() {
   while (!hasExt) { log('Chưa thấy extension. Cài ở chrome://extensions rồi F5 trang này.', 'warn'); await new Promise(r => setTimeout(r, 3000)); hasExt = await ping(); setExt(hasExt); }
   log('Extension OK — bắt đầu nhận job.', 'ok');
 
+  // Token máy-thợ (TÙY CHỌN): nếu backend đặt RELAY_WORKER_TOKEN, dán cùng chuỗi vào
+  // localStorage.wk_token (DevTools > Console: `localStorage.wk_token='...'` rồi F5). Không đặt
+  // thì để trống, khớp backend mở /next+/result như cũ.
+  const wkHeaders = (base) => {
+    const t = localStorage.getItem('wk_token');
+    return t ? { ...(base || {}), 'x-worker-token': t } : (base || {});
+  };
+
   // 2) Vòng long-poll
   while (true) {
     let job = null;
     try {
-      const r = await fetch('/api/relay/next', { cache: 'no-store' });
+      const r = await fetch('/api/relay/next', { cache: 'no-store', headers: wkHeaders() });
       // Backend đang khởi động lại → proxy của Next trả text "Internal Server Error", KHÔNG phải
       // JSON. Xử êm (chờ rồi poll lại) thay vì ném SyntaxError đáng sợ mỗi lần restart.
       if (!r.ok) { setNet(false, 'server tạm nghỉ — thử lại'); await new Promise(r => setTimeout(r, 2000)); continue; }
@@ -111,7 +119,7 @@ async function loop() {
     } catch (e) { log('  lỗi chạy job: ' + e, 'err'); result = null; }
 
     try {
-      await fetch('/api/relay/result', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: job.id, result }) });
+      await fetch('/api/relay/result', { method: 'POST', headers: wkHeaders({ 'content-type': 'application/json' }), body: JSON.stringify({ id: job.id, result }) });
       done++; $('done').textContent = done; $('last').textContent = `${job.type} · ${new Date().toLocaleTimeString()}`;
       log(`  ✓ trả kết quả job ${job.id}`, result ? 'ok' : 'warn');
     } catch (e) { log('  lỗi trả kết quả: ' + e, 'err'); }
