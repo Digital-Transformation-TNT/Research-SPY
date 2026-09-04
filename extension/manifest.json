@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Research-SPY Fetcher",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Lấy dữ liệu sản phẩm bằng chính phiên đăng nhập của bạn (Cách A). Cookie không bao giờ rời trình duyệt này.",
   "permissions": [
     "scripting",
@@ -46,6 +46,8 @@
     "https://*.tiktok.com/*",
     "https://www.douyin.com/*",
     "https://*.douyin.com/*",
+    "https://www.google.com/*",
+    "https://www.google.com.vn/*",
     "http://localhost:8000/*",
     "http://127.0.0.1:8000/*",
     "http://157.66.101.73:3000/*",

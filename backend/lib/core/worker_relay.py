@@ -49,6 +49,18 @@ WORKER_TTL_S = 40.0
 #: chiếm máy-thợ tới 3,6 phút và mọi người khác đứng chờ sau. Xem `providers/temu.py`.
 BATCH_TIMEOUT_S = 90.0
 
+#: Hạn riêng cho job TÌM BẰNG ẢNH.
+#:
+#: Một lượt là cả một chuỗi thao tác trên trang thật: mở trang chủ, bấm nút máy ảnh, thả ảnh
+#: vào, bấm tìm, chờ trang kết quả dựng xong, rồi cuộn cho lưới ảnh kịp tải. Đo trên máy dev
+#: 2026-08-17: Lens ~20s, Taobao ~30s. Cộng thời gian job nằm chờ máy-thợ rảnh thì 45s của
+#: `SUBMIT_TIMEOUT_S` là chắc chắn hụt.
+#:
+#: Phải LỚN HƠN ngân sách của chính extension (`IMAGE_JOB_BUDGET_MS` ở `background.js`), nếu
+#: không thì backend bỏ cuộc trước khi thợ kịp trả lời — và người dùng nhận "hết giờ" trong
+#: khi máy-thợ vẫn đang chạy ngon lành.
+IMAGE_TIMEOUT_S = 100.0
+
 #: Chỉ nhận các job crawl qua extension. Là ranh giới an ninh, không phải quy ước đặt tên:
 #: thiếu nó, ai gọi được relay cũng sai khiến được trình duyệt-thợ gọi mạng tới nơi tuỳ ý.
 ALLOWED_TYPES = {
@@ -57,6 +69,9 @@ ALLOWED_TYPES = {
     "RS_1688", "RS_TEMU", "RS_AMAZON", "RS_DOUYIN",
     # Gợi ý từ khoá (tab Keyword) — hiện chỉ Temu, vì các sàn khác gọi HTTP thẳng được.
     "RS_TEMU_SUGGEST",
+    # Tìm bằng ảnh (tab Ảnh). Hai nguồn này KHÔNG chạy được trên VPS — xem
+    # `lib/imagesearch/relay.py` để biết vì sao chúng phải mượn trình duyệt thật.
+    "RS_LENS_IMAGE", "RS_TAOBAO_IMAGE",
     # Tiện ích: ping, đọc cookie (kiểm tra đăng nhập), fetch, tìm tương tự, giá vốn
     "RS_PING", "RS_COOKIE", "RS_FETCH", "RS_FIND_SIMILAR", "RS_COST_BATCH",
 }

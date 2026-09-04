@@ -9,7 +9,7 @@
  * Nếu chưa có tab của sàn, tự mở một tab nền (cookie theo domain nên vẫn đăng nhập sẵn).
  */
 
-const VERSION = '0.4.0';
+const VERSION = '0.5.0';
 
 const SHOPEE_DOMAINS = ['shopee.vn', 'shopee.co.th', 'shopee.ph', 'shopee.com.my', 'shopee.co.id', 'shopee.sg', 'shopee.tw', 'shopee.com.br', 'shopee.com.mx', 'shopee.com.co', 'shopee.cl'];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -1679,6 +1679,387 @@ async function searchShopee(keyword, domain) {
   } catch (e) { return { texts: [], videoItems: [], blocked: false, error: String(e) }; }
 }
 
+// ============================================================================
+// TÌM BẰNG ẢNH — Google Lens và Taobao, chạy trên MÁY-THỢ
+// ============================================================================
+//
+// VÌ SAO HAI NGUỒN NÀY PHẢI Ở ĐÂY chứ không ở backend như trước. Đo trên chính VPS ngày
+// 2026-09-04, cả hai đường tự mở Chrome trên server đều tắc, mỗi đường một lý do:
+//
+//   Google Lens  lớp phủ mở được, ảnh thả được, rồi Google đá thẳng sang `/sorry`. Kết quả
+//                Lens BÁM THEO IP — đó vừa là giá trị của nguồn (IP Việt Nam ra Shopee VN,
+//                Điện Máy XANH kèm giá VNĐ) vừa là lý do một IP datacenter không dùng được.
+//   Taobao       MTOP trả đúng mẫu chưa đăng nhập. Phiên dựng bằng tay trên VPS không sống
+//                sót, vì backend chạy dưới LocalSystem còn người vận hành đăng nhập dưới
+//                Administrator — Chrome mã hoá cookie theo tài khoản Windows.
+//
+// Máy-thợ có sẵn cả ba thứ đó: Chrome thật, IP dân cư, đã đăng nhập. Xem
+// `backend/lib/imagesearch/relay.py`.
+//
+// NGÂN SÁCH phải NHỎ HƠN `IMAGE_TIMEOUT_S` của backend (100s), nếu không backend bỏ cuộc
+// trước và người dùng nhận "hết giờ" trong khi máy-thợ vẫn đang chạy ngon lành.
+const IMAGE_JOB_BUDGET_MS = 80000;
+
+// ẢNH ĐẾN DƯỚI DẠNG data URL và phải thành `File` TRONG TRANG. Không có đường nào khác:
+// `chrome.scripting` chỉ truyền được giá trị JSON, còn `File`/`Blob` thì không qua được ranh
+// giới ấy. Dựng trong trang bằng `fetch(dataUrl)` là cách gọn nhất, và cũng là cách duy nhất
+// khiến `DataTransfer` mang đúng một tệp thật.
+
+/**
+ * Bấm nút máy ảnh của Taobao, thả ảnh vào, rồi bấm 搜索.
+ *
+ * BA CHI TIẾT, mỗi cái từng làm cả lượt chạy trượt (đo 2026-08-17 bằng Playwright, nay chép
+ * sang đây):
+ *   - không bấm nút máy ảnh thì `input[type=file]` KHÔNG TỒN TẠI trong DOM, cú nạp tệp rơi
+ *     vào khoảng không mà không báo gì;
+ *   - panel nhận ảnh xong KHÔNG tự tìm, nó đứng đợi một cú bấm 搜索 — nhìn riêng lưu lượng
+ *     mạng thì y hệt "trang không nhận ảnh";
+ *   - `input.files` phải gán qua `DataTransfer` rồi bắn `change`, gán thẳng không được.
+ */
+async function tbDropImage(dataUrl) {
+  const nap = (ms) => new Promise((r) => setTimeout(r, ms));
+  const camera = document.querySelector("[class*='image-search-icon-wrapper']");
+  if (!camera) return { ok: false, stage: 'camera' };
+  camera.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+  let input = null;
+  for (let i = 0; i < 24 && !input; i++) {
+    await nap(300);
+    input = document.querySelector("input[type='file']");
+  }
+  if (!input) return { ok: false, stage: 'input' };
+
+  try {
+    const blob = await (await fetch(dataUrl)).blob();
+    const dt = new DataTransfer();
+    dt.items.add(new File([blob], 'upload.jpg', { type: 'image/jpeg' }));
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  } catch (e) {
+    return { ok: false, stage: 'file', error: String(e) };
+  }
+
+  // Bấm nút xác nhận. Lấy phần tử KHỚP CHÍNH XÁC nhãn và đang HIỆN — trang có nhiều nút chữ
+  // 搜索 (ô tìm kiếm chính cũng vậy), và bấm nhầm cái ở thanh trên là tìm theo chữ rỗng.
+  for (let i = 0; i < 12; i++) {
+    await nap(500);
+    const hits = [...document.querySelectorAll('button, a, span, div')].filter((el) => {
+      const t = (el.textContent || '').trim();
+      return (t === '搜索' || t === '搜同款') && el.offsetParent !== null;
+    });
+    if (hits.length) {
+      hits[hits.length - 1].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      return { ok: true };
+    }
+  }
+  return { ok: false, stage: 'submit' };
+}
+
+/** Đọc `__rsCap` của một tab: phản hồi recommend CÓ `itemsArray`, cộng dấu hiệu chặn. */
+function tbReadCapture() {
+  const caps = (window.__rsCap || []).filter((c) => /relationrecommend/i.test(c.url || ''));
+  let items = null;
+  let ret = '';
+  // Lượt gọi ĐẦU của chính trang thường dính `RGV587_ERROR` rồi trang tự thử lại, nên phải
+  // duyệt NGƯỢC tìm phản hồi CÓ `itemsArray` — lấy phản hồi đầu tiên khớp tên API là lấy nhầm.
+  for (let i = caps.length - 1; i >= 0; i--) {
+    let j = null;
+    try { j = JSON.parse(caps[i].text); } catch (e) { continue; }
+    if (!ret) ret = (j && j.ret && j.ret[0]) || '';
+    const arr = j && j.data && j.data.itemsArray;
+    if (Array.isArray(arr) && arr.length) { items = arr.slice(0, 40); break; }
+  }
+  return {
+    items,
+    ret,
+    href: location.href,
+    body: document.body ? (document.body.innerText || '').slice(0, 400) : '',
+  };
+}
+
+/**
+ * Ảnh → hàng bán lẻ Taobao. Trả `{ items, blocked, reason, error }`.
+ *
+ * KẾT QUẢ HIỆN Ở TAB MỚI: Taobao mở một tab khác cho trang kết quả, tab trang chủ đứng yên.
+ * Nên sau khi bấm tìm phải quét MỌI tab taobao chứ không chỉ tab của mình.
+ */
+async function taobaoImageSearch(dataUrl) {
+  await ensurePageHook();
+  const deadline = Date.now() + IMAGE_JOB_BUDGET_MS;
+
+  // Hỏi cookie TRƯỚC: khách vãng lai thì mọi lượt gọi MTOP đều trả `FAIL_SYS_SESSION_EXPIRED`,
+  // và biết trước điều đó tiết kiệm cho người dùng ba mươi giây chờ một kết quả chắc chắn rỗng.
+  //
+  // HỎI BỐN TÊN chứ không một. Bốn cookie này cùng xuất hiện khi đăng nhập, nên chỉ cần MỘT
+  // cái có mặt là đủ kết luận. Bám vào đúng một tên là đánh cược cả nguồn vào việc Taobao
+  // không bao giờ đổi tên nó — mà nếu đổi thì hỏng theo kiểu tệ nhất: nguồn báo "chưa đăng
+  // nhập" trong khi phiên vẫn tốt, và không lượt nào được thử nữa để lộ ra sự thật.
+  const signedIn = await Promise.all(['unb', 'cookie17', '_nk_', 'tracknick'].map((name) =>
+    new Promise((resolve) => {
+      try {
+        chrome.cookies.get({ url: 'https://www.taobao.com/', name }, (c) => resolve(!!(c && c.value)));
+      } catch (e) { resolve(false); }
+    })
+  ));
+  if (!signedIn.some(Boolean)) {
+    await openVerifyTab('verify:taobao', 'https://login.taobao.com/');
+    return { items: [], blocked: true, reason: 'login' };
+  }
+
+  const tab = await keptTab('taobao');
+  await chrome.tabs.update(tab.id, { url: 'https://www.taobao.com/' });
+  await focusTab(tab.id); // SPA nặng chỉ render + bắn XHR khi tab HIỆN TRƯỚC
+  await waitForComplete(tab.id, 16000);
+  await sleep(2500);
+
+  // CHỤP LẠI TAB TAOBAO CÓ SẴN trước khi bấm tìm. Máy-thợ là máy của người thật và họ hoàn
+  // toàn có thể đang mở Taobao của riêng mình; đóng nhầm tab ấy sau mỗi lượt tìm là cách chắc
+  // chắn nhất để không ai chịu để máy-thợ chạy nữa. Chỉ tab XUẤT HIỆN THÊM mới là của ta.
+  const before = new Set((await chrome.tabs.query({ url: 'https://*.taobao.com/*' }))
+    .map((t) => t.id).filter((id) => id != null));
+
+  const dropped = await evalInTab(tab.id, tbDropImage, [dataUrl], 20000);
+  if (!dropped || !dropped.ok) {
+    return {
+      items: [],
+      blocked: true,
+      reason: 'ui',
+      error: 'không thao tác được panel tìm-bằng-ảnh (' + ((dropped && dropped.stage) || 'quá hạn') + ')',
+    };
+  }
+
+  const spawned = new Set();
+  let lastRet = '';
+  while (Date.now() < deadline) {
+    await sleep(900);
+    let tabs = [];
+    try { tabs = await chrome.tabs.query({ url: 'https://*.taobao.com/*' }); } catch (e) { tabs = []; }
+    for (const t of tabs) {
+      if (t.id == null) continue;
+      if (!before.has(t.id) && t.id !== tab.id) spawned.add(t.id);
+      const r = await evalInTab(t.id, tbReadCapture, [], 4000);
+      if (!r) continue;
+      if (r.items && r.items.length) {
+        await closeExtraTabs(spawned);
+        return { items: r.items, blocked: false };
+      }
+      if (r.ret) lastRet = r.ret;
+      if (/login\.taobao/i.test(r.href || '') || /SESSION_EXPIRED|NOT_LOGIN/i.test(r.ret || '')) {
+        await focusTab(t.id);
+        return { items: [], blocked: true, reason: 'login' };
+      }
+      if (/滑块|请拖动|向右滑|安全验证|verify|captcha/i.test(r.body || '') || /RGV587|VALIDATE/i.test(r.ret || '')) {
+        await focusTab(t.id);
+        return { items: [], blocked: true, reason: 'verify' };
+      }
+    }
+  }
+  await closeExtraTabs(spawned);
+  return { items: [], blocked: true, reason: 'timeout', error: lastRet || 'Taobao không trả kết quả kịp' };
+}
+
+/** Đóng những tab mà chính lượt tìm này làm Taobao mở thêm. Xem `before` ở trên. */
+async function closeExtraTabs(ids) {
+  for (const id of ids) {
+    try { await chrome.tabs.remove(id); } catch (e) {}
+  }
+}
+
+// ─────────────────────────── Google Lens ───────────────────────────
+
+/**
+ * Mở lớp phủ "Tìm kiếm bằng hình ảnh" trên google.com rồi THẢ ảnh vào.
+ *
+ * BỐN CHI TIẾT, mỗi cái từng làm cả lượt chạy trượt (đo 2026-08-17):
+ *   nhãn nút   phải KHỚP CHÍNH XÁC. `[aria-label*='hình ảnh']` bắt nhầm link "Hình ảnh" trên
+ *              thanh điều hướng (nhãn "Tìm kiếm hình ảnh") — gần giống, nút khác hẳn.
+ *   cách bấm   `click()` bị danh sách gợi ý (`ul.dbXO9`) che. Bắn thẳng `MouseEvent` vào nút
+ *              thì jsaction nhận được mà không cần con trỏ đi tới nơi.
+ *   mốc chờ    phải chờ Ô DÁN LIÊN KẾT hiện ra. Chờ theo thời gian là không đủ: có lượt bấm
+ *              qua rồi mà lớp phủ chưa dựng xong, cú thả rơi vào khoảng không và URL đứng yên
+ *              — không lỗi, không kết quả.
+ *   cách nạp   nạp vào input ẩn KHÔNG ăn. Phải dựng `DataTransfer` rồi bắn
+ *              `dragenter/dragover/drop`, đúng thứ trình duyệt sinh ra khi người ta kéo ảnh vào.
+ */
+async function lensOpenAndDrop(dataUrl) {
+  const nap = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // Tường xin phép cookie. Chỉ bung ra với IP châu Âu nên máy-thợ ở Việt Nam không gặp — giữ
+  // lại vì khi gặp thì nó che KÍN trang và mọi thao tác sau đó trượt hết mà không báo gì.
+  for (const label of ['Chấp nhận tất cả', 'Accept all']) {
+    const btn = [...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === label);
+    if (btn) { btn.click(); await nap(2000); break; }
+  }
+
+  // Ô tìm kiếm tự được focus lúc tải, kéo theo danh sách gợi ý bung ra đè lên nút máy ảnh.
+  document.activeElement && document.activeElement.blur();
+  await nap(400);
+
+  const camera = document.querySelector(
+    "[aria-label='Tìm kiếm bằng hình ảnh'], [aria-label='Search by image']"
+  );
+  if (!camera) return { ok: false, stage: 'camera' };
+  camera.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+  const LINK_BOX = "input[placeholder*='liên kết'], input[placeholder*='link']";
+  let box = null;
+  for (let i = 0; i < 40 && !box; i++) {
+    await nap(500);
+    const el = document.querySelector(LINK_BOX);
+    if (el && el.offsetParent !== null) box = el;
+  }
+  if (!box) return { ok: false, stage: 'overlay' };
+  await nap(600);
+
+  try {
+    const blob = await (await fetch(dataUrl)).blob();
+    const dt = new DataTransfer();
+    dt.items.add(new File([blob], 'upload.jpg', { type: 'image/jpeg' }));
+    // Bắn lên nhiều ứng viên vì cấu trúc DOM của Google đổi luôn, và một sự kiện thừa vô hại.
+    const targets = [...document.querySelectorAll("div[role='dialog'], form, body")].slice(0, 5);
+    for (const el of targets) {
+      for (const type of ['dragenter', 'dragover', 'drop']) {
+        el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
+      }
+    }
+    return { ok: true, targets: targets.length };
+  } catch (e) {
+    return { ok: false, stage: 'drop', error: String(e) };
+  }
+}
+
+/**
+ * Cuộn cho lưới ảnh kịp tải rồi bóc thẻ kết quả.
+ *
+ * KHÔNG TỐN THÊM SUẤT HẠN MỨC: cuộn không phải một lượt truy vấn mới, chỉ là để trình duyệt
+ * tải nốt những tấm ảnh nó đang trì hoãn. Đo 2026-08-17 trên ba tấm ảnh đã cache: bóc ngay
+ * thì 0/24 và 1/24 dòng có ảnh thu nhỏ, vì mọi `<img>` trong thẻ còn là gif 1×1 của bộ tải lười.
+ *
+ * BÓC THẺ: không bám vào tên class — chúng là chuỗi sinh tự động, đổi mỗi lần Google build lại.
+ * CHỮ VÀ ẢNH ĐƯỢC TÌM RIÊNG, ở hai độ sâu khác nhau. Bản đầu leo một lần rồi lấy cả hai từ
+ * cùng một tổ tiên, và nó lấy được chữ nhưng gần như không bao giờ lấy được ảnh. Truy ngược từ
+ * ẢNH ra thẻ mới thấy vì sao: ảnh sản phẩm KHÔNG nằm trong thẻ `<a>` và cách nó tới SÁU bậc,
+ * trong khi mỗi thẻ có sẵn ảnh rác ở bậc nông (favicon 32px, gif 1×1). Điều kiện dừng cũ là
+ * "tổ tiên nào có <img>", mà favicon cũng là `<img>` — nên vòng lặp luôn dừng ở bậc hai-ba,
+ * TRƯỚC khi tới bậc có ảnh thật. Nó không thiếu độ sâu vì đi chậm, mà vì tưởng đã tới nơi.
+ */
+async function lensHarvest() {
+  const nap = (ms) => new Promise((r) => setTimeout(r, ms));
+  const loaded = () => [...document.querySelectorAll('img')].filter((i) => i.naturalWidth >= 60).length;
+  for (let i = 0; i < 5; i++) {
+    if (loaded() >= 8) break;
+    window.scrollBy(0, 1400);
+    await nap(1200);
+  }
+  window.scrollTo(0, 0);
+  await nap(800);
+
+  const REAL_PX = 60; // favicon là 32, chỗ giữ chỗ là 1 — 60 nằm gọn giữa hai mức
+  const TEXT_HOPS = 4;
+  const IMAGE_HOPS = 7;
+  const realImages = (b) => [...b.querySelectorAll('img')].filter((im) => (im.naturalWidth || 0) >= REAL_PX);
+
+  const out = [];
+  const seen = new Set();
+  for (const a of document.querySelectorAll("a[href^='http']")) {
+    const href = a.href;
+    if (href.includes('google.') || href.includes('gstatic')) continue;
+    if (seen.has(href)) continue;
+    seen.add(href);
+
+    // Chữ: tổ tiên gần nhất có đủ chữ. Leo cao hơn là bắt đầu nuốt chữ của thẻ bên cạnh.
+    let textBox = a;
+    for (let i = 0; i < TEXT_HOPS && textBox.parentElement; i++) {
+      textBox = textBox.parentElement;
+      if (textBox.innerText.trim().length > 20) break;
+    }
+    const text = (textBox.innerText || '').trim();
+    if (!text) continue;
+
+    // Ảnh: leo tiếp cho tới tổ tiên đầu tiên CÓ ẢNH THẬT. Chặn bằng số link bên trong — một
+    // hộp ôm nhiều link là hộp chứa NHIỀU thẻ, và lấy ảnh ở đó là gán ảnh của thẻ hàng xóm.
+    let best = null;
+    let box = a;
+    for (let i = 0; i < IMAGE_HOPS && box.parentElement; i++) {
+      box = box.parentElement;
+      const found = realImages(box);
+      if (!found.length) continue;
+      if (box.querySelectorAll("a[href^='http']").length > 2) break;
+      // Lớn nhất, không phải đầu tiên: một hộp vẫn có thể chứa cả ảnh phụ.
+      best = found.sort((x, y) => y.naturalWidth * y.naturalHeight - x.naturalWidth * x.naturalHeight)[0];
+      break;
+    }
+
+    // Chữ nằm TRONG HỘP ẢNH mà KHÔNG có ở hộp chữ là nhãn dán đè lên ảnh, và Lens để GIÁ đúng
+    // ở đó ("54.000 ₫*" góc trên trái) chứ không để cùng tên nguồn và tiêu đề. Chỉ đọc khi ĐÃ
+    // tìm ra ảnh thật: lúc ấy `box` dừng đúng ở hộp của thẻ này. Không có ảnh thì vòng leo chạy
+    // hết bảy nấc và `box` thành hộp ôm cả chục thẻ — nhãn nhặt ở đó là giá của thẻ khác.
+    const overlay = (best && box !== textBox)
+      ? [...new Set((box.innerText || '').split('\n').map((s) => s.trim()).filter(Boolean))]
+          .filter((line) => !text.includes(line))
+          .slice(0, 4)
+      : [];
+
+    out.push({
+      href,
+      overlay,
+      lines: text.split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 8),
+      thumbnail: best ? (best.currentSrc || best.src) : null,
+    });
+    if (out.length >= 40) break;
+  }
+  return { cards: out, href: location.href };
+}
+
+/** Ảnh → thẻ kết quả Google Lens. Trả `{ cards, blocked, reason, error }`. */
+async function lensImageSearch(dataUrl, language) {
+  const deadline = Date.now() + IMAGE_JOB_BUDGET_MS;
+  const tab = await keptTab('lens');
+  await chrome.tabs.update(tab.id, { url: 'https://www.google.com/?hl=' + encodeURIComponent(language || 'vi') });
+  // ĐƯA TAB RA TRƯỚC. Không phải để người dùng xem: lưới kết quả tải ảnh theo kiểu lười, mà
+  // tab nền thì Chrome không paint — cuộn bao nhiêu cũng không tấm nào chuyển sang ảnh thật,
+  // và mọi dòng trả về sẽ không có ảnh thu nhỏ.
+  await focusTab(tab.id);
+  await waitForComplete(tab.id, 16000);
+  await sleep(2000);
+
+  const url0 = await evalInTab(tab.id, () => location.href, [], 4000);
+  if (typeof url0 === 'string' && url0.includes('/sorry')) return { cards: [], blocked: true, reason: 'sorry' };
+
+  const dropped = await evalInTab(tab.id, lensOpenAndDrop, [dataUrl], 30000);
+  if (!dropped || !dropped.ok) {
+    return {
+      cards: [],
+      blocked: true,
+      reason: 'ui',
+      error: 'không mở được lớp phủ tìm-bằng-ảnh (' + ((dropped && dropped.stage) || 'quá hạn') + ')',
+    };
+  }
+
+  // CHỜ BẰNG CÁCH THĂM DÒ `location.href`. Sau cú thả, Google đi qua một chuỗi chuyển hướng;
+  // chờ theo sự kiện điều hướng thì gãy giữa chừng với "context was destroyed" — tức là BÁO
+  // LỖI đúng vào lúc mọi thứ đang chạy đúng.
+  let landed = false;
+  while (Date.now() < deadline) {
+    await sleep(1500);
+    const href = await evalInTab(tab.id, () => location.href, [], 4000);
+    if (typeof href !== 'string') continue;
+    if (href.includes('/sorry')) return { cards: [], blocked: true, reason: 'sorry' };
+    if (href.includes('/search')) { landed = true; break; }
+  }
+  if (!landed) return { cards: [], blocked: true, reason: 'timeout', error: 'Google không nhận ảnh' };
+
+  await sleep(5000);
+  const got = await evalInTab(tab.id, lensHarvest, [], 20000);
+  if (!got || !Array.isArray(got.cards)) {
+    return { cards: [], blocked: true, reason: 'harvest', error: 'không bóc được thẻ kết quả' };
+  }
+  if (!got.cards.length && (got.href || '').includes('/sorry')) {
+    return { cards: [], blocked: true, reason: 'sorry' };
+  }
+  return { cards: got.cards, blocked: false };
+}
+
 // HẠ NHIỆT NẰM Ở ĐÂY, không nằm trong từng hàm tìm kiếm: chỗ này thấy được mọi đường ra —
 // thành công, lỗi, lẫn ngoại lệ — mà những lần hỏng mới đúng là lúc trang nặng bị bỏ lại.
 // `.finally` chạy SAU `sendResponse`, nên việc dọn không làm chậm kết quả trả về.
@@ -1735,6 +2116,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   if (msg.type === 'RS_TAOBAO') {
     withCooldown('taobao', searchTaobao(msg.keyword, msg.count).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: false, error: String(e) })));
+    return true;
+  }
+
+  if (msg.type === 'RS_TAOBAO_IMAGE') {
+    withCooldown('taobao', taobaoImageSearch(msg.dataUrl).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: true, reason: 'error', error: String(e) })));
+    return true;
+  }
+
+  // Lens dùng slot tab RIÊNG, không dùng chung với nguồn từ khoá nào: nó là nguồn duy nhất
+  // chạy trên google.com, và trộn vào một slot sàn sẽ khiến hai job cùng giành một tab.
+  if (msg.type === 'RS_LENS_IMAGE') {
+    withCooldown('lens', lensImageSearch(msg.dataUrl, msg.language).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, cards: [], blocked: true, reason: 'error', error: String(e) })));
     return true;
   }
 

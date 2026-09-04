@@ -40,6 +40,24 @@
 /* Cầu postMessage tới extension — GIỮ NGUYÊN giao thức của research.js (CALL/CALL_RESULT). */
 const RS_PAGE = 'research-spy', RS_EXT = 'research-spy-ext';
 let _seq = 0;
+
+/* HẠN GIỜ THEO TỪNG LOẠI JOB, không phải một con số chung.
+ *
+ * Bốn mươi giây là đủ cho một lệnh crawl sàn, nhưng KHÔNG đủ cho ba loại job dài — và khi
+ * hụt, hỏng theo kiểu tệ nhất: trang bỏ cuộc, POST `result: null` về, còn extension vẫn chạy
+ * tiếp tới lúc xong rồi trả kết quả vào hư không. Backend đọc `null` thành "extension chưa
+ * nạp loại job này", tức là một câu chẩn đoán SAI HẲN so với nguyên nhân thật.
+ *
+ * Mỗi con số dưới đây phải LỚN HƠN ngân sách của chính handler bên `background.js`, và NHỎ
+ * HƠN hạn của backend (`BATCH_TIMEOUT_S` 90s / `IMAGE_TIMEOUT_S` 100s) — thứ tự ấy giữ cho
+ * bên bỏ cuộc trước luôn là bên biết vì sao mình bỏ cuộc.
+ */
+const JOB_TIMEOUT_MS = {
+  RS_TEMU_SUGGEST: 80000,   // gõ tối đa 12 cụm vào ô tìm kiếm Temu, ngân sách extension 75s
+  RS_LENS_IMAGE: 88000,     // mở google.com, thả ảnh, chờ trang kết quả, cuộn cho ảnh kịp tải
+  RS_TAOBAO_IMAGE: 88000,   // mở taobao.com, bấm nút máy ảnh, thả ảnh, chờ tab kết quả
+};
+
 function rsCall(msg, timeoutMs = 40000) {
   return new Promise((resolve) => {
     const id = `wk-${Date.now()}-${_seq++}`;
@@ -114,7 +132,7 @@ async function loop() {
     log(`Nhận job ${job.id} · ${job.type} · ${JSON.stringify(job.payload).slice(0,80)}`);
     let result = null;
     try {
-      result = await rsCall({ type: job.type, ...job.payload });
+      result = await rsCall({ type: job.type, ...job.payload }, JOB_TIMEOUT_MS[job.type] || 40000);
       if (result && result.__timeout) { log('  extension không trả lời (timeout).', 'err'); result = null; }
     } catch (e) { log('  lỗi chạy job: ' + e, 'err'); result = null; }
 

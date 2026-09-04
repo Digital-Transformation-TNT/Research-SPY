@@ -4,10 +4,10 @@ Ghép các tầng lại thành một câu trả lời, và giữ hạn mức c�
 SÁU TẦNG CHẠY SONG SONG VÀ ĐỘC LẬP NHAU:
 
     identify.py    ảnh → tên món, thương hiệu, cụm tìm vi/zh/en      ~3s, gần như không trượt
-    lens.py        ảnh → sản phẩm tương tự kèm link, giá, đánh giá   ~20s, CÓ HẠN MỨC
+    lens.py        ảnh → sản phẩm tương tự kèm link, giá, đánh giá   ~20s, CẦN MÁY-THỢ
     ali.py         ảnh → chào hàng 1688 kèm giá sỉ và nhà cung cấp   ~3s, không hạn mức
     alibaba.py     ảnh → bán buôn xuất khẩu kèm giá ₫ và MOQ         ~4s, siết sau vài lượt dồn
-    taobao.py      ảnh → hàng bán lẻ Trung Quốc kèm giá và lượt mua  ~30s, CẦN ĐĂNG NHẬP
+    taobao.py      ảnh → hàng bán lẻ Trung Quốc kèm giá và lượt mua  ~30s, CẦN MÁY-THỢ
     aliexpress.py  ảnh → bán lẻ quốc tế kèm giá ₫ ship về VN         ~5s, CÓ HẠN MỨC THEO IP
 
 Thiết kế xoay quanh đúng một điều: **hạn mức của Lens là tài nguyên khan hiếm nhất**, không
@@ -71,11 +71,14 @@ SOURCING_TTL_MS = 7 * 24 * 60 * 60 * 1000
 #:     1688        ~3s    HTTP thuần, không hạn mức, không đăng nhập
 #:     alibaba     ~4s    HTTP thuần, không đăng nhập, KHÔNG cần ký MTOP, CÓ siết theo tần suất
 #:     aliexpress  ~5s    HTTP thuần, không đăng nhập, nhưng CÓ tường tần suất theo IP
-#:     taobao      ~30s   mở một cửa sổ Chrome, CẦN phiên đăng nhập
-#:     lens        ~20s   mở một cửa sổ Chrome, HẠN MỨC ~15 lượt/IP/buổi
+#:     taobao      ~30s   MÁY-THỢ, CẦN phiên đăng nhập sẵn trên máy đó
+#:     lens        ~20s   MÁY-THỢ, HẠN MỨC ~15 lượt/IP/buổi
 #:
-#: Trước đây cả ba luôn chạy, nên một lượt chỉ cần bảng giá sỉ vẫn đốt một suất Lens và mở hai
-#: cửa sổ trình duyệt. Với nguồn khan hiếm nhất của cả hệ thống thì đó là lãng phí có thật.
+#: Hai nguồn cuối mượn trình duyệt của máy-thợ chứ không mở Chrome trên VPS — đo 2026-09-04,
+#: cả hai đường chạy tại chỗ đều tắc, mỗi đường một lý do. Xem `lib/imagesearch/relay.py`.
+#:
+#: Trước đây cả ba luôn chạy, nên một lượt chỉ cần bảng giá sỉ vẫn đốt một suất Lens và chiếm
+#: máy-thợ hai lượt. Với nguồn khan hiếm nhất của cả hệ thống thì đó là lãng phí có thật.
 SOURCES = ("1688", "alibaba", "aliexpress", "taobao", "lens")
 
 
@@ -177,8 +180,9 @@ async def _read_china_retail(
     image: bytes, mime: str, key: str
 ) -> tuple[list[ImageMatch], str | None]:
     """
-    Hàng bán lẻ Taobao. Cùng luật hỏng-mềm với Lens, và vì cùng một lý do: nguồn này cần một
-    thứ bên ngoài code (phiên đăng nhập) nên nó SẼ vắng mặt, đều đặn, chứ không phải hi hữu.
+    Hàng bán lẻ Taobao. Cùng luật hỏng-mềm với Lens, và vì cùng một lý do: nguồn này cần hai
+    thứ bên ngoài code (máy-thợ online, và phiên đăng nhập trên máy đó) nên nó SẼ vắng mặt,
+    đều đặn, chứ không phải hi hữu.
     """
     cached = _china_retail.get(key)
     if cached is not None:
@@ -329,7 +333,7 @@ async def search_by_image(
     # Thứ tự ưu tiên = xác suất vắng mặt, cao xuống thấp: Lens (~15 lượt/ngày) → AliExpress
     # (~2 lượt rồi nghỉ một ngày) → Taobao (hết phiên đăng nhập) → Alibaba.com (~9 lượt dồn) →
     # 1688 (chưa thấy trần). Xếp vậy vì câu của nguồn hay vắng nói được việc cần làm tiếp
-    # ("nghỉ ít phút", "đăng nhập lại"); câu về Gemini gần như không bao giờ tới lượt.
+    # ("nghỉ ít phút", "mở trang /worker"); câu về Gemini gần như không bao giờ tới lượt.
     message = (
         matches_note
         or global_retail_note

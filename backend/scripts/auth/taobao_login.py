@@ -1,8 +1,15 @@
 """
-Đăng nhập Taobao MỘT LẦN vào hồ sơ Chrome riêng, để phần tìm-bằng-ảnh dùng lại.
+Đăng nhập Taobao MỘT LẦN vào hồ sơ Chrome riêng, cho các script dò đường chạy tay.
 
     cd backend
     python -m scripts.auth.taobao_login
+
+KHÔNG CÒN LÀ PHIÊN MÀ SERVER DÙNG. Nguồn tìm-bằng-ảnh Taobao nay chạy trên máy-thợ và mượn
+đúng phiên đăng nhập của trình duyệt ở đó — xem `lib/imagesearch/relay.py`. Hồ sơ dựng bằng
+script này chỉ còn phục vụ `scripts/probe/capture_image_search.py`. Trên VPS nó KHÔNG dùng
+được cho server dù có đăng nhập: backend chạy dưới LocalSystem còn script này chạy dưới
+Administrator, mà Chrome mã hoá cookie theo tài khoản Windows nên hai bên không đọc được của
+nhau — đo 2026-09-04, hồ sơ mất sạch cookie đăng nhập sau mỗi lần đổi tay.
 
 Cửa sổ Chrome mở ra ở trang đăng nhập Taobao — quét mã QR bằng app Taobao trên điện thoại, hoặc
 đăng nhập bằng mật khẩu. Script tự nhận ra lúc đã vào được rồi tự đóng.
@@ -27,8 +34,8 @@ from __future__ import annotations
 import asyncio
 import time
 
-# Hồ sơ và cách mở nó thuộc về NGUỒN, không thuộc về script đăng nhập: `lib/imagesearch/taobao.py`
-# là nơi dùng phiên này thật, còn file này chỉ là cửa để tạo ra nó.
+# Hồ sơ và cách mở nó vẫn thuộc về NGUỒN, không thuộc về script đăng nhập — dù nay chỉ còn
+# đường chạy tay dùng tới, `lib/imagesearch/taobao.py` vẫn là chỗ định nghĩa hồ sơ ấy.
 from lib.imagesearch.taobao import PROFILE_DIR, open_profile
 
 LOGIN_URL = "https://login.taobao.com/"

@@ -14,60 +14,56 @@ tên API `mtop.relationrecommend.WirelessRecommend.recommend`, nhưng lượt g�
 
 Không có hai chuỗi đó thì cổng trả `RGV587_ERROR::SM::哎哟喂,被挤爆啦` kèm một đường dẫn đăng
 nhập. Dựng lại chúng bằng tay là đi ngược cả một bó JS đã rối hoá; để trang tự tính rồi NGHE
-lấy phản hồi thì mất một lần mở trình duyệt nhưng không bao giờ hỏng vì họ đổi thuật toán. Đây
-đúng cách `lib/keywords/trends.py` làm với Google, và cùng lý do.
+lấy phản hồi thì không bao giờ hỏng vì họ đổi thuật toán.
 
-CÒN PHẢI ĐĂNG NHẬP. Khách vãng lai thì mọi lượt gọi MTOP trên trang đều trả
-`FAIL_SYS_SESSION_EXPIRED::Session过期`. Phiên nằm ở hồ sơ Chrome riêng — dựng bằng
-`python -m scripts.auth.taobao_login`.
+TRÌNH DUYỆT ẤY NAY LÀ MÁY-THỢ, không phải Chrome trên VPS. Nguồn này còn phải ĐĂNG NHẬP —
+khách vãng lai thì mọi lượt gọi MTOP đều trả `FAIL_SYS_SESSION_EXPIRED::Session过期`. Bản
+trước giữ phiên trong một hồ sơ Chrome ở `.auth/taobao-profile`, và cách đó đã hỏng trên VPS:
+đo 2026-09-04, hồ sơ chỉ còn cookie khách vãng lai vì backend chạy dưới LocalSystem còn phiên
+thì được dựng bằng tay dưới Administrator — Chrome mã hoá cookie theo tài khoản Windows nên
+hai bên không đọc được của nhau. Máy-thợ không có vấn đề đó: nó là Chrome của người thật, đã
+đăng nhập sẵn. Xem `lib/imagesearch/relay.py`.
 
-BA CHI TIẾT ĐÃ ĐO, mỗi cái từng làm cả lượt chạy trượt (2026-08-17):
+BA CHI TIẾT ĐÃ ĐO, mỗi cái từng làm cả lượt chạy trượt (2026-08-17) — nay nằm ở
+`extension/background.js::taobaoImageSearch` cùng với ghi chú của chúng:
 
     nút mở panel   `[class*='image-search-icon-wrapper']`. Không bấm thì ô tải ảnh không tồn
                    tại trong DOM và cú nạp tệp rơi vào khoảng không.
-    panel KHÔNG tự tìm   nhận ảnh xong nó đứng đợi một cú bấm 搜索. Nhìn riêng lưu lượng mạng
-                   thì y hệt "trang không nhận ảnh" — chỉ ẢNH CHỤP MÀN HÌNH mới lộ ra.
-    kết quả ở TAB MỚI    `page` vẫn trỏ vào trang chủ, nên phải nghe ở tầng `context`.
+    panel KHÔNG tự tìm   nhận ảnh xong nó đứng đợi một cú bấm 搜索.
+    kết quả ở TAB MỚI    trang chủ vẫn đứng yên, phải đi tìm tab mà Taobao vừa mở.
 
-Lượt gọi ĐẦU của chính trang thường bị `RGV587_ERROR` rồi trang tự thử lại — vì vậy ở đây chờ
-đúng phản hồi CÓ `itemsArray` chứ không lấy phản hồi đầu tiên khớp tên API.
+Lượt gọi ĐẦU của chính trang thường bị `RGV587_ERROR` rồi trang tự thử lại — vì vậy phía
+extension chờ đúng phản hồi CÓ `itemsArray` chứ không lấy phản hồi đầu tiên khớp tên API.
+
+`PROFILE_DIR` và `open_profile` KHÔNG còn nằm trên đường chạy của server. Giữ lại cho
+`scripts/probe/capture_image_search.py` và `scripts/auth/taobao_login.py` — hai script chạy
+tay trên máy dev, nơi một hồ sơ Chrome riêng vẫn là cách gọn nhất.
 """
 
 from __future__ import annotations
 
-import asyncio
-import json
-import time
 from pathlib import Path
 from typing import Any
 
 from lib.core.browser import get_playwright
 
+from .relay import ask_worker, shrink
+
 #: `backend/` — cùng cách xác định gốc như `lib/core/auth.py`.
 _ROOT = Path(__file__).resolve().parents[2]
 
-#: Hồ sơ Chrome mang phiên Taobao. Nằm trong `.auth/` nên đã được gitignore.
-#:
-#: TÁCH HẲN khỏi `lens-profile`: Lens cố ý chạy không đăng nhập bất cứ tài khoản nào, trộn một
-#: phiên Taobao vào đó là kéo thêm dấu vết vào đúng hồ sơ đang cần sạch.
+#: Loại job mà `extension/background.js` đang đợi.
+JOB_TYPE = "RS_TAOBAO_IMAGE"
+
+#: Tên nguồn như người dùng nhìn thấy, dùng để dựng câu báo lỗi.
+LABEL = "Taobao"
+
+#: Hồ sơ Chrome cho hai script chạy tay. Nằm trong `.auth/` nên đã được gitignore.
 PROFILE_DIR = _ROOT / ".auth" / "taobao-profile"
 
 HOME_URL = "https://www.taobao.com/"
 
-#: Nút mở panel 按图片搜索 trong thanh tìm kiếm.
-CAMERA = "[class*='image-search-icon-wrapper']"
-
-#: Nhãn nút xác nhận trong panel. `搜同款` là bản chữ khác của cùng nút trên vài phiên bản giao diện.
-SEARCH_LABELS = ("搜索", "搜同款")
-
-#: Tên API mang kết quả. Cùng tên với ô gợi ý và với 1688 — `appId` mới là thứ phân biệt, xem
-#: `lib/core/mtop.py`.
-RESULT_API = "mtop.relationrecommend.wirelessrecommend.recommend"
-
 TIMEOUT_MS = 60_000
-
-#: Chỉ một lượt tại một thời điểm: một hồ sơ Chrome chỉ mở được bởi một tiến trình.
-_lock = asyncio.Lock()
 
 
 class TaobaoUnavailable(RuntimeError):
@@ -78,9 +74,7 @@ async def open_profile(headless: bool = False):
     """
     Mở Chrome thật trên hồ sơ Taobao. Nơi gọi tự đóng lại.
 
-    `headless=False` là mặc định. Chưa đo được bản chạy ẩn có qua không, và với một nguồn cần
-    đăng nhập thì đoán sai theo hướng "chắc chạy ẩn cũng được" là cách nhanh nhất để mất phiên
-    — Google Lens đã có đúng bài học ấy, xem `lens.py`.
+    CHỈ DÙNG CHO SCRIPT CHẠY TAY — server đi qua máy-thợ, xem đầu file.
     """
     playwright = await get_playwright()
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
@@ -136,69 +130,39 @@ def _row(item: dict[str, Any]) -> dict[str, Any] | None:
 
 
 async def fetch_items(image: bytes, mime: str, limit: int = 24) -> list[dict[str, Any]]:
-    """Ảnh → danh sách hàng bán lẻ trên Taobao. Ném `TaobaoUnavailable` khi phiên hỏng."""
-    async with _lock:
-        context = await open_profile()
-        captured: asyncio.Future[list[dict]] = asyncio.get_running_loop().create_future()
+    """
+    Ảnh → danh sách hàng bán lẻ trên Taobao, ĐI QUA MÁY-THỢ.
 
-        async def on_response(response) -> None:
-            if captured.done() or RESULT_API not in response.url.lower():
-                return
-            try:
-                payload = json.loads(await response.text())
-            except Exception:
-                return
-            # CHỜ ĐÚNG PHẢN HỒI CÓ `itemsArray`. Trang gọi API này nhiều lần cho nhiều việc
-            # khác nhau (gợi ý, khối đề xuất), và lượt ảnh đầu tiên thường dính `RGV587_ERROR`
-            # rồi mới được thử lại — lấy phản hồi đầu tiên khớp tên API là lấy nhầm.
-            items = ((payload.get("data") or {}).get("itemsArray")) or []
-            if items and not captured.done():
-                captured.set_result(items)
+    Ném `TaobaoUnavailable` cho mọi đường hỏng — chưa đăng nhập, bị chặn, không có thợ,
+    extension chưa nạp loại job này. Với `search.py` cả bốn đều là "nguồn vắng mặt"; câu chữ
+    đi kèm mới là thứ nói ra phải làm gì tiếp.
 
-        context.on("response", lambda r: asyncio.create_task(on_response(r)))
+    `mime` không còn đi tới đâu: `shrink` luôn xuất JPEG. Giữ tham số cho khớp với `lens.py`.
+    """
+    try:
+        result = await ask_worker(JOB_TYPE, {"dataUrl": shrink(image)}, LABEL)
+    except RuntimeError as error:
+        raise TaobaoUnavailable(str(error)) from error
 
-        try:
-            page = await context.new_page()
-            await page.goto(HOME_URL, wait_until="domcontentloaded", timeout=TIMEOUT_MS)
-            await page.wait_for_timeout(4_000)
-
-            camera = page.locator(CAMERA).first
-            if not await camera.count():
-                raise TaobaoUnavailable(
-                    "Không thấy nút tìm-bằng-ảnh trên trang chủ Taobao — giao diện đã đổi"
-                )
-            await camera.dispatch_event("click")
-            await page.wait_for_timeout(2_500)
-
-            # Nạp thẳng từ bộ nhớ, không qua tệp tạm.
-            file_input = page.locator("input[type='file']").first
-            if not await file_input.count():
-                raise TaobaoUnavailable("Panel tìm-bằng-ảnh không mở ra")
-            await file_input.set_input_files(
-                {"name": "upload.jpg", "mimeType": mime, "buffer": image}
+    if result.get("blocked"):
+        reason = str(result.get("reason") or "")
+        if reason == "login":
+            raise TaobaoUnavailable(
+                "Máy-thợ chưa đăng nhập Taobao — đã mở sẵn tab Taobao trên máy đó, đăng nhập "
+                "một lần rồi tìm lại."
             )
-            await page.wait_for_timeout(3_000)
+        if reason == "verify":
+            raise TaobaoUnavailable(
+                "Taobao đang bắt xác minh trên máy-thợ — kéo slider ở tab vừa mở rồi tìm lại."
+            )
+        raise TaobaoUnavailable(
+            f"Taobao không chạy được trên máy-thợ: "
+            f"{result.get('error') or reason or 'không rõ'}"
+        )
 
-            for label in SEARCH_LABELS:
-                button = page.get_by_text(label, exact=True).last
-                if await button.count():
-                    await button.click(timeout=8_000)
-                    break
-            else:
-                raise TaobaoUnavailable("Không thấy nút xác nhận trong panel tìm-bằng-ảnh")
+    items = result.get("items")
+    if not isinstance(items, list):
+        raise TaobaoUnavailable("Máy-thợ trả về kết quả Taobao không đúng hình dạng")
 
-            try:
-                items = await asyncio.wait_for(captured, timeout=45)
-            except asyncio.TimeoutError:
-                raise TaobaoUnavailable(
-                    "Taobao không trả về kết quả — phiên đăng nhập có thể đã hết hạn, chạy lại "
-                    "`python -m scripts.auth.taobao_login`"
-                ) from None
-
-            rows = [parsed for parsed in (_row(item) for item in items) if parsed]
-            return rows[:limit]
-        finally:
-            try:
-                await context.close()
-            except Exception:
-                pass
+    rows = [r for r in (_row(i) for i in items if isinstance(i, dict)) if r]
+    return rows[:limit]
