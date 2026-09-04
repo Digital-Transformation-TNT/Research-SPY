@@ -19,11 +19,14 @@ thì thêm OTP gửi mail sau, kiến trúc không đổi.
 
 from __future__ import annotations
 
+import logging
 import re
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+
+log = logging.getLogger("auth")
 
 from lib.core.config import env_string
 from lib.core.db import supabase_or_none, is_configured as db_ready
@@ -98,6 +101,18 @@ def _domain_error():
     )
 
 
+def _supa_error(e: Exception, where: str) -> JSONResponse:
+    """Một lời gọi Supabase ném lỗi. Ghi traceback đầy đủ ra log service, và trả JSON có
+    chi tiết (thay vì 500 trơ) để giao diện + chẩn đoán đọc được lý do thật — thường là
+    thiếu cột (migration chưa chạy) hoặc sai key. Đây là tool nội bộ nên lộ message DB
+    chấp nhận được; không lộ secret vì message của PostgREST chỉ nói tên cột/bảng."""
+    log.exception("Supabase '%s' lỗi: %s", where, e)
+    return JSONResponse(
+        {"error": f"Lỗi truy vấn dữ liệu người dùng ({where}): {e}"},
+        status_code=502,
+    )
+
+
 @router.post("/login")
 async def login(body: LoginBody) -> JSONResponse:
     if not (db_ready() and jwt_ready()):
@@ -108,7 +123,10 @@ async def login(body: LoginBody) -> JSONResponse:
         return _domain_error()
 
     supa = supabase_or_none()
-    existing = supa.table("users").select(_USER_FIELDS).eq("email", email).limit(1).execute()
+    try:
+        existing = supa.table("users").select(_USER_FIELDS).eq("email", email).limit(1).execute()
+    except Exception as e:
+        return _supa_error(e, "login-select")
     rows = existing.data or []
 
     if not rows:
@@ -131,7 +149,10 @@ async def login(body: LoginBody) -> JSONResponse:
             status_code=403,
         )
 
-    supa.table("users").update({"last_login_at": "now()"}).eq("id", user["id"]).execute()
+    try:
+        supa.table("users").update({"last_login_at": "now()"}).eq("id", user["id"]).execute()
+    except Exception as e:
+        return _supa_error(e, "login-update")
     try:
         token = sign(user_id=str(user["id"]), username=user.get("email") or "", role=user["role"])
     except JWTError as e:
@@ -157,7 +178,10 @@ async def register(body: RegisterBody) -> JSONResponse:
 
     supa = supabase_or_none()
     # Đã tồn tại rồi → không tạo trùng, báo trạng thái hiện tại để frontend chuyển đúng màn.
-    existing = supa.table("users").select("status").eq("email", email).limit(1).execute()
+    try:
+        existing = supa.table("users").select("status").eq("email", email).limit(1).execute()
+    except Exception as e:
+        return _supa_error(e, "register-select")
     if existing.data:
         st = existing.data[0].get("status") or "pending"
         if st == "approved":
