@@ -295,6 +295,13 @@ const BACKEND = '';
 const PF_LABEL = { etsy: 'Etsy', facebook: 'Facebook', tiktok: 'TikTok', douyin: 'Douyin 抖音' };
 const PRICE_SCALE = 100000;
 
+// Modal Giá vốn: tỉ giá ¥(CNY)→₫ và ngưỡng % (giá nhập/giá bán). Mặc định 3900 / 30, user chỉnh
+// ở ngay modal; lưu localStorage để giữ giữa các lần mở. Đọc bọc try/catch phòng chế độ chặn storage.
+const COST_RATE_DEFAULT = 3900;
+const COST_THRESH_DEFAULT = 30;
+function costRate() { try { const v = parseFloat(localStorage.getItem('rs_cost_rate')); return v > 0 ? v : COST_RATE_DEFAULT; } catch (e) { return COST_RATE_DEFAULT; } }
+function costThresh() { try { const v = parseFloat(localStorage.getItem('rs_cost_thresh')); return v > 0 ? v : COST_THRESH_DEFAULT; } catch (e) { return COST_THRESH_DEFAULT; } }
+
 // Cấu hình sàn: active = đã có adapter; regions = mảng nước (có region), [] = nội địa/toàn cầu
 // (không chọn region), 'any' = lọc mọi nước (Facebook). Region động theo sàn đang chọn.
 //
@@ -1021,7 +1028,7 @@ function render() {
     `<td class="num">${fmtInt(p.sold)}</td>` +
     `<td class="num">${p.rating != null ? p.rating.toFixed(1) + '★' : '—'}${p.ratingCount != null ? `<div class="sub">${fmtInt(p.ratingCount)}</div>` : ''}</td>` +
     `<td class="num"><span class="price">${fmtPrice(p.price, curOf(p))}</span>${p.strike ? `<div class="sub strike">${fmtInt(p.strike)}</div>` : ''}</td>` +
-    `<td><button class="sim cost" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}">💰 Giá vốn</button> ` +
+    `<td><button class="sim cost" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-price="${p.price != null ? p.price : ''}" data-cur="${esc(curOf(p))}">💰 Giá vốn</button> ` +
     `<button class="sim vid" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-region="${esc(p.region || '')}">🎬 Video</button></td>` +
     `</tr>`
   ).join('');
@@ -1053,7 +1060,8 @@ $('rows').addEventListener('mouseout', (e) => { if (e.target.closest('img.thumb'
 $('rows').addEventListener('click', (e) => {
   const cost = e.target.closest('button.cost');
   if (cost) {
-    openCostModal({ img: cost.dataset.img, name: cost.dataset.name });
+    const sell = cost.dataset.price !== '' && cost.dataset.price != null ? Number(cost.dataset.price) : null;
+    openCostModal({ img: cost.dataset.img, name: cost.dataset.name, sell, cur: cost.dataset.cur || 'VND' });
     return;
   }
   const vid = e.target.closest('button.vid');
@@ -1067,20 +1075,30 @@ $('rows').addEventListener('click', (e) => {
 // Dùng lại endpoint /api/imagesearch (mục Tìm bằng ảnh), chỉ hỏi nguồn '1688'. Ảnh của dòng là URL
 // → tải bytes qua proxy /api/media (tránh CORS) → gửi multipart. `sourcing` trả về = bảng 1688.
 let costToken = 0; // chống race: mỗi lần mở gắn token, chỉ render kết quả của token mới nhất.
+// Ngữ cảnh modal hiện tại — giữ để đổi tỉ giá/ngưỡng thì tính lại % ngay, KHÔNG fetch lại 1688.
+let costOffers = [];      // các chào hàng 1688 đã lấy (mỗi cái là một nguồn nhập)
+let costSell = null;      // giá bán đối thủ (VND) của dòng đang xét — mẫu số của %
+let costCur = 'VND';      // tiền tệ của giá bán; chỉ tính % khi = VND (tỉ giá là ¥→₫)
 function setCostStatus(msg, kind) { $('costStatusText').textContent = msg || ''; $('costStatus').className = 'status' + (kind ? ' ' + kind : ''); }
 function closeCostModal() {
   $('costModal').classList.remove('on');
   $('costGrid').innerHTML = '';
   $('costHeadline').innerHTML = '';
   $('costTitle').textContent = '';
+  $('costControls').hidden = true;
+  costOffers = [];
   setCostStatus('');
 }
 
 async function openCostModal(p) {
   const my = ++costToken;
+  costSell = (p.sell != null && isFinite(p.sell) && p.sell > 0) ? p.sell : null;
+  costCur = p.cur || 'VND';
+  costOffers = [];
   $('costTitle').textContent = p.name || '(không tên)';
   $('costHeadline').innerHTML = '';
   $('costGrid').innerHTML = '';
+  $('costControls').hidden = true;
   $('costModal').classList.add('on');
   setCostStatus('Đang tìm giá vốn trên 1688 theo ảnh… (lần đầu hơi chậm)');
 
@@ -1154,25 +1172,68 @@ async function openCostModal(p) {
   }
 
   const min = offers[0];
+  costOffers = offers;
   $('costHeadline').innerHTML = `Giá vốn nhỏ nhất <b>${esc(min.price || ('¥' + min.priceValue))}</b>`;
-  setCostStatus(`${offers.length} chào hàng 1688${data.cached ? ' (cache)' : ''}. Giá theo ¥ — nhân tỷ giá để ra ₫.`, 'ok');
+  const rate = costRate();
+  let sellNote;
+  if (costSell != null && costCur === 'VND') sellNote = ` · giá bán đối thủ ${fmtPrice(costSell, '₫')} · % = giá nhập ÷ giá bán`;
+  else if (costSell != null) sellNote = ` · giá bán ${fmtPrice(costSell, costCur)} (không phải ₫ nên không tính %)`;
+  else sellNote = ' · dòng này thiếu giá bán nên không tính %';
+  setCostStatus(`${offers.length} chào hàng 1688${data.cached ? ' (cache)' : ''}. Tỉ giá ¥→₫ = ${fmtInt(rate)}${sellNote}`, 'ok');
 
-  $('costGrid').innerHTML = offers.map((o, i) => (
-    `<a class="ccard" href="${esc(o.link)}" target="_blank" rel="noreferrer">` +
-    `<div class="media">${o.thumbnail ? `<img src="${esc(proxyMedia(o.thumbnail))}" loading="lazy" alt="" />` : ''}` +
-    `${i === 0 ? '<span class="mbadge">Rẻ nhất</span>' : ''}</div>` +
-    `<div class="cbody">` +
-    `<div class="cost-price">${esc(o.price || ('¥' + o.priceValue))}</div>` +
-    `<div class="ccopy">${esc(o.title || '')}</div>` +
-    `<div class="cmeta">${[o.supplier, o.location, o.sold != null ? 'đã bán ' + fmtInt(o.sold) : o.note]
-      .filter(Boolean).map(esc).join(' · ')}</div>` +
-    `</div></a>`
-  )).join('');
+  // Nạp giá trị hiện tại vào ô chỉnh rồi hiện thanh controls + dựng card.
+  $('costRate').value = rate;
+  $('costThresh').value = costThresh();
+  $('costControls').hidden = false;
+  renderCostCards();
+}
+
+// Dựng lại các card 1688 theo TỈ GIÁ + NGƯỠNG hiện tại (KHÔNG fetch lại). Mỗi card = một nguồn
+// nhập: hiện giá quy ₫ và % = (giá 1688 × tỉ giá) ÷ giá bán đối thủ. Dưới ngưỡng → class 'cheap' (xanh).
+function renderCostCards() {
+  // Ưu tiên số đang gõ trong ô (nguồn sự thật khi modal mở), rớt về localStorage/mặc định.
+  const rInput = parseFloat($('costRate').value);
+  const tInput = parseFloat($('costThresh').value);
+  const rate = rInput > 0 ? rInput : costRate();
+  const thresh = tInput > 0 ? tInput : costThresh();
+  const canRatio = costSell != null && costSell > 0 && costCur === 'VND';
+  $('costGrid').innerHTML = costOffers.map((o, i) => {
+    const vnd = o.priceValue != null ? Math.round(o.priceValue * rate) : null;
+    const ratio = (canRatio && vnd != null) ? (vnd / costSell) * 100 : null;
+    const cheap = ratio != null && ratio < thresh;
+    const vndHtml = vnd != null ? `<div class="cvnd">≈ ${fmtPrice(vnd, '₫')}</div>` : '';
+    const ratioHtml = ratio != null ? `<div class="cratio">${ratio.toFixed(1)}% giá bán</div>` : '';
+    return (
+      `<a class="ccard${cheap ? ' cheap' : ''}" href="${esc(o.link)}" target="_blank" rel="noreferrer">` +
+      `<div class="media">${o.thumbnail ? `<img src="${esc(proxyMedia(o.thumbnail))}" loading="lazy" alt="" />` : ''}` +
+      `${i === 0 ? '<span class="mbadge">Rẻ nhất</span>' : ''}</div>` +
+      `<div class="cbody">` +
+      `<div class="cost-price">${esc(o.price || ('¥' + o.priceValue))}</div>` +
+      vndHtml + ratioHtml +
+      `<div class="ccopy">${esc(o.title || '')}</div>` +
+      `<div class="cmeta">${[o.supplier, o.location, o.sold != null ? 'đã bán ' + fmtInt(o.sold) : o.note]
+        .filter(Boolean).map(esc).join(' · ')}</div>` +
+      `</div></a>`
+    );
+  }).join('');
 }
 
 $('costClose').addEventListener('click', closeCostModal);
 $('costModal').addEventListener('click', (e) => { if (e.target === $('costModal')) closeCostModal(); }); // bấm nền tối để đóng
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('costModal').classList.contains('on')) closeCostModal(); });
+
+// Chỉnh tỉ giá / ngưỡng → lưu localStorage (giữ cho lần sau) rồi tính lại % + tô màu ngay, không fetch lại.
+function onCostCtrlChange() {
+  const r = parseFloat($('costRate').value);
+  const t = parseFloat($('costThresh').value);
+  try {
+    if (r > 0) localStorage.setItem('rs_cost_rate', String(r));
+    if (t > 0) localStorage.setItem('rs_cost_thresh', String(t));
+  } catch (e) { /* storage bị chặn — vẫn tính lại theo giá trị đang gõ */ }
+  renderCostCards();
+}
+$('costRate').addEventListener('input', onCostCtrlChange);
+$('costThresh').addEventListener('input', onCostCtrlChange);
 
 // Giá vốn NHANH: một tab find_similar duy nhất → gọi recommend_post cho top N cùng lúc trong tab
 // đó (nếu trang tự ký fetch). Nhanh hơn nhiều lần mở tab từng sản phẩm.

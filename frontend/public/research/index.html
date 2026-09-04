@@ -230,6 +230,17 @@
     .cost-headline b { font-family: var(--font-display); font-size: 20px; color: var(--accent-ink); margin-left: 7px; letter-spacing: -.02em; }
     a.ccard { text-decoration: none; color: inherit; }
     .cost-price { font-family: var(--font-mono); font-weight: 700; font-size: 15px; color: var(--accent-ink); }
+    /* Ô chỉnh Tỉ giá ¥→₫ + Ngưỡng % cho modal giá vốn. */
+    .cost-controls { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; padding: 8px 2px 2px; font-size: 12.5px; color: var(--muted); }
+    .cost-controls label { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--fg); }
+    .cost-controls input { width: 90px; padding: 5px 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); color: var(--fg); font: inherit; font-family: var(--font-mono); }
+    .cost-controls input:focus { outline: none; border-color: var(--accent); }
+    .cost-controls .cc-note { font-size: 11.5px; color: var(--muted); }
+    /* Mỗi card 1688: giá quy ₫ + tỉ lệ giá nhập/giá bán. Dưới ngưỡng → tô xanh lá. */
+    .ccard .cvnd { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+    .ccard .cratio { display: inline-block; align-self: flex-start; font-family: var(--font-mono); font-size: 11.5px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: var(--panel); color: var(--muted); margin-top: 2px; }
+    .ccard.cheap { border-color: #16a34a; box-shadow: 0 0 0 1px #16a34a inset; }
+    .ccard.cheap .cratio { background: #dcfce7; color: #15803d; }
 
     /* Modal video quảng cáo khớp ảnh */
     .vidmodal { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.55); display: none; align-items: flex-start; justify-content: center; padding: 32px 20px; overflow-y: auto; }
@@ -438,6 +449,11 @@
         <button id="costClose">✕ Đóng</button>
       </div>
       <div class="status" id="costStatus"><span id="costStatusText"></span></div>
+      <div class="cost-controls" id="costControls" hidden>
+        <label>Tỉ giá ¥→₫ <input id="costRate" type="number" min="1" step="10" inputmode="numeric" /></label>
+        <label>Ngưỡng xanh <input id="costThresh" type="number" min="1" max="100" step="1" inputmode="numeric" />%</label>
+        <span class="cc-note">Card có (giá 1688 × tỉ giá) / giá bán đối thủ dưới ngưỡng → tô xanh.</span>
+      </div>
       <div class="vidbody">
         <div class="cgrid" id="costGrid"></div>
       </div>
@@ -447,6 +463,6 @@
   <!-- ?v= để phá cache: research.js nhúng tĩnh, không có hash tên file như bundle của Next, nên
        khi sửa JS phải BUMP số này — nếu không trình duyệt chạy bản cũ trong cache (HTML mới +
        JS cũ = lỗi khó hiểu, vd sàn vẫn chọn sẵn dù mặc định đã đổi thành rỗng). -->
-  <script src="research.js?v=20260828r4"></script>
+  <script src="research.js?v=20260904r1"></script>
 </body>
 </html>
