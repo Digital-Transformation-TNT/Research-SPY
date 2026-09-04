@@ -1,14 +1,19 @@
 name: CI
 
-# Kiểm chứng auto-CD 2026-09-03: commit này chỉ sửa comment (không đụng code) để xác nhận
-# push Titus → CI xanh → self-hosted runner tự deploy VPS mà không cần bấm tay.
-# Chỉ chạy những kiểm tra XÁC ĐỊNH ĐƯỢC trong runner — không đụng smoke cần Chrome thật,
-# Google login hay mạng ngoài (scripts/smoke/*), vì chúng sẽ đỏ vì môi trường chứ không phải
-# vì code. Mục tiêu: mỗi lần đỏ là một lỗi thật.
+# TẤT CẢ job chạy trên self-hosted runner Windows (chính VPS) — KHÔNG dùng ubuntu-latest nữa,
+# nên không phụ thuộc quota phút GitHub-hosted (trước đây hết phút → CI treo → auto-deploy đứng).
+# Runner đơn chạy tuần tự từng job, hơi chậm hơn nhưng không bao giờ kẹt chờ máy. Lệnh viết theo
+# PowerShell (shell mặc định của runner Windows): không dùng '||'/'pipx'; pip đọc requirements
+# tiếng Việt cần PYTHONUTF8=1 (đặt ở job backend/security-audit).
+#
+# Chỉ chạy kiểm tra XÁC ĐỊNH ĐƯỢC — không đụng smoke cần Chrome/Google/mạng ngoài (scripts/smoke/*),
+# vì chúng đỏ vì môi trường chứ không phải vì code. Mục tiêu: mỗi lần đỏ là một lỗi thật.
 
 on:
   push:
-    branches: [Titus, main]
+    # Chỉ Titus: runner đơn self-hosted, khỏi build 2 lần mỗi thay đổi. main là bản mirror
+    # (fast-forward từ Titus cho Dependabot soi nhánh mặc định) nên không cần CI riêng.
+    branches: [Titus]
   pull_request:
   workflow_dispatch:
 
@@ -20,7 +25,11 @@ concurrency:
 jobs:
   backend:
     name: Backend · import + compile
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, windows]
+    # PYTHONUTF8: pip trên Windows đọc requirements.txt bằng codepage hệ thống (cp1252) và chết
+    # ở comment tiếng Việt (UTF-8). Ép UTF-8 cho cả job. Vô hại với các bước khác.
+    env:
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -34,14 +43,16 @@ jobs:
         run: python -m compileall -q backend
       - name: Import cả app (bắt lỗi import-graph, gồm cả router relay/cost)
         working-directory: backend
-        run: python -c "import app.main; print('import app.main OK')"
+        run: python -c 'import app.main; print("import app.main OK")'
       - name: Ruff lint (tư vấn — không chặn merge)
         continue-on-error: true
-        run: pipx run ruff check backend
+        run: |
+          pip install ruff
+          ruff check backend
 
   frontend:
     name: Frontend · typecheck + build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, windows]
     env:
       NEXT_TELEMETRY_DISABLED: "1"
       # Build không gọi backend; đặt sẵn cho chắc, khớp mặc định next.config.mjs.
@@ -65,7 +76,7 @@ jobs:
 
   extension:
     name: Extension · test vòng đời tab
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, windows]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -76,10 +87,11 @@ jobs:
 
   security-audit:
     name: Audit phụ thuộc (tư vấn)
-    runs-on: ubuntu-latest
-    # Không chặn merge: repo đang có cảnh báo dependabot, để job này chỉ SOI ra chứ không
-    # đỏ-tường mỗi lần chạy. Nâng cấp gói là một quyết định riêng.
+    runs-on: [self-hosted, windows]
+    # Không chặn merge: để job này chỉ SOI ra chứ không đỏ-tường. Nâng cấp gói là quyết định riêng.
     continue-on-error: true
+    env:
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -88,15 +100,17 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: npm audit (frontend)
+        continue-on-error: true
         working-directory: frontend
-        run: npm audit --audit-level=high || true
+        run: npm audit --audit-level=high
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: pip-audit (backend)
+        continue-on-error: true
         run: |
           pip install pip-audit
-          pip-audit -r backend/requirements.txt || true
+          pip-audit -r backend/requirements.txt
 
   # ---------------------------------------------------------------------------
   # Auto-deploy vào VPS — CHỈ khi push nhánh Titus VÀ ba job kiểm ở trên xanh.
@@ -118,6 +132,6 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
-      - name: Redeploy C:\ResearchSpy
+      - name: Redeploy C:\AI-TNT-Research-SPY
         shell: powershell
         run: .\deploy\redeploy.ps1 -Root "C:\AI-TNT-Research-SPY" -Branch "Titus"

@@ -57,6 +57,22 @@ const nextConfig = {
       // nên KHÔNG còn rewrite tới HTML tĩnh nữa.
     ]
   },
+  async headers() {
+    // Trang research tĩnh (public/research/*) nạp trực tiếp trong trình duyệt; research.js tự bump
+    // ?v= mỗi lần đổi. Vấn đề: trình duyệt cache index.html cũ → vẫn xin ?v= cũ → user phải Ctrl+F5.
+    // Đặt no-cache buộc trình duyệt LUÔN revalidate index.html (304 nếu chưa đổi, 200 nếu đổi) →
+    // hễ deploy bản mới là tự thấy ?v= mới → nạp JS mới, không cần refresh cứng.
+    return [
+      {
+        source: '/research/:path*',
+        headers: [{ key: 'Cache-Control', value: 'no-cache' }],
+      },
+      {
+        source: '/research',
+        headers: [{ key: 'Cache-Control', value: 'no-cache' }],
+      },
+    ]
+  },
 }
 
 export default nextConfig
