@@ -26,6 +26,7 @@ jobs:
   backend:
     name: Backend · import + compile
     runs-on: [self-hosted, windows]
+    timeout-minutes: 12  # runner đơn: job treo phải tự chết để không giữ runner mãi (deadlock)
     # PYTHONUTF8: pip trên Windows đọc requirements.txt bằng codepage hệ thống (cp1252) và chết
     # ở comment tiếng Việt (UTF-8). Ép UTF-8 cho cả job. Vô hại với các bước khác.
     env:
@@ -53,6 +54,7 @@ jobs:
   frontend:
     name: Frontend · typecheck + build
     runs-on: [self-hosted, windows]
+    timeout-minutes: 20  # gồm npm ci + next build; treo quá mức này → hủy, giải phóng runner
     env:
       NEXT_TELEMETRY_DISABLED: "1"
       # Build không gọi backend; đặt sẵn cho chắc, khớp mặc định next.config.mjs.
@@ -77,6 +79,7 @@ jobs:
   extension:
     name: Extension · test vòng đời tab
     runs-on: [self-hosted, windows]
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -88,6 +91,7 @@ jobs:
   security-audit:
     name: Audit phụ thuộc (tư vấn)
     runs-on: [self-hosted, windows]
+    timeout-minutes: 15
     # Không chặn merge: để job này chỉ SOI ra chứ không đỏ-tường. Nâng cấp gói là quyết định riêng.
     continue-on-error: true
     env:
@@ -124,6 +128,7 @@ jobs:
     needs: [backend, frontend, extension]
     if: github.event_name == 'push' && github.ref == 'refs/heads/Titus'
     runs-on: [self-hosted, windows]
+    timeout-minutes: 25  # gồm build lại + restart service; treo quá → hủy để không kẹt runner
     environment: production
     # Chung group với deploy.yml → auto-deploy và deploy bấm-tay không chồng nhau;
     # cancel-in-progress:false để một lượt deploy đang chạy không bị lượt sau cắt ngang.
