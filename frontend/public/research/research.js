@@ -1193,7 +1193,7 @@ async function openCostModal(p) {
   if (costSell != null && costCur === 'VND') sellNote = ` · giá bán đối thủ ${fmtPrice(costSell, '₫')} · % = giá nhập ÷ giá bán`;
   else if (costSell != null) sellNote = ` · giá bán ${fmtPrice(costSell, costCur)} (không phải ₫ nên không tính %)`;
   else sellNote = ' · dòng này thiếu giá bán nên không tính %';
-  setCostStatus(`${offers.length} chào hàng 1688${data.cached ? ' (cache)' : ''}. Tỉ giá ¥→₫ = ${fmtInt(rate)}${sellNote}`, 'ok');
+  setCostStatus(`${offers.length} chào hàng 1688${res.cached ? ' (cache)' : ''}. Tỉ giá ¥→₫ = ${fmtInt(rate)}${sellNote}`, 'ok');
 
   // Nạp giá trị hiện tại vào ô chỉnh rồi hiện thanh controls + dựng card.
   $('costRate').value = rate;

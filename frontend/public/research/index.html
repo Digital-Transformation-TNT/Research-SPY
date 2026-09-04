@@ -232,6 +232,8 @@
     .cost-price { font-family: var(--font-mono); font-weight: 700; font-size: 15px; color: var(--accent-ink); }
     /* Ô chỉnh Tỉ giá ¥→₫ + Ngưỡng % cho modal giá vốn. */
     .cost-controls { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; padding: 8px 2px 2px; font-size: 12.5px; color: var(--muted); }
+    /* display:flex ở trên đè lên [hidden] (cùng specificity) → phải ẩn tường minh khi có [hidden]. */
+    .cost-controls[hidden] { display: none; }
     .cost-controls label { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--fg); }
     .cost-controls input { width: 90px; padding: 5px 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); color: var(--fg); font: inherit; font-family: var(--font-mono); }
     .cost-controls input:focus { outline: none; border-color: var(--accent); }
@@ -473,6 +475,6 @@
   <!-- ?v= để phá cache: research.js nhúng tĩnh, không có hash tên file như bundle của Next, nên
        khi sửa JS phải BUMP số này — nếu không trình duyệt chạy bản cũ trong cache (HTML mới +
        JS cũ = lỗi khó hiểu, vd sàn vẫn chọn sẵn dù mặc định đã đổi thành rỗng). -->
-  <script src="research.js?v=20260904r4"></script>
+  <script src="research.js?v=20260904r5"></script>
 </body>
 </html>
