@@ -509,7 +509,8 @@ const cost1688 = {}; // imgUrl -> giá ¥ rẻ nhất
 // Chưa tra (chưa bấm 💰 dòng đó) → '—'. Trả { html, cheap } để tô cả ô.
 function cost1688Cell(p) {
   const cny = cost1688[rawImg(p.image)];
-  if (cny == null) return { html: '<span class="sub" title="Bấm 💰 Giá vốn ở cột Thao tác để tra 1688">—</span>', cheap: false };
+  // Chưa tra (undefined) hoặc đã tra nhưng không ra ('none') → '—'. Chỉ số ¥ mới tính ₫/%.
+  if (typeof cny !== 'number') return { html: '<span class="sub" title="Bấm 💰 Giá vốn ở cột Thao tác, hoặc nút Giá vốn hàng loạt">—</span>', cheap: false };
   const rate = costRate(), thresh = costThresh();
   const vnd = Math.round(cny * rate);
   const canRatio = p.price != null && p.price > 0 && curOf(p) === 'VND';
@@ -1054,6 +1055,7 @@ function render() {
     `</tr>`
   ).join('');
   $('table').style.display = list.length ? 'table' : 'none';
+  $('costAll').style.display = list.length ? '' : 'none'; // nút giá vốn hàng loạt chỉ hiện khi có list
 }
 
 // ---- Hover ảnh: phóng to bám theo con trỏ ----
@@ -1111,6 +1113,58 @@ function closeCostModal() {
   setCostStatus('');
 }
 
+// Lõi tra giá vốn 1688 theo ẢNH — DÙNG CHUNG cho modal (mở chi tiết một dòng) và batch (cả bảng).
+// KHÔNG đụng DOM, không token. Trả { offers, min, error, identity, cached }: offers đã lọc phụ
+// kiện + sắp giá tăng dần (rẻ nhất đầu), min = offers[0]. nameHint giúp Gemini lọc đúng loại SP.
+async function fetch1688Offers(imgUrl, nameHint) {
+  let blob;
+  try {
+    const ir = await fetch(proxyMedia(imgUrl));
+    if (!ir.ok) throw new Error('HTTP ' + ir.status);
+    blob = await ir.blob();
+  } catch (e) { return { offers: [], min: null, error: 'Không tải được ảnh: ' + e.message }; }
+
+  let data;
+  try {
+    const form = new FormData();
+    const type = /^image\/(jpeg|png|webp)$/.test(blob.type) ? blob.type : 'image/jpeg';
+    const typed = blob.type === type ? blob : new Blob([blob], { type });
+    form.append('file', typed, 'product.' + type.split('/')[1]);
+    form.append('geo', 'VN');
+    form.append('sources', '1688');
+    const r = await fetch(`${BACKEND}/api/imagesearch`, { method: 'POST', body: form });
+    data = await r.json().catch(() => ({}));
+    if (!r.ok) return { offers: [], min: null, error: (data && data.error) || `backend HTTP ${r.status}` };
+  } catch (e) { return { offers: [], min: null, error: 'Lỗi gọi tìm-bằng-ảnh: ' + e.message }; }
+
+  let offers = (data.sourcing || [])
+    .filter((o) => o.priceValue != null && !o.isAccessory)
+    .sort((a, b) => a.priceValue - b.priceValue);
+
+  // Lọc theo Gemini: tìm bằng ảnh trả về hàng NHÌN GIỐNG, rẻ nhất có thể là món KHÁC loại. Hỏi
+  // model tiêu đề nào ĐÚNG loại rồi chỉ lấy rẻ nhất trong số đó. Thiếu khoá/model lỗi → giữ nguyên.
+  if (offers.length > 1) {
+    try {
+      const productHint = (data.identity && data.identity.product) || nameHint || '';
+      const rr = await fetch(`${BACKEND}/api/cost/rank`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ product: productHint, titles: offers.map((o) => o.title || '') }),
+      });
+      const rj = await rr.json().catch(() => ({}));
+      if (Array.isArray(rj.relevant) && rj.relevant.length) {
+        const keep = new Set(rj.relevant);
+        const filtered = offers.filter((_, idx) => keep.has(idx)); // giữ thứ tự giá tăng dần
+        if (filtered.length) offers = filtered;
+      }
+    } catch (e) { /* Gemini lỗi/không cấu hình → giữ nguyên, lấy rẻ nhất */ }
+  }
+  return {
+    offers, min: offers[0] || null,
+    error: offers.length ? null : (data.message || '1688 không tìm thấy hàng khớp ảnh này.'),
+    identity: data.identity, cached: data.cached,
+  };
+}
+
 async function openCostModal(p) {
   const my = ++costToken;
   costSell = (p.sell != null && isFinite(p.sell) && p.sell > 0) ? p.sell : null;
@@ -1123,74 +1177,11 @@ async function openCostModal(p) {
   $('costModal').classList.add('on');
   setCostStatus('Đang tìm giá vốn trên 1688 theo ảnh… (lần đầu hơi chậm)');
 
-  // 1) Lấy BYTES ảnh qua proxy để tránh CORS (ảnh sàn không cho fetch chéo origin).
-  let blob;
-  try {
-    const ir = await fetch(proxyMedia(p.img));
-    if (!ir.ok) throw new Error('HTTP ' + ir.status);
-    blob = await ir.blob();
-  } catch (e) {
-    if (my !== costToken) return;
-    setCostStatus('Không tải được ảnh sản phẩm để tìm: ' + e.message, 'err');
-    return;
-  }
-  if (my !== costToken) return;
-
-  // 2) Gửi ảnh sang tìm-bằng-ảnh, CHỈ nguồn 1688.
-  let data;
-  try {
-    const form = new FormData();
-    // Backend chỉ nhận jpeg/png/webp và đọc content-type TỪ phần multipart (= blob.type). Proxy đôi
-    // khi trả 'application/octet-stream' → bọc lại blob với type chuẩn để không bị từ chối oan.
-    const type = /^image\/(jpeg|png|webp)$/.test(blob.type) ? blob.type : 'image/jpeg';
-    const typed = blob.type === type ? blob : new Blob([blob], { type });
-    form.append('file', typed, 'product.' + type.split('/')[1]);
-    form.append('geo', 'VN');
-    form.append('sources', '1688');
-    const r = await fetch(`${BACKEND}/api/imagesearch`, { method: 'POST', body: form });
-    data = await r.json().catch(() => ({}));
-    if (my !== costToken) return;
-    if (!r.ok) { setCostStatus((data && data.error) || `backend HTTP ${r.status}`, 'err'); return; }
-  } catch (e) {
-    if (my !== costToken) return;
-    setCostStatus('Lỗi gọi tìm-bằng-ảnh: ' + e.message, 'err');
-    return;
-  }
-
-  // 3) sourcing = chào hàng 1688. Loại PHỤ KIỆN (miếng dán ¥2 cho ra "giá vốn" giả) và dòng
-  //    không có giá; sắp tăng dần → dòng đầu = giá vốn nhỏ nhất.
-  let offers = (data.sourcing || [])
-    .filter((o) => o.priceValue != null && !o.isAccessory)
-    .sort((a, b) => a.priceValue - b.priceValue);
-
-  if (data.identity && data.identity.product) $('costTitle').textContent = data.identity.product;
-
-  // Lọc theo Gemini: tìm bằng ảnh trả về hàng NHÌN GIỐNG, nên rẻ nhất có thể là món KHÁC loại
-  // (vd tra "tai nghe" ra "kệ đựng tai nghe" ¥3, leo lên đầu vì rẻ). Hỏi model tiêu đề nào ĐÚNG
-  // loại sản phẩm gốc rồi chỉ lấy rẻ nhất TRONG SỐ đó. Thiếu khoá / model lỗi → giữ nguyên như cũ.
-  if (offers.length > 1) {
-    setCostStatus('Đang đọc tiêu đề để chọn đúng loại sản phẩm…');
-    try {
-      const productHint = (data.identity && data.identity.product) || p.name || '';
-      const rr = await fetch(`${BACKEND}/api/cost/rank`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ product: productHint, titles: offers.map((o) => o.title || '') }),
-      });
-      const rj = await rr.json().catch(() => ({}));
-      if (my !== costToken) return;
-      if (Array.isArray(rj.relevant) && rj.relevant.length) {
-        const keep = new Set(rj.relevant);
-        const filtered = offers.filter((_, idx) => keep.has(idx)); // giữ nguyên thứ tự giá tăng dần
-        if (filtered.length) offers = filtered;
-      }
-    } catch (e) { /* Gemini lỗi/không cấu hình → giữ nguyên danh sách, lấy rẻ nhất như trước */ }
-  }
-
-  if (!offers.length) {
-    setCostStatus(data.message || '1688 không tìm thấy hàng khớp ảnh này. Thử tra tay bằng ảnh/từ khoá.', 'err');
-    return;
-  }
+  const res = await fetch1688Offers(p.img, p.name);
+  if (my !== costToken) return; // user đã mở dòng khác trong lúc chờ → bỏ kết quả cũ
+  if (!res.offers.length) { setCostStatus(res.error || '1688 không tìm thấy hàng khớp ảnh này.', 'err'); return; }
+  const offers = res.offers;
+  if (res.identity && res.identity.product) $('costTitle').textContent = res.identity.product;
 
   const min = offers[0];
   costOffers = offers;
@@ -1240,6 +1231,46 @@ function renderCostCards() {
     );
   }).join('');
 }
+
+// Nút "Giá vốn hàng loạt": tra 1688 theo ẢNH cho MỌI dòng đang hiện (bỏ dòng đã có / đã thử),
+// điền dần cột "Giá vốn 1688". Song song tối đa 3 để nhanh mà không dội backend. Bấm 💰 từng dòng
+// vẫn mở modal chi tiết như cũ.
+let costBatchRunning = false;
+async function runCost1688Batch() {
+  if (costBatchRunning) return;
+  const kwPick = $('kwfilter').value || '__all';
+  const list = rows.filter((p) => kwPick === '__all' || p.keyword === kwPick);
+  // Chỉ tra dòng CHƯA có kết quả (undefined/null). 'none' = đã thử không ra → không tra lại loạt.
+  const targets = list.filter((p) => rawImg(p.image) && cost1688[rawImg(p.image)] == null);
+  if (!targets.length) { setStatus('Mọi sản phẩm đang hiện đã tra giá vốn 1688 rồi.', 'ok'); return; }
+
+  costBatchRunning = true;
+  const btn = $('costAll'); if (btn) btn.disabled = true;
+  const total = targets.length; let done = 0, ok = 0, idx = 0;
+  const CONC = 3;
+  async function worker() {
+    while (idx < targets.length) {
+      const p = targets[idx++];
+      try {
+        const res = await fetch1688Offers(rawImg(p.image), p.name);
+        if (res.min && res.min.priceValue != null) { cost1688[rawImg(p.image)] = res.min.priceValue; ok++; }
+        else cost1688[rawImg(p.image)] = 'none'; // đã thử, không ra → khỏi tra lại ở lần loạt sau
+      } catch (e) { cost1688[rawImg(p.image)] = 'none'; }
+      done++;
+      setStatus(`Đang tính giá vốn 1688: ${done}/${total}… (${ok} ra kết quả)`);
+      render(); // điền cột dần
+    }
+  }
+  try {
+    await Promise.all(Array.from({ length: Math.min(CONC, targets.length) }, worker));
+    setStatus(`Xong giá vốn 1688: ${ok}/${total} sản phẩm ra kết quả. Bấm 💰 một dòng để xem nguồn 1688 chi tiết.`, 'ok');
+  } finally {
+    costBatchRunning = false;
+    if (btn) btn.disabled = false;
+    render();
+  }
+}
+$('costAll').addEventListener('click', runCost1688Batch);
 
 $('costClose').addEventListener('click', closeCostModal);
 $('costModal').addEventListener('click', (e) => { if (e.target === $('costModal')) closeCostModal(); }); // bấm nền tối để đóng
