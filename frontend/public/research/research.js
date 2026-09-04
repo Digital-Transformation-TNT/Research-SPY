@@ -1245,9 +1245,13 @@ async function runCost1688Batch() {
   if (!targets.length) { setStatus('Mọi sản phẩm đang hiện đã tra giá vốn 1688 rồi.', 'ok'); return; }
 
   costBatchRunning = true;
-  const btn = $('costAll'); if (btn) btn.disabled = true;
+  const btn = $('costAll');
   const total = targets.length; let done = 0, ok = 0, idx = 0;
   const CONC = 3;
+  // Nhãn nút thành spinner + tiến độ NGAY khi bấm (lần fetch đầu vài giây, đừng để user tưởng lỗi).
+  function setBtnRunning() { if (btn) { btn.disabled = true; btn.innerHTML = `<span class="rs-spin"></span>Đang tính… ${done}/${total}`; } }
+  setBtnRunning();
+  setStatus(`Đang tra giá vốn 1688 cho ${total} sản phẩm… (lần đầu mỗi món hơi chậm)`);
   async function worker() {
     while (idx < targets.length) {
       const p = targets[idx++];
@@ -1257,6 +1261,7 @@ async function runCost1688Batch() {
         else cost1688[rawImg(p.image)] = 'none'; // đã thử, không ra → khỏi tra lại ở lần loạt sau
       } catch (e) { cost1688[rawImg(p.image)] = 'none'; }
       done++;
+      setBtnRunning();
       setStatus(`Đang tính giá vốn 1688: ${done}/${total}… (${ok} ra kết quả)`);
       render(); // điền cột dần
     }
@@ -1266,7 +1271,7 @@ async function runCost1688Batch() {
     setStatus(`Xong giá vốn 1688: ${ok}/${total} sản phẩm ra kết quả. Bấm 💰 một dòng để xem nguồn 1688 chi tiết.`, 'ok');
   } finally {
     costBatchRunning = false;
-    if (btn) btn.disabled = false;
+    if (btn) { btn.disabled = false; btn.textContent = '💰 Giá vốn hàng loạt'; }
     render();
   }
 }
