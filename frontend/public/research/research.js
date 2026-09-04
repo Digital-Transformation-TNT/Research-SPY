@@ -500,6 +500,26 @@ function scoreSub(p) {
 // Giá vốn = giá thấp nhất trong danh sách sản phẩm tương tự. Tính lười theo từng dòng.
 const costCache = {}; // itemid -> số (đã /PRICE_SCALE) hoặc 'none'
 
+// Giá vốn 1688 lấy từ MODAL (tìm theo ảnh) — cột "Giá vốn 1688" ở bảng chính đọc cái này.
+// Key = URL ảnh gốc của dòng (rawImg), khớp với data-img nút 💰 và ảnh dùng để tra 1688.
+// Value = giá sỉ rẻ nhất (¥/CNY). Bảng quy ra ₫ + % theo tỉ giá/ngưỡng hiện tại (costRate/costThresh).
+const cost1688 = {}; // imgUrl -> giá ¥ rẻ nhất
+
+// Ô cột "Giá vốn 1688": hiện ₫ (¥×tỉ giá) + % (₫/giá bán). Dưới ngưỡng → class 'cheap' (xanh).
+// Chưa tra (chưa bấm 💰 dòng đó) → '—'. Trả { html, cheap } để tô cả ô.
+function cost1688Cell(p) {
+  const cny = cost1688[rawImg(p.image)];
+  if (cny == null) return { html: '<span class="sub" title="Bấm 💰 Giá vốn ở cột Thao tác để tra 1688">—</span>', cheap: false };
+  const rate = costRate(), thresh = costThresh();
+  const vnd = Math.round(cny * rate);
+  const canRatio = p.price != null && p.price > 0 && curOf(p) === 'VND';
+  const ratio = canRatio ? (vnd / p.price) * 100 : null;
+  const cheap = ratio != null && ratio < thresh;
+  const ratioHtml = ratio != null ? `<div class="costratio${cheap ? ' cheap' : ''}">${ratio.toFixed(1)}% giá bán</div>` : '';
+  return { html: `<span class="price" title="¥${cny} × ${fmtInt(rate)} = giá vốn quy ₫">${fmtPrice(vnd, '₫')}</span>${ratioHtml}`, cheap };
+}
+function cost1688Td(p) { const c = cost1688Cell(p); return `<td class="num costcell${c.cheap ? ' cheap' : ''}">${c.html}</td>`; }
+
 // Gom mọi trường `price` (giá bán, đơn vị ×100000) trong JSON find_similar rồi lấy min.
 function collectPrices(node, out) {
   if (!node || typeof node !== 'object') return;
@@ -1028,6 +1048,7 @@ function render() {
     `<td class="num">${fmtInt(p.sold)}</td>` +
     `<td class="num">${p.rating != null ? p.rating.toFixed(1) + '★' : '—'}${p.ratingCount != null ? `<div class="sub">${fmtInt(p.ratingCount)}</div>` : ''}</td>` +
     `<td class="num"><span class="price">${fmtPrice(p.price, curOf(p))}</span>${p.strike ? `<div class="sub strike">${fmtInt(p.strike)}</div>` : ''}</td>` +
+    cost1688Td(p) +
     `<td><button class="sim cost" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-price="${p.price != null ? p.price : ''}" data-cur="${esc(curOf(p))}">💰 Giá vốn</button> ` +
     `<button class="sim vid" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-region="${esc(p.region || '')}">🎬 Video</button></td>` +
     `</tr>`
@@ -1173,6 +1194,8 @@ async function openCostModal(p) {
 
   const min = offers[0];
   costOffers = offers;
+  // Ghi giá vốn 1688 rẻ nhất về store theo ảnh dòng → cột "Giá vốn 1688" ở bảng chính hiện ngay.
+  if (p.img != null && min.priceValue != null) { cost1688[p.img] = min.priceValue; render(); }
   $('costHeadline').innerHTML = `Giá vốn nhỏ nhất <b>${esc(min.price || ('¥' + min.priceValue))}</b>`;
   const rate = costRate();
   let sellNote;
@@ -1231,6 +1254,7 @@ function onCostCtrlChange() {
     if (t > 0) localStorage.setItem('rs_cost_thresh', String(t));
   } catch (e) { /* storage bị chặn — vẫn tính lại theo giá trị đang gõ */ }
   renderCostCards();
+  render(); // cột "Giá vốn 1688" ở bảng chính cũng đổi theo tỉ giá/ngưỡng mới
 }
 $('costRate').addEventListener('input', onCostCtrlChange);
 $('costThresh').addEventListener('input', onCostCtrlChange);

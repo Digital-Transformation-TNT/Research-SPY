@@ -241,6 +241,10 @@
     .ccard .cratio { display: inline-block; align-self: flex-start; font-family: var(--font-mono); font-size: 11.5px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: var(--panel); color: var(--muted); margin-top: 2px; }
     .ccard.cheap { border-color: #16a34a; box-shadow: 0 0 0 1px #16a34a inset; }
     .ccard.cheap .cratio { background: #dcfce7; color: #15803d; }
+    /* Cột "Giá vốn 1688" ở bảng chính: % giá nhập/giá bán dưới ô ₫; dưới ngưỡng → xanh lá. */
+    .costratio { font-family: var(--font-mono); font-size: 11px; margin-top: 1px; color: var(--muted); }
+    .costratio.cheap { color: #15803d; font-weight: 700; }
+    td.costcell.cheap { background: #f0fdf4; }
 
     /* Modal video quảng cáo khớp ảnh */
     .vidmodal { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.55); display: none; align-items: flex-start; justify-content: center; padding: 32px 20px; overflow-y: auto; }
@@ -389,6 +393,7 @@
             <th data-k="sold" class="num">Tổng bán</th>
             <th data-k="rating" class="num">Rating</th>
             <th data-k="price" class="num">Giá đối thủ</th>
+            <th class="num plain">Giá vốn 1688</th>
             <th class="plain">Thao tác</th>
           </tr>
         </thead>
@@ -463,6 +468,6 @@
   <!-- ?v= để phá cache: research.js nhúng tĩnh, không có hash tên file như bundle của Next, nên
        khi sửa JS phải BUMP số này — nếu không trình duyệt chạy bản cũ trong cache (HTML mới +
        JS cũ = lỗi khó hiểu, vd sàn vẫn chọn sẵn dù mặc định đã đổi thành rỗng). -->
-  <script src="research.js?v=20260904r1"></script>
+  <script src="research.js?v=20260904r2"></script>
 </body>
 </html>
