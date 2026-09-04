@@ -16,6 +16,7 @@ from .douyin import douyin
 from .expand import DEPTH_CALLS, ExpansionOutcome, expand_with_provider
 from .shopee import shopee
 from .taobao import taobao
+from .temu import temu
 from .tiktok import tiktok
 from .trends_related import trends_related
 
@@ -51,6 +52,15 @@ KEYWORD_PROVIDERS: dict[str, KeywordProvider] = {
     "taobao": taobao,
     "ali1688": ali1688,
     "douyin": douyin,
+    "temu": temu,
+}
+
+#: Nguồn phải có máy-thợ (extension) mới chạy được — xem `providers/temu.py`.
+#:
+#: Suy từ chính provider chứ không viết cứng chuỗi "temu": thêm một nguồn kiểu này về sau chỉ
+#: phải đặt cờ trên provider, không phải nhớ sửa thêm chỗ nào.
+WORKER_BACKED_SOURCES: set[str] = {
+    sid for sid, p in KEYWORD_PROVIDERS.items() if getattr(p, "batches_terms", False)
 }
 
 KEYWORD_SOURCE_IDS: list[str] = list(KEYWORD_PROVIDERS.keys())
@@ -100,6 +110,7 @@ KEYWORD_SOURCE_DESCRIPTORS = [
 
 __all__ = [
     "DEPTH_CALLS",
+    "WORKER_BACKED_SOURCES",
     "ExpansionOutcome",
     "KEYWORD_PROVIDERS",
     "KEYWORD_SOURCE_DESCRIPTORS",

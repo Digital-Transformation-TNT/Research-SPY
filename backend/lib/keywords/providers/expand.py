@@ -398,9 +398,17 @@ async def expand_with_provider(
     else:
         terms = build_terms(seed, country)[: DEPTH_CALLS[depth]]
 
+    # Trần riêng của nguồn cắt SAU trần theo mức, không thay thế nó: mức "Nhanh" đã dưới trần
+    # thì trần không được phép nới nó rộng ra.
+    if provider.max_terms is not None:
+        terms = terms[: provider.max_terms]
+
     hits: list[SourceHit] = []
     calls = 0
     error: str | None = None
+
+    if provider.batches_terms:
+        return await _expand_batched(provider, terms, ctx)
 
     for term in terms:
         try:
@@ -431,3 +439,42 @@ async def expand_with_provider(
         await sleep(provider.call_delay_ms or CALL_DELAY_MS)
 
     return ExpansionOutcome(hits=hits, calls=calls, error=error)
+
+
+async def _expand_batched(
+    provider: KeywordProvider, terms: list[str], ctx: SearchContext
+) -> ExpansionOutcome:
+    """
+    Nhánh cho nguồn hỏi gộp: một lời gọi cho cả danh sách cụm.
+
+    Tính là MỘT lượt gọi, vì đó đúng là một lượt: con số này hiện ra giao diện như chi phí
+    của lần tìm, và đếm 12 cho một lần đi hỏi sẽ nói dối về chi phí thật.
+
+    Không có `sleep` giữa các cụm — việc giãn nhịp thuộc về nơi thực sự gõ vào trang, tức là
+    chính extension. Thêm một lần chờ ở đây chỉ làm chậm mà không đổi được nhịp gọi ra ngoài.
+    """
+    hits: list[SourceHit] = []
+    try:
+        by_term = await provider.fetch_suggestions_batch(terms, ctx)
+    except Exception as e:
+        # Giữ nguyên cách diễn giải lỗi rỗng của nhánh thường — xem ghi chú ở `expand_with_provider`.
+        return ExpansionOutcome(hits=[], calls=0, error=str(e) or f"{type(e).__name__} (không kèm mô tả)")
+
+    for term in terms:
+        for index, entry in enumerate(by_term.get(term, [])):
+            raw = (entry.keyword or "").strip()
+            if not raw:
+                continue
+            hits.append(
+                SourceHit(
+                    source=provider.id,
+                    position=index,
+                    via_term=term,
+                    native_score=entry.score,
+                    demand=entry.demand,
+                    rising=entry.rising,
+                    change_percent=entry.change_percent,
+                    raw=raw,
+                )
+            )
+    return ExpansionOutcome(hits=hits, calls=1, error=None)

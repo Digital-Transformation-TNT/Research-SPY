@@ -973,6 +973,205 @@ function parseTemuTexts(texts, count) {
   return out;
 }
 
+// ===== TEMU search suggest: NHIỀU cụm trong MỘT job (nguồn từ khoá cho tab Keyword) =====
+//
+// Vì sao Temu phải đi đường này trong khi bảy nguồn từ khoá kia gọi HTTP thẳng từ backend: đo
+// lại 2026-09-03 từ VPS, `/api/poppy/v1/search_suggest` trả 500 với GET và 403 với POST, còn
+// trang chủ trả JS chống bot chứ không phải HTML. Thiếu là chữ ký `anti-content` do JS của
+// chính trang sinh runtime. Nên vẫn là lối "ký sinh" quen thuộc: gõ vào ô tìm kiếm, để TRANG
+// tự gọi API, `page-hook.js` chộp response.
+//
+// KHÔNG PHẢI SỬA page-hook.js: needle `/api/poppy/v1/search` của nó khớp luôn `search_suggest`
+// vì đó là so khớp chuỗi con.
+//
+// GỘP NHIỀU CỤM VÀO MỘT JOB là điểm khác biệt lớn nhất so với các job crawl. Bộ mở rộng từ
+// khoá hỏi mỗi nguồn 12–45 lượt (`DEPTH_CALLS` ở backend). Nếu mỗi lượt là một job riêng thì
+// mỗi lượt phải mở lại tab, và MỘT người tìm từ khoá sẽ chiếm máy-thợ 3,6–13 phút trong khi cả
+// công ty đứng chờ sau — chỉ có một máy-thợ và nó chạy tuần tự. Gộp lại: mở tab một lần, gõ
+// lần lượt, cả lượt tốn khoảng 40 giây.
+//
+// KHÔNG BẤM ENTER, khác `searchTemu`: gợi ý bung ra khi ĐANG gõ. Bấm Enter là điều hướng sang
+// trang kết quả, vừa mất lớp gợi ý vừa tốn một lượt tải trang cho mỗi cụm.
+const temuSuggestTab = () => keptTab('temuSuggest');
+
+//: Số cụm tối đa nhận trong một job. Trùng với trần phía backend (`MAX_TERMS` ở
+//: `lib/keywords/providers/temu.py`); chốt ở cả hai đầu để một payload méo không biến thành
+//: một lượt chiếm máy-thợ mười phút.
+const TEMU_SUGGEST_MAX_TERMS = 12;
+
+// Đọc gợi ý ra khỏi JSON của Temu mà KHÔNG chốt cứng cấu trúc.
+//
+// Hình dạng `search_suggest` chưa được xác nhận và Temu đổi nó bất cứ lúc nào. Duyệt cây tìm
+// những khoá NGHE NHƯ từ khoá còn bền hơn là bám vào một đường dẫn cụ thể — sai lầm ấy hỏng
+// lặng lẽ (trả mảng rỗng, trông như "sàn không có gợi ý") thay vì hỏng ồn ào.
+function parseTemuSuggest(text) {
+  const out = [];
+  const seen = new Set();
+  const KEYS = /^(query|text|keyword|word|suggest_word|suggestWord|name|title|search_key|searchKey)$/i;
+  let data;
+  try { data = JSON.parse(text); } catch (e) { return out; }
+  const walk = (node, depth) => {
+    if (!node || depth > 8 || out.length >= 40) return;
+    if (Array.isArray(node)) { for (const v of node) walk(v, depth + 1); return; }
+    if (typeof node !== 'object') return;
+    for (const k of Object.keys(node)) {
+      const v = node[k];
+      if (typeof v === 'string' && KEYS.test(k)) {
+        const s = v.trim();
+        // 2..60 ký tự: dưới 2 là nhiễu, trên 60 gần như luôn là tiêu đề sản phẩm chứ không
+        // phải cụm tìm kiếm. Bỏ chuỗi có ký tự xuống dòng hoặc trông như URL.
+        if (s.length >= 2 && s.length <= 60 && !/[\n\r]/.test(s) && !/^https?:/i.test(s)) {
+          const key = s.toLowerCase();
+          if (!seen.has(key)) { seen.add(key); out.push(s); }
+        }
+      } else if (v && typeof v === 'object') {
+        walk(v, depth + 1);
+      }
+    }
+  };
+  walk(data, 0);
+  return out;
+}
+
+// Chạy `p`, nhưng KHÔNG bao giờ chờ quá `ms`. Trả `fallback` nếu quá hạn.
+//
+// `chrome.scripting.executeScript` và `chrome.tabs.update` KHÔNG có hạn giờ riêng, và đó là
+// một cái bẫy có thật chứ không phải lo xa: đo 2026-09-04, job gợi ý Temu chạy quá 90 giây
+// dù đã đặt ngân sách 70 giây cho cả job — vì ngân sách chỉ được KIỂM giữa các bước, mà lời
+// gọi đang treo thì không bao giờ trả về để tới được chỗ kiểm. Trang Temu điều hướng sang màn
+// "Security verification" ngay giữa lúc ta bơm script là dựng đúng tình huống ấy.
+//
+// Bọc từng lời gọi mới chặn được, chứ đặt thêm một hạn nữa ở ngoài thì cũng nằm sau nó.
+function withTimeout(p, ms, fallback) {
+  return Promise.race([
+    Promise.resolve(p).catch(() => fallback),
+    new Promise((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
+// Bơm một hàm vào tab, có hạn giờ. Trả `null` nếu quá hạn hoặc lỗi.
+async function evalInTab(tabId, func, args, ms = 4000) {
+  const out = await withTimeout(
+    chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', args: args || [], func }),
+    ms,
+    null,
+  );
+  return (out && out[0] && out[0].result) || null;
+}
+
+async function temuSuggestBatch(terms, region) {
+  const list = (Array.isArray(terms) ? terms : []).map((t) => String(t || '').trim())
+    .filter(Boolean).slice(0, TEMU_SUGGEST_MAX_TERMS);
+  if (!list.length) return { groups: [], blocked: false, error: 'không có cụm từ nào' };
+
+  const JOB_BUDGET_MS = 70000;
+  const PER_TERM_MS = 4000;
+  const jobDeadline = Date.now() + JOB_BUDGET_MS;
+
+  // `stage` là thứ trả lời được câu "nó kẹt ở đâu" — cập nhật trước MỖI bước có thể treo.
+  // Không có nó thì một lần quá hạn chỉ nói được "quá hạn", và đó là chỗ đã tốn hai vòng đoán.
+  const debug = { stage: 'bắt đầu', inputFound: null, capUrls: [], sample: '', terms: list.length, ranTerms: 0 };
+  const groups = [];
+
+  try {
+    debug.stage = 'mở tab';
+    const tab = await withTimeout(temuSuggestTab(), 8000, null);
+    if (!tab) return { groups, blocked: true, debug, error: 'không mở được tab Temu' };
+
+    debug.stage = 'điều hướng temu.com';
+    await withTimeout(chrome.tabs.update(tab.id, { url: 'https://www.temu.com/' }), 8000, null);
+    await withTimeout(focusTab(tab.id), 4000, null); // SPA nặng — tab nền bị Chrome tiết chế
+
+    debug.stage = 'chờ trang tải';
+    await waitForComplete(tab.id, 12000); // hàm này vốn đã tự hết giờ
+    await sleep(2000); // để React mount xong ô search
+
+    let sawLogin = false;
+
+    for (const term of list) {
+      if (Date.now() > jobDeadline) { debug.stage = 'hết ngân sách'; break; }
+      debug.ranTerms++;
+      debug.stage = `gõ cụm ${debug.ranTerms}/${list.length}`;
+
+      // Xoá giỏ đã chộp TRƯỚC mỗi cụm, để gợi ý cụm này không lẫn của cụm trước.
+      await evalInTab(tab.id, () => { try { window.__rsCap = []; } catch (e) {} }, [], 3000);
+
+      // Gõ bằng native setter (React bỏ qua gán .value trực tiếp).
+      const typedInfo = await evalInTab(tab.id, (kw) => {
+        const inp = document.querySelector('input[type="search"]')
+          || document.querySelector('input[role="searchbox"]')
+          || [...document.querySelectorAll('input')].find((e) => /search|tìm/i.test((e.placeholder || '') + (e.getAttribute('aria-label') || '')));
+        if (!inp) return { ok: false, inputs: document.querySelectorAll('input').length, href: location.href };
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        inp.focus();
+        setter.call(inp, '');
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+        setter.call(inp, kw);
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+        // Một số bản dựng chỉ gọi suggest khi thấy phím thật; KHÔNG gửi Enter (Enter là điều
+        // hướng sang trang kết quả, mất luôn lớp gợi ý).
+        for (const type of ['keydown', 'keyup']) {
+          inp.dispatchEvent(new KeyboardEvent(type, { key: 'a', bubbles: true }));
+        }
+        return { ok: true, inputs: document.querySelectorAll('input').length, href: location.href };
+      }, [term], 5000);
+
+      if (debug.inputFound === null) {
+        debug.inputFound = typedInfo === null
+          ? 'bơm script vào trang bị treo/quá hạn'
+          : typedInfo.ok ? true : `không thấy ô search (có ${typedInfo.inputs} input, đang ở ${String(typedInfo.href).slice(0, 60)})`;
+      }
+      if (!typedInfo || !typedInfo.ok) { groups.push({ term, suggestions: [] }); continue; }
+
+      const suggestions = [];
+      const termDeadline = Math.min(Date.now() + PER_TERM_MS, jobDeadline);
+      while (Date.now() < termDeadline) {
+        await sleep(500);
+        const r = await evalInTab(tab.id, () => ({
+          // TẤT CẢ url đã chộp, không chỉ search_suggest: khi không ra gợi ý, câu hỏi đầu tiên
+          // là "trang có gọi suggest không, hay ta chộp nhầm endpoint".
+          all: (window.__rsCap || []).map((c) => c.url),
+          hit: (window.__rsCap || []).filter((c) => /search_suggest/i.test(c.url)).map((c) => c.text),
+          href: location.href,
+        }), [], 3000);
+        if (!r) continue;
+        for (const u of r.all || []) if (!debug.capUrls.includes(u)) debug.capUrls.push(u);
+        if (/login\.html/.test(r.href)) { sawLogin = true; break; }
+        for (const text of r.hit) {
+          if (!debug.sample) debug.sample = String(text).slice(0, 400);
+          for (const s of parseTemuSuggest(text)) {
+            if (!suggestions.includes(s)) suggestions.push(s);
+          }
+        }
+        if (suggestions.length) break;
+      }
+      groups.push({ term, suggestions });
+      if (sawLogin) break;
+      await sleep(300); // giãn nhịp giữa hai lượt gõ, cho giống người thật
+    }
+
+    // Giữ chẩn đoán gọn — nó đi qua relay rồi hiện lên giao diện, không phải một bãi log.
+    debug.capUrls = debug.capUrls.slice(0, 8).map((u) => String(u).slice(0, 120));
+
+    const total = groups.reduce((n, g) => n + g.suggestions.length, 0);
+    if (sawLogin) {
+      await withTimeout(focusTab(tab.id), 3000, null);
+      return { groups, blocked: true, debug, error: 'Temu đòi đăng nhập — đã mở tab, đăng nhập xong rồi thử lại' };
+    }
+    if (!total) {
+      const why = debug.inputFound !== true
+        ? `không gõ được vào ô tìm kiếm (${debug.inputFound})`
+        : debug.capUrls.length
+          ? `trang có gọi ${debug.capUrls.length} endpoint nhưng không cái nào là search_suggest`
+          : 'trang không gọi endpoint nào sau khi gõ';
+      return { groups, blocked: true, debug, error: `Temu không trả gợi ý nào — ${why}` };
+    }
+    return { groups, blocked: false, debug };
+  } catch (e) {
+    return { groups, blocked: false, debug, error: `lỗi ở bước "${debug.stage}": ${e}` };
+  }
+}
+
 // ===== TikTok organic: keyword → list VIDEO (Cách A, auto-scroll + chộp API) =====
 // TikTok search bắn API đã ký (X-Bogus/msToken) do JS trang tự sinh — không reimplement được.
 // Nên: điều hướng tới /search/video, để page-hook (document_start) chộp response, rồi TỰ CUỘN
@@ -1561,6 +1760,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   if (msg.type === 'RS_DOUYIN') {
     withCooldown('douyin', searchDouyin(msg.keyword, msg.count, msg.keywords, msg.anchor).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: false, error: String(e) })));
+    return true;
+  }
+
+  // Nguồn từ khoá cho tab Keyword. Trả `groups` (mỗi cụm gốc một nhóm) chứ không phải một
+  // mảng phẳng: backend cần biết gợi ý đến TỪ cụm nào để ghi `via_term` khi xếp hạng.
+  if (msg.type === 'RS_TEMU_SUGGEST') {
+    const temuGuard = { groups: [], blocked: true, debug: { stage: 'không rõ — handler quá hạn' }, error: 'job Temu quá 75s trong extension, đã bỏ dở' };
+    withCooldown('temuSuggest', withTimeout(temuSuggestBatch(msg.terms, msg.region), 75000, temuGuard).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, groups: [], blocked: false, error: String(e) })));
     return true;
   }
 

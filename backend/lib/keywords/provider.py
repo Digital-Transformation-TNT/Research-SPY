@@ -103,6 +103,33 @@ class KeywordProvider(ABC):
     #: ra long-tail. Google Trends thì không: một lời gọi đã trả về trọn bảng truy vấn liên
     #: quan, nên hỏi lại 19 lần chỉ tổ nhận đúng một kết quả đó 19 lần và lĩnh thêm 429.
     expands_terms: bool = True
+    #: Trần số cụm nguồn này được hỏi trong một lượt, bất kể người dùng chọn mức nào.
+    #:
+    #: `None` là không có trần — đúng cho mọi nguồn gọi HTTP thẳng, nơi một lượt gọi tốn vài
+    #: trăm mili-giây. Trần sinh ra cho nguồn đi qua máy-thợ: ở đó một lượt gọi là một lần gõ
+    #: vào trang thật, và cả công ty dùng chung MỘT trình duyệt-thợ chạy tuần tự. Xem
+    #: `providers/temu.py`.
+    max_terms: int | None = None
+    #: Nguồn muốn nhận CẢ DANH SÁCH cụm trong một lời gọi thay vì từng cụm một.
+    #:
+    #: Bật cờ này thì `expand_with_provider` gọi `fetch_suggestions_batch` đúng một lần và
+    #: KHÔNG gọi `fetch_suggestions` nữa. Dành cho nguồn mà chi phí nằm ở việc DỰNG ngữ cảnh
+    #: chứ không ở từng câu hỏi: mở một tab Temu tốn 18 giây, gõ thêm một cụm vào tab đã mở
+    #: tốn 1 giây — hỏi 12 lần riêng lẻ là trả tiền mở tab 12 lần.
+    batches_terms: bool = False
+
+    async def fetch_suggestions_batch(
+        self, terms: list[str], ctx: SearchContext
+    ) -> dict[str, list[Suggestion]]:
+        """
+        Lấy gợi ý cho NHIỀU cụm trong một lời gọi. Chỉ nguồn đặt `batches_terms` mới phải cài.
+
+        Trả về map `cụm gốc -> gợi ý`. Cụm nào nguồn không trả gì thì cứ thiếu khỏi map —
+        thiếu một phần vẫn dùng được, và đó cũng là cách `fetch_suggestions` xử lý.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} đặt batches_terms nhưng chưa cài fetch_suggestions_batch"
+        )
 
     @abstractmethod
     async def fetch_suggestions(self, term: str, ctx: SearchContext) -> list[Suggestion]:

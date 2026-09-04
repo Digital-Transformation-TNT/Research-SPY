@@ -14,7 +14,8 @@ from lib.core.model import dump
 from lib.keywords.bridge import BRIDGE_TTL_MS, bridge_seed
 from lib.keywords.gloss import GLOSS_TTL_MS, gloss_keywords
 from lib.keywords.market import market_descriptors
-from lib.keywords.providers import KEYWORD_SOURCE_DESCRIPTORS
+from lib.core.worker_relay import worker_online
+from lib.keywords.providers import KEYWORD_SOURCE_DESCRIPTORS, WORKER_BACKED_SOURCES
 from lib.keywords.search import (
     TRENDS_PROPERTIES,
     clean_time_range,
@@ -48,8 +49,21 @@ def _gloss_key(country: str, keyword: str) -> str:
 
 @router.get("/sources")
 async def sources() -> JSONResponse:
-    """Danh sách nguồn gợi ý, để giao diện tự dựng dãy nút chọn nguồn."""
-    return JSONResponse({"sources": KEYWORD_SOURCE_DESCRIPTORS})
+    """
+    Danh sách nguồn gợi ý, để giao diện tự dựng dãy nút chọn nguồn.
+
+    ẨN HẲN nguồn cần máy-thợ khi không có thợ online, thay vì hiện rồi báo lỗi lúc bấm. Bảy
+    nguồn còn lại chạy được cả khi không có trình duyệt nào, nên một chip luôn hiện là lời hứa
+    ngầm rằng bấm vào sẽ ra dữ liệu — Temu không giữ được lời hứa đó khi máy-thợ tắt.
+
+    Đây là dữ liệu SỐNG, đổi theo trạng thái máy-thợ, nên endpoint không được cache.
+    """
+    online = worker_online()
+    visible = [
+        d for d in KEYWORD_SOURCE_DESCRIPTORS
+        if online or d["id"] not in WORKER_BACKED_SOURCES
+    ]
+    return JSONResponse({"sources": visible, "workerOnline": online})
 
 
 @router.get("/markets")
