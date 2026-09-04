@@ -102,16 +102,48 @@ def parse_keyword_search_params(query: Mapping[str, list[str]]) -> KeywordSearch
 
 @dataclass
 class _CachedExpansion:
-    """Thứ được cache: các lượt xuất hiện thô, chưa xếp hạng, kèm kết quả từng nguồn."""
+    """Các lượt xuất hiện thô, chưa xếp hạng, kèm kết quả từng nguồn. KHÔNG còn được cache
+    nguyên khối — xem `_CachedSource`."""
 
     hits: list[SourceHit]
     statuses: list[KeywordSourceStatus]
 
 
-def _cache_key(params: KeywordSearchParams) -> str:
+@dataclass
+class _CachedSource:
     """
-    Chỉ những gì làm thay đổi thứ ta *đi lấy về* mới thuộc về cache key. Lọc và xếp hạng rẻ
-    và được chạy lại mỗi request, nên bật/tắt một bộ lọc không bao giờ nhận về tập cache lệch.
+    Thứ được cache: kết quả của MỘT nguồn, và chỉ khi nguồn đó thành công.
+
+    TRƯỚC ĐÂY CACHE CẢ LƯỢT TÌM, và đó là một cái bẫy đắt. Điều kiện ghi cache là `any(ok)` —
+    chỉ cần MỘT nguồn chạy được là cả gói được cất đi, mang theo luôn dòng trạng thái LỖI của
+    những nguồn hỏng. Suốt 15 phút sau đó, mọi lượt tìm cùng khoá nhận lại đúng câu lỗi cũ mà
+    không hề gọi lại nguồn ấy.
+
+    Đo 2026-09-04: đúng cái bẫy này đã ngốn ba vòng sửa lỗi cho nguồn Temu. Ba lần sửa
+    extension, ba lần bấm Reload, và cả ba lần giao diện trả về CÙNG MỘT câu lỗi từng chữ —
+    kể cả sau khi hạn giờ trong câu đó không còn tồn tại trong mã nữa. Không phải bản sửa
+    không ăn; là nguồn chưa từng được gọi lại.
+
+    `trends_related.py` đã ghi đúng bài học này ("cache lỗi bảy ngày sẽ biến một lần đăng nhập
+    lại thành một tuần tưởng như nguồn đã chết") nhưng chỉ áp cho cache riêng của nó; tầng
+    trên vẫn cache đè lên. Nay cắt nhỏ theo nguồn: nguồn hỏng thì KHÔNG vào cache, lượt sau
+    được gọi lại, còn các nguồn chạy tốt vẫn giữ nguyên cái lợi của cache.
+    """
+
+    status: KeywordSourceStatus
+    hits: list[SourceHit]
+
+
+def _source_cache_key(source: str, params: KeywordSearchParams) -> str:
+    """
+    Khoá cache của MỘT nguồn. Chỉ những gì làm thay đổi thứ ta ĐI LẤY VỀ mới thuộc về khoá.
+
+    Nhờ vậy chọn thêm hay bớt nguồn không làm hỏng cache của những nguồn còn lại — trước đây
+    khoá gồm cả DANH SÁCH nguồn, nên đổi tổ hợp là sinh một khoá khác hẳn và mọi nguồn phải
+    chạy lại từ đầu.
+
+    Bộ lọc và thứ hạng KHÔNG thuộc về khoá: chúng rẻ và được chạy lại mỗi request, nên bật/tắt
+    một bộ lọc không bao giờ nhận về tập cache lệch.
 
     Cửa sổ thời gian và kho dữ liệu THÌ thuộc về: chúng đổi hẳn tập từ khoá Trends trả về, nên
     thiếu chúng thì đổi sang "24 giờ qua" hay "Google Mua sắm" sẽ nhận nguyên bảng của lần
@@ -119,9 +151,9 @@ def _cache_key(params: KeywordSearchParams) -> str:
     """
     return json.dumps(
         [
-            "kw",
+            "kw1",
             params.seed.lower(),
-            sorted(params.sources),
+            source,
             params.depth,
             params.country,
             params.time_range,
@@ -216,19 +248,38 @@ async def _run_source(
         )
 
 
-async def run_keyword_search(params: KeywordSearchParams, skip_cache: bool = False) -> KeywordResult:
-    key = _cache_key(params)
-    expansion: _CachedExpansion | None = None if skip_cache else cache_get(key)
-    from_cache = expansion is not None
+async def _run_source_cached(
+    source: str, params: KeywordSearchParams, skip_cache: bool
+) -> tuple[bool, KeywordSourceStatus, list[SourceHit]]:
+    """
+    Chạy một nguồn, đi qua cache riêng của nguồn đó. Trả `(lấy từ cache, trạng thái, hits)`.
 
-    if expansion is None:
-        settled = await asyncio.gather(*(_run_source(source, params) for source in params.sources))
-        expansion = _CachedExpansion(
-            hits=[hit for _, hits in settled for hit in hits],
-            statuses=[status for status, _ in settled],
-        )
-        if any(status.ok for status in expansion.statuses):
-            cache_set(key, expansion)
+    CHỈ CACHE KHI NGUỒN CHẠY ĐƯỢC. Nguồn hỏng thì lượt sau gọi lại — xem `_CachedSource` để
+    biết vì sao điều đó quan trọng hơn nó nghe.
+    """
+    key = _source_cache_key(source, params)
+    if not skip_cache:
+        cached: _CachedSource | None = cache_get(key)
+        if cached is not None:
+            return True, cached.status, cached.hits
+
+    status, hits = await _run_source(source, params)
+    if status.ok:
+        cache_set(key, _CachedSource(status=status, hits=hits))
+    return False, status, hits
+
+
+async def run_keyword_search(params: KeywordSearchParams, skip_cache: bool = False) -> KeywordResult:
+    settled = await asyncio.gather(
+        *(_run_source_cached(source, params, skip_cache) for source in params.sources)
+    )
+    expansion = _CachedExpansion(
+        hits=[hit for _, _, hits in settled for hit in hits],
+        statuses=[status for _, status, _ in settled],
+    )
+    # "Lấy từ cache" chỉ đúng khi MỌI nguồn đều từ cache; còn một nguồn phải chạy thật thì
+    # lượt tìm này đã tốn thời gian thật, và nói với người dùng là cache sẽ là nói sai.
+    from_cache = bool(settled) and all(cached for cached, _, _ in settled)
 
     ranked = rank_keywords(
         expansion.hits,
