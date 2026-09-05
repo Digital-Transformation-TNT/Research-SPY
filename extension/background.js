@@ -314,10 +314,22 @@ function trendsLooksLikeTable(text, seed) {
  */
 function trendsRelatedGuarded(payload) {
   const partial = { responses: [], frames: [] };
+  // GIỮ NHỊP CHO SERVICE WORKER. MV3 kết liễu service worker sau khoảng 30 giây "rảnh", và job
+  // này có đoạn chờ trang tải dài 20 giây không gọi API nào — đủ để rơi vào khe đó. Khi worker bị
+  // giết giữa chừng thì `sendResponse` biến mất cùng nó: trang máy-thợ không nhận được trả lời,
+  // và backend chỉ thấy "hết giờ" mà không có gì để lần.
+  //
+  // Gọi một API `chrome.*` rẻ tiền mỗi 20 giây là cách chính thống để đặt lại đồng hồ ấy. Phải
+  // dọn trong `finally`, nếu không mỗi job để lại một nhịp chạy mãi.
+  const beat = setInterval(() => { try { chrome.runtime.getPlatformInfo(() => {}); } catch (e) {} }, 20000);
+  const done = () => clearInterval(beat);
   const guard = new Promise((resolve) =>
     setTimeout(() => resolve({ ...partial, error: 'hết ngân sách trong extension' }), 95000)
   );
-  return Promise.race([trendsRelated(payload, partial).catch((e) => ({ ...partial, error: String(e) })), guard]);
+  return Promise.race([
+    trendsRelated(payload, partial).catch((e) => ({ ...partial, error: String(e) })),
+    guard,
+  ]).finally(done);
 }
 
 async function trendsRelated(payload, partial) {

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Research-SPY Fetcher",
-  "version": "0.5.9",
+  "version": "0.6.0",
   "description": "Lấy dữ liệu sản phẩm bằng chính phiên đăng nhập của bạn (Cách A). Cookie không bao giờ rời trình duyệt này.",
   "permissions": [
     "scripting",
