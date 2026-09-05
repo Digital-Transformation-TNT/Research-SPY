@@ -592,11 +592,16 @@ def parse_related_widget(raw_text: str) -> list[RelatedQuery]:
             # Bảng "đang tăng": `value` CHÍNH LÀ phần trăm tăng, nên nó vừa là lượng vừa là mức
             # thay đổi. Bảng hàng đầu thì hai thứ đó là hai cột khác nhau.
             change = value if rising else _widget_change(item)
-            saw_change = saw_change or change is not None
+            # CHỈ bảng hàng đầu mới tính, và đây là một cái bẫy đã sập đúng một lần: hàng ở bảng
+            # "đang tăng" LUÔN có `change` (bằng chính `value`), nên tính cả chúng thì `saw_change`
+            # gần như luôn đúng và mẫu vật chẩn đoán không bao giờ được ghi — trong khi cột đang
+            # trống trên giao diện chính là cột của bảng hàng đầu.
+            if not rising and change is not None:
+                saw_change = True
             out.append(
                 RelatedQuery(query=query, value=value, rising=rising, change_percent=change)
             )
-    if out and not saw_change:
+    if any(not q.rising for q in out) and not saw_change:
         _remember_widget_sample(raw_text)
     return out
 
