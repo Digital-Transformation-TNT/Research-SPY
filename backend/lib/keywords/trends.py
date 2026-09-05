@@ -60,7 +60,7 @@ from lib.core.auth import (
 )
 from lib.core.browser import describe_browser_error, launch_browser
 from lib.core.config import config, env_number, env_string
-from lib.core.jscompat import average, jround
+from lib.core.jscompat import average, jround, strip_diacritics
 from lib.core.rate_limit import schedule
 from lib.core.store import STORE_DIR
 from lib.core.worker_relay import (
@@ -131,8 +131,31 @@ TRENDS_HOST = env_string("TRENDS_HOST", "trends.google.com.vn")
 #: trả `fXqlme` lại cho nó. Xem docstring `explore_url` để biết vì sao đã đổi ba lần.
 EXPLORE_PATH = "/trends/explore"
 
+#: Trang Khám phá MỚI. Đây là trang DUY NHẤT có cột "Thay đổi", và nó chỉ hiện với một số tài
+#: khoản — đo 2026-09-05 bằng hai tài khoản trên cùng một máy:
+#:
+#:   tài khoản của chủ dự án   /explore hiện ĐỦ hai bảng, mỗi bảng 50 dòng kèm cột "Thay đổi"
+#:   tài khoản của công cụ     /explore không hiện bảng nào (HTML không có cả chữ "hàng đầu"),
+#:                             và Google nạp reCAPTCHA cho phiên đó
+#:
+#: Trang CŨ thì cả hai tài khoản đều thấy giống nhau: khoảng 25 dòng, KHÔNG có cột "Thay đổi" —
+#: xác nhận bằng ảnh chụp trang cũ trên chính máy-thợ. Nên cột đó không phải thứ lấy được bằng
+#: cách đổi trình duyệt; phải đổi TRANG. Đó là lý do máy-thợ mở trang mới còn Playwright vẫn ở
+#: lại trang cũ: mỗi bên đi tới trang mà tài khoản của bên đó thật sự được phục vụ.
+NEW_EXPLORE_PATH = "/explore"
 
-def explore_url(terms: list[str], geo: str, time_range: str, gprop: str = "") -> str:
+#: Tên miền của TRANG MỚI — `.com`, không phải `.com.vn`, và khác có chủ đích với `TRENDS_HOST`.
+#:
+#: Đây là URL DUY NHẤT đã quan sát được là có hai bảng kèm cột "Thay đổi", đo trên máy-thợ ngày
+#: 2026-09-05: `trends.google.com/explore?q=jeans&date=today+12-m&hl=vi` ra 50 + 50 dòng đủ cột.
+#: Trang cũ thì ngược lại, `.com.vn` mới là bản đã đo — nên hai đường giữ hai tên miền riêng thay
+#: vì dùng chung một hằng số, và không suy diễn rằng cái này chạy được thì cái kia cũng vậy.
+NEW_TRENDS_HOST = env_string("TRENDS_NEW_HOST", "trends.google.com")
+
+
+def explore_url(
+    terms: list[str], geo: str, time_range: str, gprop: str = "", new_page: bool = False
+) -> str:
     """
     Đường dẫn Khám phá cho một nhóm so sánh — TRANG CŨ `/trends/explore`.
 
@@ -163,9 +186,14 @@ def explore_url(terms: list[str], geo: str, time_range: str, gprop: str = "") ->
 
     `geo` và `gprop` bị BỎ HẲN khi rỗng chứ không gửi rỗng: đo 2026-07-29 thì `geo=` rỗng vẫn
     ra toàn thế giới, nhưng bỏ hẳn là đúng thứ giao diện thật phát ra.
+
+    `new_page=True` cho ra trang MỚI — chỉ máy-thợ dùng, xem `NEW_EXPLORE_PATH`. Phần query giữ
+    nguyên từng chữ ở cả hai trang, nên chỉ đường dẫn đổi.
     """
     q = ",".join(quote(term, safe="") for term in terms)
-    url = f"https://{TRENDS_HOST}{EXPLORE_PATH}?q={q}&date={quote(time_range, safe='')}&hl=vi"
+    host = NEW_TRENDS_HOST if new_page else TRENDS_HOST
+    path = NEW_EXPLORE_PATH if new_page else EXPLORE_PATH
+    url = f"https://{host}{path}?q={q}&date={quote(time_range, safe='')}&hl=vi"
     if geo and geo != WORLDWIDE:
         url += f"&geo={quote(geo, safe='')}"
     if gprop:
@@ -681,6 +709,136 @@ def parse_related(raw_text: str) -> list[RelatedQuery]:
     return rows(group[2], rising=False) + rows(group[1], rising=True)
 
 
+def _strip_marks(text: str) -> str:
+    """Khoá khớp lỏng: chữ thường, bỏ dấu. "Quần Jeans" và "quan jeans" phải khớp nhau."""
+    return strip_diacritics(text.lower()).strip()
+
+
+#: Ít nhất bằng này dòng thì một danh sách mới đáng nghi là bảng truy vấn liên quan.
+#:
+#: Bảng thật có 50 dòng mỗi bên. Đặt 10 để còn nhận được cả những từ gốc ngách, nhưng KHÔNG
+#: thấp hơn: cùng payload còn có bảng khu vực ("1-5 trong tổng số 17 khu vực"), cũng gồm những
+#: cặp [chuỗi, số] với đỉnh đúng bằng 100 — nhìn từ xa giống hệt bảng ta cần.
+_MIN_TABLE_ROWS = 10
+
+#: Bao nhiêu phần dòng phải nhắc lại từ gốc thì mới nhận là bảng TRUY VẤN.
+#:
+#: Đây là thứ tách bảng truy vấn khỏi bảng khu vực và khỏi mọi danh sách [chuỗi, số] khác trong
+#: cùng payload — "men's jeans" chứa "jeans", còn "Việt Nam" thì không. Không đòi 100%: bảng
+#: thật luôn có vài dòng lạc như "denim" hay "pants".
+_SEED_ECHO_RATIO = 0.3
+
+
+def _rows_from(block: Any) -> list[tuple[str, float, float | None]] | None:
+    """Một danh sách có phải dãy `[truy vấn, giá trị, (thay đổi)]` không."""
+    if not isinstance(block, list) or len(block) < _MIN_TABLE_ROWS:
+        return None
+    rows: list[tuple[str, float, float | None]] = []
+    for item in block:
+        if not (isinstance(item, list) and len(item) >= 2):
+            return None
+        query, value = item[0], item[1]
+        if not (isinstance(query, str) and query.strip()):
+            return None
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        change = (
+            float(item[2])
+            if len(item) > 2 and isinstance(item[2], (int, float)) and not isinstance(item[2], bool)
+            else None
+        )
+        rows.append((query.strip(), float(value), change))
+    return rows
+
+
+def _harvest_tables(node: Any, out: list[list[tuple[str, float, float | None]]]) -> None:
+    """Nhặt mọi danh sách trông như một bảng, ở bất kỳ độ sâu nào."""
+    rows = _rows_from(node)
+    if rows is not None:
+        out.append(rows)
+        return  # đã là bảng thì bên trong không còn bảng nào khác
+    if isinstance(node, list):
+        for child in node:
+            _harvest_tables(child, out)
+    elif isinstance(node, dict):
+        for child in node.values():
+            _harvest_tables(child, out)
+
+
+def parse_related_frames(raw_text: str, seed: str) -> list[RelatedQuery]:
+    """
+    Đọc bảng truy vấn liên quan từ MỘT response `batchexecute` BẤT KỲ, không cần biết mã RPC.
+
+    KHÔNG GHIM MÃ RPC, và đây là lựa chọn có chủ đích chứ không phải lười. Mã ấy chỉ quan sát
+    được từ tài khoản ĐANG ĐƯỢC phục vụ trang mới — tài khoản của chủ dự án — chứ không phải từ
+    tài khoản mà công cụ dùng để dò (đo 2026-09-05: trang mới không hiện bảng nào cho tài khoản
+    ấy, HTML không có cả chữ "hàng đầu"). Ghim một mã lấy qua lời kể là ghim một chuỗi chưa ai
+    kiểm chứng; đọc theo HÌNH DẠNG thì chạy được ngay cả khi Google đổi tên RPC — mà họ đã đổi
+    ba lần trong sáu tuần.
+
+    Cái giá của việc dò theo hình dạng là nhận nhầm, nên có hai lớp chặn: `_MIN_TABLE_ROWS` loại
+    các danh sách vụn, còn `_SEED_ECHO_RATIO` loại bảng khu vực — thứ giống bảng ta cần tới mức
+    cũng là những cặp [chuỗi, số] với đỉnh đúng bằng 100.
+
+    Phân biệt hai bảng bằng THANG ĐO chứ không bằng thứ tự, cùng lập luận đã dùng ở
+    `parse_related_widget`: bảng hàng đầu là 0–100, bảng đang tăng là phần trăm tăng nên vượt
+    100 rất xa. Thứ tự thì Google đã đảo ít nhất một lần rồi.
+    """
+    seed_key = _strip_marks(seed)
+    tables: list[list[tuple[str, float, float | None]]] = []
+    for match in _ENVELOPE_LINE.finditer(_GUARD.sub("", raw_text)):
+        try:
+            envelope = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(envelope, list):
+            continue
+        for frame in envelope:
+            if not (
+                isinstance(frame, list)
+                and len(frame) > 2
+                and frame[0] == "wrb.fr"
+                and isinstance(frame[2], str)
+            ):
+                continue
+            try:
+                payload = json.loads(frame[2])
+            except json.JSONDecodeError:
+                continue
+            _harvest_tables(payload, tables)
+
+    def echoes_seed(rows: list[tuple[str, float, float | None]]) -> bool:
+        if not seed_key:
+            return True
+        hits = sum(1 for query, _, _ in rows if seed_key in _strip_marks(query))
+        return hits / len(rows) >= _SEED_ECHO_RATIO
+
+    candidates = [rows for rows in tables if echoes_seed(rows)]
+    if not candidates:
+        return []
+
+    out: list[RelatedQuery] = []
+    seen: set[tuple[str, bool]] = set()
+    for rows in candidates:
+        # Bảng hàng đầu chuẩn hoá về 100; bảng đang tăng mang phần trăm tăng nên vọt lên hàng
+        # trăm, hàng nghìn. Ranh giới ở 100 vì đó là trần của thang hàng đầu, theo định nghĩa.
+        rising = max(value for _, value, _ in rows) > 100
+        for query, value, change in rows:
+            key = (query.lower(), rising)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(
+                RelatedQuery(
+                    query=query,
+                    value=value,
+                    rising=rising,
+                    change_percent=value if rising else change,
+                )
+            )
+    return out
+
+
 async def _related_via_worker(seed: str, ctx: SearchContext) -> RelatedOutcome | None:
     """
     Lấy bảng truy vấn liên quan bằng CHROME THẬT của máy-thợ.
@@ -701,7 +859,15 @@ async def _related_via_worker(seed: str, ctx: SearchContext) -> RelatedOutcome |
     try:
         result = await run_on_worker(
             "RS_TRENDS_RELATED",
-            {"url": explore_url([seed], ctx.country, ctx.time_range, ctx.gprop)},
+            {
+                # Trang MỚI trước — chỉ nó có cột "Thay đổi". Trang cũ đi kèm làm đường lui ngay
+                # trong cùng một job: nếu tài khoản của máy-thợ cũng không được phục vụ bảng ở
+                # trang mới thì vẫn còn 25 dòng của trang cũ, và vẫn là Chrome thật.
+                "url": explore_url(
+                    [seed], ctx.country, ctx.time_range, ctx.gprop, new_page=True
+                ),
+                "legacyUrl": explore_url([seed], ctx.country, ctx.time_range, ctx.gprop),
+            },
             timeout_s=BATCH_TIMEOUT_S,
         )
     except WorkerOffline:
@@ -716,7 +882,9 @@ async def _related_via_worker(seed: str, ctx: SearchContext) -> RelatedOutcome |
         # Relay hỏng là chuyện của relay — để Playwright thử, đừng làm chết cả nguồn.
         return None
 
-    if not isinstance(result, dict) or result.get("responses") is None:
+    if not isinstance(result, dict) or (
+        result.get("responses") is None and result.get("frames") is None
+    ):
         # Extension bản cũ không biết loại job này. Nói đúng cách sửa thay vì để nó đọc thành
         # "Google không có dữ liệu" — hai chuyện khác hẳn nhau và cách xử lý cũng khác hẳn.
         return RelatedOutcome(
@@ -726,29 +894,42 @@ async def _related_via_worker(seed: str, ctx: SearchContext) -> RelatedOutcome |
             )
         )
 
-    # Mỗi lần tải trang chỉ phát MỘT response cho widget này, nhưng cứ lấy bản nhiều dòng nhất
-    # phòng khi trang xin lại: bản đến sau không nhất thiết đầy đủ hơn bản đến trước.
+    # Lấy bản NHIỀU DÒNG NHẤT trong tất cả những gì thợ chộp được, không lấy bản đầu tiên: một
+    # lần tải trang có thể phát nhiều lượt cho cùng một bảng, và bản đến sau không nhất thiết
+    # đầy đủ hơn bản đến trước.
     best: list[RelatedQuery] = []
+    for text in result.get("frames") or []:
+        if isinstance(text, str):
+            try:
+                queries = parse_related_frames(text, seed)
+            except Exception:
+                continue
+            if len(queries) > len(best):
+                best = queries
     for text in result.get("responses") or []:
-        if not isinstance(text, str):
-            continue
-        try:
-            queries = parse_related_widget(text)
-        except Exception:
-            continue
-        if len(queries) > len(best):
-            best = queries
+        if isinstance(text, str):
+            try:
+                queries = parse_related_widget(text)
+            except Exception:
+                continue
+            if len(queries) > len(best):
+                best = queries
 
     if best:
         _note_data_received()
         return RelatedOutcome(queries=best)
 
-    # Thợ chạy xong mà không chộp được gì. KHÔNG kết luận "bị chặn" — nhiều khả năng hơn là
-    # Chrome của máy-thợ chưa đăng nhập Google, hoặc trang chưa kịp xin widget trong ngân sách.
+    # Thợ chạy xong mà không đọc được gì. Cất lại frame LỚN NHẤT để lần sau khỏi phải đoán:
+    # trang mới chỉ hiện bảng với một số tài khoản, nên nếu hình dạng payload khác dự đoán thì
+    # đây là mẫu vật duy nhất lấy được — máy-thợ là một máy khác, không mở DevTools hộ được.
+    frames = [t for t in (result.get("frames") or []) if isinstance(t, str)]
+    if frames:
+        _remember_widget_sample(max(frames, key=len))
+
     return RelatedOutcome(
         message=(
-            f'"{seed}" — máy-thợ mở được trang Trends nhưng không thấy bảng truy vấn liên quan. '
-            "Kiểm tra Chrome của máy-thợ đã đăng nhập Google chưa, rồi thử lại."
+            f'"{seed}" — máy-thợ mở được trang Trends nhưng không đọc được bảng truy vấn liên '
+            "quan. Kiểm tra Chrome của máy-thợ đã đăng nhập Google chưa, rồi thử lại."
         )
     )
 

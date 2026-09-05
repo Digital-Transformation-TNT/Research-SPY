@@ -22,7 +22,8 @@
     '/api/search/video',            // TikTok search video (biến thể)
     '/api/v4/search/search_items',  // Shopee search (trang tự gọi + ký anti-bot, ta chộp response)
     '/api/graphql',                 // Facebook Ad Library (trang tự ký AdLibrarySearchPaginationQuery)
-    '/trends/api/widgetdata/',      // Google Trends (trang tự xin widget bằng token của chính nó)
+    '/trends/api/widgetdata/',      // Google Trends TRANG CŨ (trang tự xin widget bằng token của nó)
+    '/TrendsUi/data/batchexecute',  // Google Trends TRANG MỚI — nơi DUY NHẤT có cột "Thay đổi"
   ];
   function match(u) {
     if (typeof u !== 'string') return false;
@@ -38,6 +39,10 @@
       // Trends bắn 4 widget mỗi lần tải trang (biểu đồ, bản đồ, chủ đề, truy vấn); chỉ giữ
       // widget TRUY VẤN liên quan — ba cái kia nặng và sẽ đẩy nó khỏi bộ đệm 40 phần tử.
       if (url.indexOf('/trends/api/widgetdata/') !== -1 && url.indexOf('relatedsearches') === -1) return;
+      // Trang mới bắn một RPC nặng 4,5 MB (danh mục/gợi ý, không phải bảng ta cần). Giữ nó là
+      // đẩy trôi mọi thứ khác khỏi bộ đệm 40 phần tử và bắt relay chở 4,5 MB qua mạng mỗi lượt.
+      // Bảng truy vấn liên quan đo được chỉ vài chục KB.
+      if (url.indexOf('/TrendsUi/data/batchexecute') !== -1 && text.length > 1500000) return;
       window.__rsCap.push({ url: url, text: text, ts: Date.now() });
       // Giữ nhiều hơn: TikTok/infinite-scroll bắn 1 response/trang, auto-scroll gom chục trang.
       if (window.__rsCap.length > 40) window.__rsCap.shift();

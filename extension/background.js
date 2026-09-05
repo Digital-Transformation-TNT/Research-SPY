@@ -187,53 +187,75 @@ async function fbAdLibrary(payload) {
 // KÝ SINH y như FB: điều hướng tab tới /trends/explore của từ khoá, để CHÍNH TRANG xin widget bằng
 // token của nó, page-hook chộp response, trả text thô về backend parse.
 const TRENDS_WIDGET = '/trends/api/widgetdata/relatedsearches';
+const TRENDS_FRAMES = '/TrendsUi/data/batchexecute';
+
+/**
+ * Gom những gì page-hook chộp được trong MỘT tab, cho tới khi có hàng hoặc hết ngân sách.
+ *
+ * `needle` chọn loại response; `extra` là phép lọc thêm (trang cũ phải loại widget "Chủ đề liên
+ * quan", trang mới thì không cần). Trả về mảng text thô — backend là nơi hiểu chúng, còn ở đây
+ * cố ý KHÔNG parse: mọi hiểu biết về hình dạng payload nằm đúng một chỗ.
+ */
+async function trendsCollect(tabId, needle, extra, budgetMs) {
+  const out = [];
+  const seen = new Set();
+  const deadline = Date.now() + budgetMs;
+  while (Date.now() < deadline && !out.length) {
+    await sleep(1200);
+    let cap = [];
+    try {
+      const res = await chrome.scripting.executeScript({
+        target: { tabId }, world: 'MAIN',
+        func: (n, want) => (window.__rsCap || [])
+          .filter((c) => c.url.indexOf(n) !== -1 && (!want || decodeURIComponent(c.url).indexOf(want) !== -1))
+          .map((c) => ({ ts: c.ts, text: c.text })),
+        args: [needle, extra || ''],
+      });
+      cap = (res && res[0] && res[0].result) || [];
+    } catch (e) { /* trang chưa sẵn sàng */ }
+    for (const c of cap) {
+      const key = c.ts + ':' + (c.text ? c.text.length : 0);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(c.text);
+    }
+    if (out.length) break;
+    // Cả hai bảng nằm CUỐI trang và chỉ được xin khi cuộn tới. Tab nền không paint nên cuộn là
+    // best-effort — nhưng Trends dùng cuộn thường chứ không IntersectionObserver như FB.
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId }, world: 'MAIN',
+        func: () => window.scrollTo(0, document.body ? document.body.scrollHeight : 20000),
+      });
+    } catch (e) {}
+  }
+  return out;
+}
 
 async function trendsRelated(payload) {
   await ensurePageHook();
   const url = String(payload.url || '');
-  if (!url.startsWith('https://trends.google.')) return { responses: [], error: 'url không phải Google Trends' };
+  const legacyUrl = String(payload.legacyUrl || '');
+  if (!url.startsWith('https://trends.google.')) {
+    return { responses: [], frames: [], error: 'url không phải Google Trends' };
+  }
 
   const tab = await chrome.tabs.create({ url, active: false });
-  const responses = [];
-  const seen = new Set();
   try {
+    // TRANG MỚI trước. Nó là trang DUY NHẤT có cột "Thay đổi" — nhưng chỉ hiện với một số tài
+    // khoản, nên không được coi việc nó im lặng là hỏng.
     await waitForComplete(tab.id, 25000);
-    const deadline = Date.now() + 40000;
-    while (Date.now() < deadline && !responses.length) {
-      await sleep(1200);
-      let cap = [];
-      try {
-        const out = await chrome.scripting.executeScript({
-          target: { tabId: tab.id }, world: 'MAIN',
-          // CÙNG một endpoint phục vụ hai widget, phân biệt bằng `keywordType` nằm trong tham số
-          // `req` đã mã hoá phần trăm: QUERY là "Truy vấn liên quan" (thứ ta cần), ENTITY là "Chủ
-          // đề liên quan". Nhận nhầm ENTITY thì backend đọc ra một bảng rỗng và tưởng bị chặn.
-          func: (needle) => (window.__rsCap || [])
-            .filter((c) => c.url.indexOf(needle) !== -1 && decodeURIComponent(c.url).indexOf('"keywordType":"QUERY"') !== -1)
-            .map((c) => ({ ts: c.ts, text: c.text })),
-          args: [TRENDS_WIDGET],
-        });
-        cap = (out && out[0] && out[0].result) || [];
-      } catch (e) { /* trang chưa sẵn sàng */ }
-      for (const c of cap) {
-        const key = c.ts + ':' + (c.text ? c.text.length : 0);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        responses.push(c.text);
-      }
-      // Bảng truy vấn liên quan nằm CUỐI trang và chỉ được xin khi cuộn tới. Tab nền không paint
-      // nên cuộn là best-effort — nhưng Trends dùng cuộn thường chứ không dùng IntersectionObserver
-      // như FB, nên ở đây nó ăn.
-      if (!responses.length) {
-        try {
-          await chrome.scripting.executeScript({
-            target: { tabId: tab.id }, world: 'MAIN',
-            func: () => window.scrollTo(0, document.body ? document.body.scrollHeight : 20000),
-          });
-        } catch (e) {}
-      }
-    }
-    return { responses };
+    const frames = await trendsCollect(tab.id, TRENDS_FRAMES, '', 28000);
+    if (frames.length) return { responses: [], frames };
+
+    // Không có gì ⇒ tài khoản này chưa được phục vụ bảng ở trang mới. Về TRANG CŨ, vẫn trong
+    // cùng một job và vẫn bằng Chrome thật: 25 dòng không kèm cột Thay đổi vẫn hơn hẳn việc
+    // rơi về Playwright, vốn còn ít dòng hơn nữa.
+    if (!legacyUrl) return { responses: [], frames: [] };
+    await chrome.tabs.update(tab.id, { url: legacyUrl });
+    await waitForComplete(tab.id, 25000);
+    const responses = await trendsCollect(tab.id, TRENDS_WIDGET, '"keywordType":"QUERY"', 25000);
+    return { responses, frames: [] };
   } finally {
     try { await chrome.tabs.remove(tab.id); } catch (e) {}
   }
@@ -2252,7 +2274,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // Slot tab RIÊNG (không `withCooldown` chung với sàn nào): Trends chạy trên google.com, và nhịp
   // gọi của nó do `TRENDS_MIN_INTERVAL_MS` bên backend giữ chứ không phải cooldown ở đây.
   if (msg.type === 'RS_TRENDS_RELATED') {
-    trendsRelated(msg).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, responses: [], error: String(e) }));
+    trendsRelated(msg).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, responses: [], frames: [], error: String(e) }));
     return true;
   }
 
