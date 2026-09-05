@@ -9,7 +9,7 @@
  * Nếu chưa có tab của sàn, tự mở một tab nền (cookie theo domain nên vẫn đăng nhập sẵn).
  */
 
-const VERSION = '0.5.0';
+const VERSION = '0.5.1';
 
 const SHOPEE_DOMAINS = ['shopee.vn', 'shopee.co.th', 'shopee.ph', 'shopee.com.my', 'shopee.co.id', 'shopee.sg', 'shopee.tw', 'shopee.com.br', 'shopee.com.mx', 'shopee.com.co', 'shopee.cl'];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -43,7 +43,7 @@ async function ensurePageHook() {
     if (existing.length) return;
     await chrome.scripting.registerContentScripts([{
       id: 'rs-page-hook',
-      matches: ['https://*.taobao.com/*', 'https://*.tmall.com/*', 'https://*.temu.com/*'],
+      matches: ['https://*.taobao.com/*', 'https://*.tmall.com/*', 'https://*.temu.com/*', 'https://*.facebook.com/*'],
       js: ['page-hook.js'],
       runAt: 'document_start',
       world: 'MAIN',
@@ -97,6 +97,68 @@ async function findSimilar(url) {
 async function findTab(host) {
   const tabs = await chrome.tabs.query({ url: `https://${host}/*` });
   return tabs.find((t) => t.id != null) || null;
+}
+
+// FACEBOOK AD LIBRARY qua máy-thợ. FB soft-block playwright (headless LẪN headed) trên VPS —
+// trả 200 kèm 0 kết quả — nhưng Chrome THẬT của máy-thợ ra >50k. Không tự ký được query GraphQL
+// của FB, nên KÝ SINH: điều hướng tab tới URL Ad Library của keyword → chính trang bắn
+// AdLibrarySearchPaginationQuery (đã ký) → page-hook.js chộp RESPONSE (lọc ad_archive_id) →
+// trả text thô về backend parse. Cuộn để lấy thêm trang (best-effort; tab nền có thể không kích hoạt).
+function fbSearchUrl(kw, country, activeStatus, searchType) {
+  const p = new URLSearchParams({
+    active_status: activeStatus === 'all' ? 'all' : 'active',
+    ad_type: 'all',
+    country: country || 'VN',
+    media_type: 'all',
+    q: kw || '',
+    search_type: searchType || 'keyword_exact_phrase',
+  });
+  return 'https://www.facebook.com/ads/library/?' + p.toString();
+}
+
+async function fbAdLibrary(payload) {
+  await ensurePageHook();
+  const url = fbSearchUrl(payload.keyword, payload.country, payload.activeStatus, payload.searchType);
+  const tab = await chrome.tabs.create({ url, active: false });
+  const pages = [];
+  const seen = new Set();
+  try {
+    await waitForComplete(tab.id, 20000);
+    const maxPages = Math.max(1, Math.min(6, Number(payload.maxPages) || 4));
+    const deadline = Date.now() + 45000;
+    let scrolls = 0;
+    while (Date.now() < deadline && pages.length < maxPages) {
+      await sleep(1200);
+      let cap = [];
+      try {
+        const out = await chrome.scripting.executeScript({
+          target: { tabId: tab.id }, world: 'MAIN',
+          func: () => (window.__rsCap || []).filter((c) => c.url.indexOf('/api/graphql') !== -1),
+        });
+        cap = (out && out[0] && out[0].result) || [];
+      } catch (e) { /* trang chưa sẵn sàng */ }
+      for (const c of cap) {
+        const key = c.ts + ':' + (c.text ? c.text.length : 0);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        pages.push(c.text);
+      }
+      // Cuộn để FB bắn trang tiếp (chỉ khi còn thiếu). Tab nền không paint nên có thể không kích
+      // hoạt intersection-observer của FB — chấp nhận best-effort, ít nhất luôn có trang đầu.
+      if (pages.length < maxPages && scrolls < maxPages + 2) {
+        scrolls++;
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id }, world: 'MAIN',
+            func: () => window.scrollTo(0, document.body ? document.body.scrollHeight : 20000),
+          });
+        } catch (e) {}
+      }
+    }
+    return { pages };
+  } finally {
+    try { await chrome.tabs.remove(tab.id); } catch (e) {}
+  }
 }
 
 function waitForComplete(tabId, timeoutMs = 12000) {
@@ -2106,6 +2168,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   if (msg.type === 'RS_COST_BATCH') {
     costBatch(msg.seedUrl, msg.products || []).then((results) => sendResponse({ ok: true, results }));
+    return true;
+  }
+
+  if (msg.type === 'RS_FB_ADLIB') {
+    fbAdLibrary(msg).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, pages: [], error: String(e) }));
     return true;
   }
 

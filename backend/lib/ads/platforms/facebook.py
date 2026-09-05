@@ -25,6 +25,13 @@ from lib.core.browser import SessionRecipe, fetch_in_page, get_session, invalida
 from lib.core.config import env_number, env_string
 from lib.core.jscompat import jround
 from lib.core.rate_limit import schedule
+from lib.core.worker_relay import (
+    BATCH_TIMEOUT_S,
+    WorkerOffline,
+    WorkerTimeout,
+    run_on_worker,
+    worker_online,
+)
 
 from ..platform import (
     AdPlatform,
@@ -338,9 +345,69 @@ class Facebook(AdPlatform):
             active_status="all" if raw.get("activeStatus") == "all" else "active",
         )
 
+    async def _search_via_worker(self, request: PlatformSearchInput) -> PlatformSearchOutcome | None:
+        """
+        Lấy quảng cáo qua MÁY-THỢ (Chrome thật): bảo thợ mở tab Ad Library của keyword, để chính
+        trang bắn query đã ký, chộp RESPONSE thô rồi trả về đây parse bằng `_extract_ads` sẵn có.
+
+        Trả `None` = thợ vừa rớt giữa chừng → nơi gọi để playwright thử. Trả Outcome (kể cả rỗng
+        kèm notice) = đã đi đường thợ, đừng đụng playwright nữa.
+        """
+        options: FacebookOptions = request.options
+        try:
+            result = await run_on_worker(
+                "RS_FB_ADLIB",
+                {
+                    "keyword": request.keyword,
+                    "country": request.country,
+                    "activeStatus": options.active_status,
+                    "searchType": SEARCH_TYPE[options.match_mode],
+                    "maxPages": MAX_PAGES,
+                },
+                timeout_s=BATCH_TIMEOUT_S,
+            )
+        except WorkerOffline:
+            return None
+        except WorkerTimeout:
+            return PlatformSearchOutcome(ads=[], notice="Máy-thợ FB không kịp trả (quá 90s).")
+
+        if not isinstance(result, dict) or result.get("pages") is None:
+            return PlatformSearchOutcome(
+                ads=[],
+                notice="Máy-thợ chưa nạp job Facebook — vào chrome://extensions bấm Reload rồi F5 tab Máy thợ.",
+            )
+
+        collected: list[Ad] = []
+        seen: set[str] = set()
+        for text in result.get("pages") or []:
+            if not isinstance(text, str):
+                continue
+            raw, _cursor = _extract_ads(text)
+            for raw_ad in raw:
+                ad = _normalise(raw_ad, request.country)
+                if ad is None or ad.id in seen:
+                    continue
+                seen.add(ad.id)
+                collected.append(ad)
+
+        limit = request.limit
+        if request.relax_keyword:
+            return PlatformSearchOutcome(
+                ads=collected[:limit],
+                notice=f"Khớp ảnh: {len(collected)} ứng viên FB (máy-thợ) — để ảnh quyết định, không lọc chữ.",
+            )
+        return PlatformSearchOutcome(ads=collected[:limit])
+
     async def search(self, request: PlatformSearchInput) -> PlatformSearchOutcome:
         keyword, country, limit = request.keyword, request.country, request.limit
         options: FacebookOptions = request.options
+
+        # Máy-thợ online → đi đường Chrome THẬT (né soft-block automation của FB: playwright trên
+        # VPS trả 200 kèm 0, Chrome thật ra >50k). Trả None nghĩa là thợ vừa rớt → để playwright thử.
+        if worker_online():
+            out = await self._search_via_worker(request)
+            if out is not None:
+                return out
 
         async def run() -> PlatformSearchOutcome:
             session = await get_session(_recipe, country)

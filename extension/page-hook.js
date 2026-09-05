@@ -21,6 +21,7 @@
     '/api/search/item',             // TikTok search video
     '/api/search/video',            // TikTok search video (biến thể)
     '/api/v4/search/search_items',  // Shopee search (trang tự gọi + ký anti-bot, ta chộp response)
+    '/api/graphql',                 // Facebook Ad Library (trang tự ký AdLibrarySearchPaginationQuery)
   ];
   function match(u) {
     if (typeof u !== 'string') return false;
@@ -30,6 +31,9 @@
   function push(url, text) {
     try {
       if (!text) return;
+      // FB bắn RẤT nhiều /api/graphql (filter options, đếm…); chỉ giữ response CÓ quảng cáo
+      // (ad_archive_id) để không đẩy trôi response tìm-kiếm khỏi bộ đệm 40 phần tử.
+      if (url.indexOf('/api/graphql') !== -1 && text.indexOf('ad_archive_id') === -1) return;
       window.__rsCap.push({ url: url, text: text, ts: Date.now() });
       // Giữ nhiều hơn: TikTok/infinite-scroll bắn 1 response/trang, auto-scroll gom chục trang.
       if (window.__rsCap.length > 40) window.__rsCap.shift();

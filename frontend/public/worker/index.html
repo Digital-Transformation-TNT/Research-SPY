@@ -56,6 +56,7 @@ const JOB_TIMEOUT_MS = {
   RS_TEMU_SUGGEST: 80000,   // gõ tối đa 12 cụm vào ô tìm kiếm Temu, ngân sách extension 75s
   RS_LENS_IMAGE: 88000,     // mở google.com, thả ảnh, chờ trang kết quả, cuộn cho ảnh kịp tải
   RS_TAOBAO_IMAGE: 88000,   // mở taobao.com, bấm nút máy ảnh, thả ảnh, chờ tab kết quả
+  RS_FB_ADLIB: 80000,       // mở tab Ad Library, chờ trang bắn query + cuộn lấy vài trang (deadline 45s + mở tab)
 };
 
 function rsCall(msg, timeoutMs = 40000) {
