@@ -462,7 +462,7 @@
       </div>
       <div class="status" id="costStatus"><span id="costStatusText"></span></div>
       <div class="cost-controls" id="costControls" hidden>
-        <label>Tỉ giá ¥→₫ <input id="costRate" type="number" min="1" step="10" inputmode="numeric" /></label>
+        <label>Tỉ giá <span id="costRateCur">¥→₫</span> <input id="costRate" type="number" min="0" step="0.1" inputmode="decimal" /></label>
         <label>Ngưỡng xanh <input id="costThresh" type="number" min="1" max="100" step="1" inputmode="numeric" />%</label>
         <span class="cc-note">Card có (giá 1688 × tỉ giá) / giá bán đối thủ dưới ngưỡng → tô xanh.</span>
       </div>
@@ -475,6 +475,6 @@
   <!-- ?v= để phá cache: research.js nhúng tĩnh, không có hash tên file như bundle của Next, nên
        khi sửa JS phải BUMP số này — nếu không trình duyệt chạy bản cũ trong cache (HTML mới +
        JS cũ = lỗi khó hiểu, vd sàn vẫn chọn sẵn dù mặc định đã đổi thành rỗng). -->
-  <script src="research.js?v=20260904r5"></script>
+  <script src="research.js?v=20260904r6"></script>
 </body>
 </html>

@@ -295,11 +295,16 @@ const BACKEND = '';
 const PF_LABEL = { etsy: 'Etsy', facebook: 'Facebook', tiktok: 'TikTok', douyin: 'Douyin 抖音' };
 const PRICE_SCALE = 100000;
 
-// Modal Giá vốn: tỉ giá ¥(CNY)→₫ và ngưỡng % (giá nhập/giá bán). Mặc định 3900 / 30, user chỉnh
-// ở ngay modal; lưu localStorage để giữ giữa các lần mở. Đọc bọc try/catch phòng chế độ chặn storage.
-const COST_RATE_DEFAULT = 3900;
+// Modal Giá vốn: tỉ giá ¥(CNY)→TIỀN CỦA SÀN + ngưỡng % (giá nhập/giá bán). Giá vốn 1688 là ¥ nên
+// phải quy về ĐÚNG tiền của sàn đối thủ mới chia ra % — mỗi tiền một tỉ giá riêng. Mặc định ~2026;
+// user chỉnh ở modal, lưu localStorage THEO TỪNG TIỀN (rs_cost_rate_<CUR>). Ngưỡng % dùng chung.
+const COST_RATE_DEFAULTS = { VND: 3900, PHP: 7.9, THB: 4.9, MYR: 0.62, IDR: 2200, SGD: 0.19, TWD: 4.4, USD: 0.14, GBP: 0.11, EUR: 0.13, BRL: 0.79, MXN: 2.6, JPY: 21 };
 const COST_THRESH_DEFAULT = 30;
-function costRate() { try { const v = parseFloat(localStorage.getItem('rs_cost_rate')); return v > 0 ? v : COST_RATE_DEFAULT; } catch (e) { return COST_RATE_DEFAULT; } }
+function costRate(cur) {
+  cur = cur || 'VND';
+  try { const v = parseFloat(localStorage.getItem('rs_cost_rate_' + cur)); if (v > 0) return v; } catch (e) {}
+  return COST_RATE_DEFAULTS[cur] || COST_RATE_DEFAULTS.VND;
+}
 function costThresh() { try { const v = parseFloat(localStorage.getItem('rs_cost_thresh')); return v > 0 ? v : COST_THRESH_DEFAULT; } catch (e) { return COST_THRESH_DEFAULT; } }
 
 // Cấu hình sàn: active = đã có adapter; regions = mảng nước (có region), [] = nội địa/toàn cầu
@@ -316,7 +321,8 @@ const PLATFORMS = {
   // riêng ("Content (FB Ads)") vì dữ liệu khác hẳn — quảng cáo đang chạy, không có giá,
   // không có lượt bán. Nhưng `fetchBackend` vốn đã chuẩn hoá nó về đúng hình dạng sản phẩm
   // và backend đã tự chấm điểm theo đời quảng cáo, nên nó chạy được ngay trong bảng chung.
-  facebook: { label: 'Facebook', active: true, backend: true, regions: ['VN', 'US', 'GB', 'DE', 'FR', 'BR'] },
+  // Facebook ẩn khỏi chọn sàn tìm sản phẩm (theo yêu cầu) — luồng video FB (VID_SOURCES) vẫn giữ.
+  // facebook: { label: 'Facebook', active: true, backend: true, regions: ['VN', 'US', 'GB', 'DE', 'FR', 'BR'] },
   amazon: { label: 'Amazon', active: true, regions: ['US', 'GB', 'DE', 'JP', 'FR', 'IT', 'ES', 'CA'] },
   etsy: { label: 'Etsy', active: true, backend: true, regions: [] },
   taobao: { label: 'Taobao', active: true, experimental: true, regions: [] },
@@ -511,13 +517,14 @@ function cost1688Cell(p) {
   const cny = cost1688[rawImg(p.image)];
   // Chưa tra (undefined) hoặc đã tra nhưng không ra ('none') → '—'. Chỉ số ¥ mới tính ₫/%.
   if (typeof cny !== 'number') return { html: '<span class="sub" title="Bấm 💰 Giá vốn ở cột Thao tác, hoặc nút Giá vốn hàng loạt">—</span>', cheap: false };
-  const rate = costRate(), thresh = costThresh();
-  const vnd = Math.round(cny * rate);
-  const canRatio = p.price != null && p.price > 0 && curOf(p) === 'VND';
-  const ratio = canRatio ? (vnd / p.price) * 100 : null;
+  const cur = curOf(p);                 // tiền của SÀN dòng này (VND/PHP/THB…)
+  const rate = costRate(cur), thresh = costThresh();
+  const conv = Math.round(cny * rate);  // giá vốn ¥ quy về tiền của sàn
+  const canRatio = p.price != null && p.price > 0; // giá bán đối thủ cùng tiền → chia ra %
+  const ratio = canRatio ? (conv / p.price) * 100 : null;
   const cheap = ratio != null && ratio < thresh;
   const ratioHtml = ratio != null ? `<div class="costratio${cheap ? ' cheap' : ''}">${ratio.toFixed(1)}% giá bán</div>` : '';
-  return { html: `<span class="price" title="¥${cny} × ${fmtInt(rate)} = giá vốn quy ₫">${fmtPrice(vnd, '₫')}</span>${ratioHtml}`, cheap };
+  return { html: `<span class="price" title="¥${cny} × ${fmtInt(rate)} = giá vốn quy ${cur}">${fmtPrice(conv, cur)}</span>${ratioHtml}`, cheap };
 }
 function cost1688Td(p) { const c = cost1688Cell(p); return `<td class="num costcell${c.cheap ? ' cheap' : ''}">${c.html}</td>`; }
 
@@ -1188,14 +1195,14 @@ async function openCostModal(p) {
   // Ghi giá vốn 1688 rẻ nhất về store theo ảnh dòng → cột "Giá vốn 1688" ở bảng chính hiện ngay.
   if (p.img != null && min.priceValue != null) { cost1688[p.img] = min.priceValue; render(); }
   $('costHeadline').innerHTML = `Giá vốn nhỏ nhất <b>${esc(min.price || ('¥' + min.priceValue))}</b>`;
-  const rate = costRate();
-  let sellNote;
-  if (costSell != null && costCur === 'VND') sellNote = ` · giá bán đối thủ ${fmtPrice(costSell, '₫')} · % = giá nhập ÷ giá bán`;
-  else if (costSell != null) sellNote = ` · giá bán ${fmtPrice(costSell, costCur)} (không phải ₫ nên không tính %)`;
-  else sellNote = ' · dòng này thiếu giá bán nên không tính %';
-  setCostStatus(`${offers.length} chào hàng 1688${res.cached ? ' (cache)' : ''}. Tỉ giá ¥→₫ = ${fmtInt(rate)}${sellNote}`, 'ok');
+  const rate = costRate(costCur); // tỉ giá ¥→tiền của sàn dòng này
+  const sellNote = costSell != null
+    ? ` · giá bán đối thủ ${fmtPrice(costSell, costCur)} · % = giá nhập ÷ giá bán`
+    : ' · dòng này thiếu giá bán nên không tính %';
+  setCostStatus(`${offers.length} chào hàng 1688${res.cached ? ' (cache)' : ''}. Tỉ giá ¥→${costCur} = ${fmtInt(rate)}${sellNote}`, 'ok');
 
-  // Nạp giá trị hiện tại vào ô chỉnh rồi hiện thanh controls + dựng card.
+  // Nhãn ô tỉ giá theo tiền của sàn (¥→PHP, ¥→₫…) + nạp giá trị hiện tại, hiện controls, dựng card.
+  $('costRateCur').textContent = '¥→' + (costCur === 'VND' ? '₫' : costCur);
   $('costRate').value = rate;
   $('costThresh').value = costThresh();
   $('costControls').hidden = false;
@@ -1208,14 +1215,14 @@ function renderCostCards() {
   // Ưu tiên số đang gõ trong ô (nguồn sự thật khi modal mở), rớt về localStorage/mặc định.
   const rInput = parseFloat($('costRate').value);
   const tInput = parseFloat($('costThresh').value);
-  const rate = rInput > 0 ? rInput : costRate();
+  const rate = rInput > 0 ? rInput : costRate(costCur);
   const thresh = tInput > 0 ? tInput : costThresh();
-  const canRatio = costSell != null && costSell > 0 && costCur === 'VND';
+  const canRatio = costSell != null && costSell > 0; // giá bán đối thủ cùng tiền costCur → chia ra %
   $('costGrid').innerHTML = costOffers.map((o, i) => {
-    const vnd = o.priceValue != null ? Math.round(o.priceValue * rate) : null;
-    const ratio = (canRatio && vnd != null) ? (vnd / costSell) * 100 : null;
+    const conv = o.priceValue != null ? Math.round(o.priceValue * rate) : null;
+    const ratio = (canRatio && conv != null) ? (conv / costSell) * 100 : null;
     const cheap = ratio != null && ratio < thresh;
-    const vndHtml = vnd != null ? `<div class="cvnd">≈ ${fmtPrice(vnd, '₫')}</div>` : '';
+    const vndHtml = conv != null ? `<div class="cvnd">≈ ${fmtPrice(conv, costCur)}</div>` : '';
     const ratioHtml = ratio != null ? `<div class="cratio">${ratio.toFixed(1)}% giá bán</div>` : '';
     return (
       `<a class="ccard${cheap ? ' cheap' : ''}" href="${esc(o.link)}" target="_blank" rel="noreferrer">` +
@@ -1247,28 +1254,33 @@ async function runCost1688Batch() {
   costBatchRunning = true;
   const btn = $('costAll');
   const total = targets.length; let done = 0, ok = 0, idx = 0;
-  const CONC = 3;
+  const CONC = 2;         // nhẹ tay: bắn 1688 dồn dập dễ dính risk-control (FAIL_SYS_ILLEGAL_ACCESS)
+  let blocked = false;    // 1688 chặn IP → dừng loạt, giữ dòng chưa tra để thử lại sau
   // Nhãn nút thành spinner + tiến độ NGAY khi bấm (lần fetch đầu vài giây, đừng để user tưởng lỗi).
   function setBtnRunning() { if (btn) { btn.disabled = true; btn.innerHTML = `<span class="rs-spin"></span>Đang tính… ${done}/${total}`; } }
   setBtnRunning();
   setStatus(`Đang tra giá vốn 1688 cho ${total} sản phẩm… (lần đầu mỗi món hơi chậm)`);
   async function worker() {
-    while (idx < targets.length) {
+    while (idx < targets.length && !blocked) {
       const p = targets[idx++];
+      const key = rawImg(p.image);
       try {
-        const res = await fetch1688Offers(rawImg(p.image), p.name);
-        if (res.min && res.min.priceValue != null) { cost1688[rawImg(p.image)] = res.min.priceValue; ok++; }
-        else cost1688[rawImg(p.image)] = 'none'; // đã thử, không ra → khỏi tra lại ở lần loạt sau
-      } catch (e) { cost1688[rawImg(p.image)] = 'none'; }
+        const res = await fetch1688Offers(key, p.name);
+        if (res.min && res.min.priceValue != null) { cost1688[key] = res.min.priceValue; ok++; }
+        else if (res.error && /ILLEGAL|非法|FAIL_SYS/i.test(res.error)) { blocked = true; break; } // dừng ngay khi bị chặn
+        else cost1688[key] = 'none'; // đã thử, không ra → khỏi tra lại ở lần loạt sau
+      } catch (e) { cost1688[key] = 'none'; }
       done++;
       setBtnRunning();
       setStatus(`Đang tính giá vốn 1688: ${done}/${total}… (${ok} ra kết quả)`);
       render(); // điền cột dần
+      await new Promise((r) => setTimeout(r, 500)); // giãn nhịp cho 1688 đỡ gắn cờ
     }
   }
   try {
     await Promise.all(Array.from({ length: Math.min(CONC, targets.length) }, worker));
-    setStatus(`Xong giá vốn 1688: ${ok}/${total} sản phẩm ra kết quả. Bấm 💰 một dòng để xem nguồn 1688 chi tiết.`, 'ok');
+    if (blocked) setStatus(`1688 tạm chặn (risk-control 非法请求) sau ${done}/${total}. Đợi vài phút rồi bấm lại, hoặc tra lẻ từng dòng. Đã lấy ${ok} món.`, 'err');
+    else setStatus(`Xong giá vốn 1688: ${ok}/${total} sản phẩm ra kết quả. Bấm 💰 một dòng để xem nguồn 1688 chi tiết.`, 'ok');
   } finally {
     costBatchRunning = false;
     if (btn) { btn.disabled = false; btn.textContent = '💰 Giá vốn hàng loạt'; }
@@ -1286,7 +1298,7 @@ function onCostCtrlChange() {
   const r = parseFloat($('costRate').value);
   const t = parseFloat($('costThresh').value);
   try {
-    if (r > 0) localStorage.setItem('rs_cost_rate', String(r));
+    if (r > 0) localStorage.setItem('rs_cost_rate_' + costCur, String(r)); // tỉ giá riêng theo tiền sàn
     if (t > 0) localStorage.setItem('rs_cost_thresh', String(t));
   } catch (e) { /* storage bị chặn — vẫn tính lại theo giá trị đang gõ */ }
   renderCostCards();
