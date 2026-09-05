@@ -247,6 +247,28 @@ async function trendsCollect(tabId, needle, extra, budgetMs, stopOnFirst) {
   return out;
 }
 
+/**
+ * Frame này có vẻ chở bảng truy vấn liên quan không?
+ *
+ * Phép thử nằm ở ĐÂY chứ không để backend quyết, vì nó quyết định một việc chỉ extension làm được:
+ * có cần quay về trang cũ ngay trong cùng job hay không. Backend chỉ nhận được kết quả sau khi mọi
+ * cánh cửa đã đóng.
+ *
+ * HAI điều kiện, thiếu cái nào cũng nhận nhầm. Đo 2026-09-05 trên "jeans": trang mới bắn `qrLOJd`
+ * 1,7 KB CÓ chứa từ gốc — đó là RPC phân giải truy vấn, không phải bảng. Còn `DqDTgb` thì 162 KB
+ * nhưng KHÔNG hề nhắc từ gốc — RPC khởi tạo trang. Nên vừa phải nhắc từ gốc, vừa phải đủ lớn.
+ *
+ * Dò ở BA dạng chuỗi: payload nằm trong chuỗi JSON lồng trong phong bì JSON, nên tiếng Việt bị
+ * escape rồi escape thêm lần nữa. Tìm thẳng "điện thoại" trong text thô sẽ luôn trượt.
+ */
+function trendsLooksLikeTable(text, seed) {
+  if (!text || text.length < 5000) return false;
+  const raw = String(seed || '');
+  if (!raw) return text.length > 20000;
+  const esc = raw.replace(/[^\x00-\x7F]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+  return [raw, esc, esc.split('\\').join('\\\\')].some((form) => text.indexOf(form) !== -1);
+}
+
 async function trendsRelated(payload) {
   await ensurePageHook();
   const url = String(payload.url || '');
@@ -255,24 +277,39 @@ async function trendsRelated(payload) {
     return { responses: [], frames: [], error: 'url không phải Google Trends' };
   }
 
-  const tab = await chrome.tabs.create({ url, active: false });
+  // CỬA SỔ RIÊNG, KHÔNG PHẢI TAB NỀN — và đây là khác biệt quyết định, không phải chuyện gọn gàng.
+  //
+  // Đo 2026-09-05 bằng tab nền: trang mới chỉ bắn `DqDTgb`, `Tnt4U`, `qrLOJd` — toàn RPC khởi tạo,
+  // không có cái nào chở bảng, dù đã cuộn suốt 28 giây. Chrome KHÔNG vẽ tab nền, mà giao diện mới
+  // dựng thẻ theo tầm nhìn: không vẽ thì không thẻ nào lọt vào tầm nhìn, nên trang chẳng có lý do
+  // gì để đi xin bảng. Cuộn một trang cao 0 pixel là cuộn vào hư không.
+  //
+  // `focused: false` nên nó KHÔNG cướp chuột và bàn phím của người đang dùng máy — cửa sổ vẫn hiện
+  // và vẫn được vẽ, chỉ là không nổi lên trên. Đủ để trang chịu dựng thẻ, và không làm phiền.
+  //
+  // Ad Library dùng tab nền được vì FB trả dữ liệu ngay từ request đầu, không đợi cuộn.
+  const win = await chrome.windows.create({ url, focused: false, width: 1280, height: 900 });
+  const tab = win.tabs && win.tabs[0];
+  if (!tab) return { responses: [], frames: [], error: 'không mở được cửa sổ' };
   try {
     // TRANG MỚI trước. Nó là trang DUY NHẤT có cột "Thay đổi" — nhưng chỉ hiện với một số tài
     // khoản, nên không được coi việc nó im lặng là hỏng.
     await waitForComplete(tab.id, 25000);
-    const frames = await trendsCollect(tab.id, TRENDS_FRAMES, '', 28000, false);
-    if (frames.length) return { responses: [], frames };
+    const frames = await trendsCollect(tab.id, TRENDS_FRAMES, '', 30000, false);
+    if (frames.some((t) => trendsLooksLikeTable(t, payload.seed))) return { responses: [], frames };
 
     // Không có gì ⇒ tài khoản này chưa được phục vụ bảng ở trang mới. Về TRANG CŨ, vẫn trong
     // cùng một job và vẫn bằng Chrome thật: 25 dòng không kèm cột Thay đổi vẫn hơn hẳn việc
     // rơi về Playwright, vốn còn ít dòng hơn nữa.
-    if (!legacyUrl) return { responses: [], frames: [] };
+    if (!legacyUrl) return { responses: [], frames };
     await chrome.tabs.update(tab.id, { url: legacyUrl });
     await waitForComplete(tab.id, 25000);
     const responses = await trendsCollect(tab.id, TRENDS_WIDGET, '"keywordType":"QUERY"', 25000, true);
-    return { responses, frames: [] };
+    // Trả kèm cả frame của trang mới: chúng vô dụng để dựng bảng, nhưng là mẫu vật chẩn đoán —
+    // backend cất lại khi không đọc được gì, và đó là thứ nói cho ta biết trang mới đã bắn gì.
+    return { responses, frames };
   } finally {
-    try { await chrome.tabs.remove(tab.id); } catch (e) {}
+    try { await chrome.windows.remove(win.id); } catch (e) {}
   }
 }
 

@@ -908,6 +908,10 @@ async def _related_via_worker(seed: str, ctx: SearchContext) -> RelatedOutcome |
                     [seed], ctx.country, ctx.time_range, ctx.gprop, new_page=True
                 ),
                 "legacyUrl": explore_url([seed], ctx.country, ctx.time_range, ctx.gprop),
+                # Thợ cần từ gốc để tự biết frame nào là bảng thật — xem `trendsLooksLikeTable`.
+                # Nó là bên duy nhất quyết định được có phải quay về trang cũ hay không, và nó
+                # phải quyết TRƯỚC khi đóng cửa sổ; backend thì chỉ thấy kết quả sau đó.
+                "seed": seed,
             },
             timeout_s=BATCH_TIMEOUT_S,
         )
