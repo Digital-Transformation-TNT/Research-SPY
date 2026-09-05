@@ -228,17 +228,47 @@ async function trendsCollect(tabId, needle, extra, budgetMs, stopOnFirst) {
     // trông như "Google không trả bảng" trong khi thật ra ta bỏ đi trước khi nó kịp trả.
     // Nên trang mới phải gom HẾT ngân sách rồi để backend chọn.
     if (stopOnFirst && out.length) break;
-    // Cả hai bảng nằm CUỐI trang và chỉ được xin khi cuộn tới. Tab nền không paint nên cuộn là
-    // best-effort — nhưng Trends dùng cuộn thường chứ không IntersectionObserver như FB.
+    // Cả hai bảng nằm CUỐI trang và chỉ được xin khi cuộn tới.
     //
-    // Cuộn TỪNG NẤC rồi mới xuống đáy: trang mới dựng các thẻ theo kiểu cuộn tới đâu xin tới đó,
-    // nên nhảy thẳng xuống đáy có thể bỏ qua đúng thẻ nằm giữa.
+    // `window.scrollTo` MỘT MÌNH LÀ KHÔNG ĐỦ, và đây là chỗ đã trượt một lượt. Đo 2026-09-05 sau
+    // khi đã mở cửa sổ được vẽ: trang bắn `g4kJzf` (biểu đồ, cũng lazy) hai lần — tức cơ chế
+    // "hiện ra thì mới xin" đã chạy — nhưng bảng thì không bao giờ tới. Trang mới cuộn trong một
+    // KHUNG CON, nên cuộn cửa sổ không nhúc nhích được gì. Lúc dò bằng Playwright không lộ ra
+    // khác biệt này vì `mouse.wheel` cuộn đúng thứ nằm dưới con trỏ, bất kể nó là khung nào.
+    //
+    // Nên đánh cả ba đường một lượt: cuộn cửa sổ, cuộn MỌI phần tử cuộn được, và bắn một sự kiện
+    // wheel thật vào giữa màn hình. Rẻ, và không phải đoán trúng khung nào là khung đúng.
+    //
+    // Cuộn TỪNG NẤC rồi mới xuống đáy: trang dựng thẻ theo kiểu cuộn tới đâu xin tới đó, nên nhảy
+    // thẳng xuống đáy có thể bỏ qua đúng thẻ nằm giữa.
     try {
       await chrome.scripting.executeScript({
         target: { tabId }, world: 'MAIN',
         func: (step) => {
-          const h = document.body ? document.body.scrollHeight : 20000;
-          window.scrollTo(0, Math.min(h, (step % 6) * Math.round(h / 5)));
+          const frac = (step % 6) / 5;
+          try {
+            const h = document.body ? document.body.scrollHeight : 20000;
+            window.scrollTo(0, Math.round(h * frac));
+          } catch (e) {}
+          // Mọi khung có thể cuộn — không lọc theo tên thẻ hay class: giao diện Google đổi tên
+          // liên tục, còn "cao hơn phần nhìn thấy" thì luôn đúng.
+          try {
+            document.querySelectorAll('*').forEach((el) => {
+              if (el.scrollHeight > el.clientHeight + 200) {
+                el.scrollTop = Math.round((el.scrollHeight - el.clientHeight) * frac);
+              }
+            });
+          } catch (e) {}
+          try {
+            const x = Math.round(window.innerWidth / 2);
+            const y = Math.round(window.innerHeight / 2);
+            const target = document.elementFromPoint(x, y) || document.body;
+            if (target) {
+              target.dispatchEvent(
+                new WheelEvent('wheel', { deltaY: 900, bubbles: true, cancelable: true, clientX: x, clientY: y })
+              );
+            }
+          } catch (e) {}
         },
         args: [Math.round((Date.now() - (deadline - budgetMs)) / 1200)],
       });
