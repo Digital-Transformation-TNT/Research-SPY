@@ -196,11 +196,11 @@ const TRENDS_FRAMES = '/TrendsUi/data/batchexecute';
  * quan", trang mới thì không cần). Trả về mảng text thô — backend là nơi hiểu chúng, còn ở đây
  * cố ý KHÔNG parse: mọi hiểu biết về hình dạng payload nằm đúng một chỗ.
  */
-async function trendsCollect(tabId, needle, extra, budgetMs) {
+async function trendsCollect(tabId, needle, extra, budgetMs, stopOnFirst) {
   const out = [];
   const seen = new Set();
   const deadline = Date.now() + budgetMs;
-  while (Date.now() < deadline && !out.length) {
+  while (Date.now() < deadline) {
     await sleep(1200);
     let cap = [];
     try {
@@ -219,13 +219,28 @@ async function trendsCollect(tabId, needle, extra, budgetMs) {
       seen.add(key);
       out.push(c.text);
     }
-    if (out.length) break;
+    // DỪNG SỚM CHỈ KHI needle đã chỉ đúng một response.
+    //
+    // Trang cũ: needle là `relatedsearches`, bắt được cái nào là đúng cái đó ⇒ dừng luôn.
+    // Trang MỚI: mọi RPC đều đi qua cùng một endpoint `batchexecute`, nên response ĐẦU TIÊN là
+    // `DqDTgb` — RPC khởi tạo trang, bắn ngay lúc tải, không chứa bảng nào. Đo 2026-09-05: dừng
+    // sớm ở đây cho ra đúng một frame 162 KB không hề có chuỗi từ gốc trong đó, và cả đường đi
+    // trông như "Google không trả bảng" trong khi thật ra ta bỏ đi trước khi nó kịp trả.
+    // Nên trang mới phải gom HẾT ngân sách rồi để backend chọn.
+    if (stopOnFirst && out.length) break;
     // Cả hai bảng nằm CUỐI trang và chỉ được xin khi cuộn tới. Tab nền không paint nên cuộn là
     // best-effort — nhưng Trends dùng cuộn thường chứ không IntersectionObserver như FB.
+    //
+    // Cuộn TỪNG NẤC rồi mới xuống đáy: trang mới dựng các thẻ theo kiểu cuộn tới đâu xin tới đó,
+    // nên nhảy thẳng xuống đáy có thể bỏ qua đúng thẻ nằm giữa.
     try {
       await chrome.scripting.executeScript({
         target: { tabId }, world: 'MAIN',
-        func: () => window.scrollTo(0, document.body ? document.body.scrollHeight : 20000),
+        func: (step) => {
+          const h = document.body ? document.body.scrollHeight : 20000;
+          window.scrollTo(0, Math.min(h, (step % 6) * Math.round(h / 5)));
+        },
+        args: [Math.round((Date.now() - (deadline - budgetMs)) / 1200)],
       });
     } catch (e) {}
   }
@@ -245,7 +260,7 @@ async function trendsRelated(payload) {
     // TRANG MỚI trước. Nó là trang DUY NHẤT có cột "Thay đổi" — nhưng chỉ hiện với một số tài
     // khoản, nên không được coi việc nó im lặng là hỏng.
     await waitForComplete(tab.id, 25000);
-    const frames = await trendsCollect(tab.id, TRENDS_FRAMES, '', 28000);
+    const frames = await trendsCollect(tab.id, TRENDS_FRAMES, '', 28000, false);
     if (frames.length) return { responses: [], frames };
 
     // Không có gì ⇒ tài khoản này chưa được phục vụ bảng ở trang mới. Về TRANG CŨ, vẫn trong
@@ -254,7 +269,7 @@ async function trendsRelated(payload) {
     if (!legacyUrl) return { responses: [], frames: [] };
     await chrome.tabs.update(tab.id, { url: legacyUrl });
     await waitForComplete(tab.id, 25000);
-    const responses = await trendsCollect(tab.id, TRENDS_WIDGET, '"keywordType":"QUERY"', 25000);
+    const responses = await trendsCollect(tab.id, TRENDS_WIDGET, '"keywordType":"QUERY"', 25000, true);
     return { responses, frames: [] };
   } finally {
     try { await chrome.tabs.remove(tab.id); } catch (e) {}

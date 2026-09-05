@@ -765,6 +765,47 @@ def _harvest_tables(node: Any, out: list[list[tuple[str, float, float | None]]])
             _harvest_tables(child, out)
 
 
+def _remember_frames_sample(frames: list[str], seed: str) -> None:
+    """
+    Cất lại những frame KHÔNG đọc được, kèm mã RPC và cỡ của từng cái.
+
+    Cất `max(frames, key=len)` như bản trước là sai bài: frame to nhất của trang mới là `DqDTgb`
+    — RPC khởi tạo trang, 162 KB, không chứa một dòng bảng nào — trong khi frame chở bảng thì
+    nhỏ hơn nhiều. Chọn theo kích thước là chọn đúng cái vô dụng.
+
+    Nên ưu tiên frame CÓ NHẮC tới từ gốc. Phải thử cả dạng đã escape: phản hồi của Google để
+    tiếng Việt dưới dạng escape sáu ký tự, nên tìm thẳng "điện thoại" trong text thô sẽ luôn trượt.
+    """
+    # BA dạng, không phải hai. Payload thật nằm trong một chuỗi JSON *lồng trong* phong bì JSON,
+    # nên mỗi lớp lại nhân đôi dấu chéo ngược: "điện" → `điện` → `\\u0111i\\u1ec7n`.
+    # Thiếu dạng thứ ba thì phép dò luôn trượt đúng cái frame cần tìm — đã trượt thật khi thử.
+    escaped = json.dumps(seed, ensure_ascii=True)[1:-1]
+    forms = [f for f in (seed, escaped, escaped.replace("\\", "\\\\")) if f]
+    relevant = [t for t in frames if any(form in t for form in forms)]
+    summary = {
+        "seed": seed,
+        "frames": [
+            {
+                "rpcs": sorted(set(re.findall(r'"wrb\.fr","([A-Za-z0-9_]+)"', t))),
+                "bytes": len(t),
+                "nhac_tu_goc": t in relevant,
+            }
+            for t in frames
+        ],
+    }
+    body = json.dumps(summary, ensure_ascii=False, indent=1)
+    # Frame có nhắc từ gốc thì cất NGUYÊN VĂN — nó là thứ cần đọc để sửa bộ parse. Không có cái
+    # nào thì chỉ cất bản tóm tắt, vì lúc đó câu hỏi là "trang có bắn bảng không", không phải
+    # "bảng có hình gì".
+    if relevant:
+        body += "\n\n" + min(relevant, key=len)[:150_000]
+    try:
+        STORE_DIR.mkdir(parents=True, exist_ok=True)
+        _WIDGET_SAMPLE.write_text(body, encoding="utf-8")
+    except OSError:
+        pass
+
+
 def parse_related_frames(raw_text: str, seed: str) -> list[RelatedQuery]:
     """
     Đọc bảng truy vấn liên quan từ MỘT response `batchexecute` BẤT KỲ, không cần biết mã RPC.
@@ -924,7 +965,7 @@ async def _related_via_worker(seed: str, ctx: SearchContext) -> RelatedOutcome |
     # đây là mẫu vật duy nhất lấy được — máy-thợ là một máy khác, không mở DevTools hộ được.
     frames = [t for t in (result.get("frames") or []) if isinstance(t, str)]
     if frames:
-        _remember_widget_sample(max(frames, key=len))
+        _remember_frames_sample(frames, seed)
 
     return RelatedOutcome(
         message=(
