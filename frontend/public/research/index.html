@@ -251,6 +251,8 @@
     @keyframes rs-spin { to { transform: rotate(360deg); } }
     .rs-spin { display: inline-block; width: 11px; height: 11px; margin-right: 6px; vertical-align: -1px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: rs-spin .7s linear infinite; }
     button#costAll:disabled { opacity: .8; cursor: progress; }
+    .autotrans { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--muted); white-space: nowrap; cursor: pointer; }
+    .autotrans input { margin: 0; }
 
     /* Modal video quảng cáo khớp ảnh */
     .vidmodal { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.55); display: none; align-items: flex-start; justify-content: center; padding: 32px 20px; overflow-y: auto; }
@@ -376,6 +378,9 @@
             <option value="60" selected>60 SP</option>
             <option value="120">120 SP</option>
           </select>
+          <label class="autotrans" title="Đổi sang sàn nước khác thì tự dịch từ khoá sang ngôn ngữ nước đó (giữ nguyên tên hãng/model). Ví dụ 'tai nghe' ở sàn Philippines → tiếng Phi/Anh.">
+            <input type="checkbox" id="autoTranslate" checked /> 🌐 Tự dịch theo sàn
+          </label>
           <button id="go" class="primary">Research</button>
         </div>
       </div>
@@ -475,6 +480,6 @@
   <!-- ?v= để phá cache: research.js nhúng tĩnh, không có hash tên file như bundle của Next, nên
        khi sửa JS phải BUMP số này — nếu không trình duyệt chạy bản cũ trong cache (HTML mới +
        JS cũ = lỗi khó hiểu, vd sàn vẫn chọn sẵn dù mặc định đã đổi thành rỗng). -->
-  <script src="research.js?v=20260904r6"></script>
+  <script src="research.js?v=20260904r7"></script>
 </body>
 </html>

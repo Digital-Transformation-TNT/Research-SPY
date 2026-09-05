@@ -938,6 +938,18 @@ function fetchFor(platform, keyword, region, count) {
   return fetchKeyword(keyword, region, count); // shopee
 }
 
+// Dịch một keyword sang ngôn ngữ của từng region qua backend (Gemini). FAIL-SAFE: lỗi/mạng →
+// trả {} để research() dùng nguyên keyword gốc (không bao giờ chặn lượt tìm vì dịch hỏng).
+async function translateForRegions(keyword, regions) {
+  try {
+    const url = `${BACKEND}/api/keywords/translate?keyword=${encodeURIComponent(keyword)}&regions=${encodeURIComponent(regions.join(','))}`;
+    const r = await fetch(url);
+    if (!r.ok) return {};
+    const d = await r.json().catch(() => ({}));
+    return d.terms || {};
+  } catch (e) { return {}; }
+}
+
 async function research() {
   const keywords = $('kw').value.split(',').map((s) => s.trim()).filter(Boolean);
   const count = Number($('count').value);
@@ -945,7 +957,8 @@ async function research() {
   if (!activePf.length) { setStatus('Chọn ít nhất 1 sàn đang hỗ trợ.', 'err'); return; }
   if (!keywords.length) { setStatus('Nhập ít nhất 1 từ khoá.', 'err'); return; }
   // Mỗi sàn chỉ chạy region nó phục vụ; Shopee thì region đó phải đã đăng nhập.
-  const jobs = [];
+  // Gom (sàn × region) HỢP LỆ trước — để biết cần dịch keyword sang những region (ngôn ngữ) nào.
+  const combos = [];
   const skipLI = [];
   for (const pf of activePf) {
     const cfg = PLATFORMS[pf];
@@ -954,13 +967,35 @@ async function research() {
     const pfRegions = hasReg ? cfg.regions.filter((c) => selectedRegions.has(`${pf}:${c}`)) : ['_'];
     for (const region of pfRegions) {
       if (LOGIN[pf] && loginStatus[`${pf}:${region}`] === false) { skipLI.push(`${pf}:${region}`); continue; }
-      for (const kw of keywords) jobs.push({ pf, region, kw });
+      combos.push({ pf, region });
     }
   }
-  if (!jobs.length) { setStatus('Không có (sàn × region) hợp lệ. Sàn có region thì phải chọn region của nó.', 'err'); return; }
+  if (!combos.length) { setStatus('Không có (sàn × region) hợp lệ. Sàn có region thì phải chọn region của nó.', 'err'); return; }
 
+  // TỰ DỊCH keyword theo ngôn ngữ của từng region (giữ tên hãng/model). SEARCH bằng bản dịch,
+  // nhưng NHÃN (nhóm/lọc) giữ keyword GỐC. Region '_' (sàn không nước, vd 1688/Etsy) không dịch.
   $('go').disabled = true;
-  setStatus(`Đang chạy ${jobs.length} truy vấn (sàn × region × từ khoá)…`);
+  const wantTranslate = $('autoTranslate') && $('autoTranslate').checked;
+  const regionSet = [...new Set(combos.map((c) => c.region).filter((r) => r && r !== '_'))];
+  const trans = {}; // kw gốc -> { region: từ khoá đã dịch }
+  let translatedAny = false;
+  if (wantTranslate && regionSet.length) {
+    setStatus('Đang dịch từ khoá theo ngôn ngữ sàn…');
+    for (const kw of keywords) {
+      trans[kw] = await translateForRegions(kw, regionSet);
+      if (Object.values(trans[kw]).some((t) => t && t !== kw)) translatedAny = true;
+    }
+  }
+
+  const jobs = [];
+  for (const { pf, region } of combos) {
+    for (const kw of keywords) {
+      const searchKw = (region !== '_' && trans[kw] && trans[kw][region]) ? trans[kw][region] : kw;
+      jobs.push({ pf, region, kw: searchKw, kwLabel: kw });
+    }
+  }
+
+  setStatus(`Đang chạy ${jobs.length} truy vấn (sàn × region × từ khoá)${translatedAny ? ' · đã dịch theo sàn' : ''}…`);
 
   const all = [];
   let backendDown = false;
@@ -980,7 +1015,7 @@ async function research() {
     if (r.backendDown) backendDown = true;
     if (r.notice) notices.push(r.notice);
     if (r.blocked && LOGIN[j.pf]) loginStatus[`${j.pf}:${j.region}`] = false;
-    for (const p of r.products) { p.keyword = j.kw; if (!p.score) p.score = score(p); }
+    for (const p of r.products) { p.keyword = j.kwLabel || j.kw; if (!p.score) p.score = score(p); }
     all.push(...r.products);
   }
   $('go').disabled = false;

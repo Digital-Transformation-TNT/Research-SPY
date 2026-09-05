@@ -22,6 +22,7 @@ from lib.keywords.search import (
     parse_keyword_search_params,
     run_keyword_search,
 )
+from lib.keywords.translate import translate_keyword
 from lib.keywords.types import SearchContext
 
 from ._query import multi_query
@@ -153,6 +154,45 @@ async def bridge(request: Request) -> JSONResponse:
     if result.chosen is not None:
         cache_set(key, result, BRIDGE_TTL_MS)
     return JSONResponse({**dump(result), "cached": False})
+
+
+#: Bản dịch keyword theo region đổi rất chậm (cùng model, cùng thị trường → cùng câu). Cache 24h
+#: để lượt research lặp lại khỏi gọi Gemini lại. Chỉ cache khi ĐÚNG là bản Gemini (xem endpoint).
+_TRANSLATE_TTL_MS = 24 * 60 * 60 * 1000
+
+
+@router.get("/translate")
+async def translate(request: Request) -> JSONResponse:
+    """
+    Dịch một TỪ KHOÁ tìm kiếm sang ngôn ngữ của từng sàn/region — cho luồng tìm sản phẩm đa nước.
+
+      keyword   cụm gốc người dùng gõ (bắt buộc)
+      regions   danh sách mã nước, ngăn bởi dấu phẩy (bắt buộc) — vd VN,PH,TH
+
+    Trả `{ terms: { <REGION>: <từ khoá đã dịch> }, cached }`. KHÔNG bao giờ trả lỗi vì "không dịch
+    được": thiếu key/Gemini lỗi → mỗi region nhận lại nguyên keyword (search vẫn chạy). Xem
+    `lib/keywords/translate.py`.
+    """
+    query = multi_query(request)
+
+    def first(name: str, fallback: str = "") -> str:
+        values = query.get(name)
+        return values[0] if values else fallback
+
+    keyword = first("keyword").strip()
+    regions = [r.strip() for r in first("regions").split(",") if r.strip()]
+    if not keyword or not regions:
+        return JSONResponse({"error": "keyword và regions là bắt buộc"}, status_code=400)
+
+    key = f"kwtrans:{','.join(sorted({r.upper() for r in regions}))}:{keyword.lower()}"
+    hit = cache_get(key)
+    if hit is not None:
+        return JSONResponse({"terms": hit, "cached": True})
+
+    terms, from_gemini = await translate_keyword(keyword, regions)
+    if from_gemini:  # KHÔNG cache bản fallback (nguyên keyword) — cắm key vào sau vẫn dịch được ngay
+        cache_set(key, terms, _TRANSLATE_TTL_MS)
+    return JSONResponse({"terms": terms, "cached": False})
 
 
 @router.get("/gloss")
