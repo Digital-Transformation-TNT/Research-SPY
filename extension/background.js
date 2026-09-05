@@ -324,7 +324,7 @@ async function trendsRelated(payload) {
   try {
     // TRANG MỚI trước. Nó là trang DUY NHẤT có cột "Thay đổi" — nhưng chỉ hiện với một số tài
     // khoản, nên không được coi việc nó im lặng là hỏng.
-    await waitForComplete(tab.id, 25000);
+    await waitForComplete(tab.id, 20000);
     const frames = await trendsCollect(tab.id, TRENDS_FRAMES, '', 30000, false);
     if (frames.some((t) => trendsLooksLikeTable(t, payload.seed))) return { responses: [], frames };
 
@@ -333,8 +333,8 @@ async function trendsRelated(payload) {
     // rơi về Playwright, vốn còn ít dòng hơn nữa.
     if (!legacyUrl) return { responses: [], frames };
     await chrome.tabs.update(tab.id, { url: legacyUrl });
-    await waitForComplete(tab.id, 25000);
-    const responses = await trendsCollect(tab.id, TRENDS_WIDGET, '"keywordType":"QUERY"', 25000, true);
+    await waitForComplete(tab.id, 20000);
+    const responses = await trendsCollect(tab.id, TRENDS_WIDGET, '"keywordType":"QUERY"', 20000, true);
     // Trả kèm cả frame của trang mới: chúng vô dụng để dựng bảng, nhưng là mẫu vật chẩn đoán —
     // backend cất lại khi không đọc được gì, và đó là thứ nói cho ta biết trang mới đã bắn gì.
     return { responses, frames };

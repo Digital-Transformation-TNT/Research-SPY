@@ -64,7 +64,7 @@ from lib.core.jscompat import average, jround, strip_diacritics
 from lib.core.rate_limit import schedule
 from lib.core.store import STORE_DIR
 from lib.core.worker_relay import (
-    BATCH_TIMEOUT_S,
+    TRENDS_TIMEOUT_S,
     WorkerOffline,
     WorkerTimeout,
     run_on_worker,
@@ -913,7 +913,7 @@ async def _related_via_worker(seed: str, ctx: SearchContext) -> RelatedOutcome |
                 # phải quyết TRƯỚC khi đóng cửa sổ; backend thì chỉ thấy kết quả sau đó.
                 "seed": seed,
             },
-            timeout_s=BATCH_TIMEOUT_S,
+            timeout_s=TRENDS_TIMEOUT_S,
         )
     except WorkerOffline:
         return None
@@ -921,7 +921,7 @@ async def _related_via_worker(seed: str, ctx: SearchContext) -> RelatedOutcome |
         # KHÔNG rơi về Playwright: thợ chậm không có nghĩa là Playwright sẽ nhanh, và lượt rơi
         # ấy tốn thêm một phút để nhận về đúng cái bảng nghèo mà ta vừa bỏ công tránh.
         return RelatedOutcome(
-            message=f'"{seed}" — máy-thợ không kịp trả bảng Google Trends (quá 90s). Thử lại sau.'
+            message=f'"{seed}" — máy-thợ không kịp trả bảng Google Trends (quá 120s). Thử lại sau.'
         )
     except Exception:
         # Relay hỏng là chuyện của relay — để Playwright thử, đừng làm chết cả nguồn.

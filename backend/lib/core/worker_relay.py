@@ -61,6 +61,16 @@ BATCH_TIMEOUT_S = 90.0
 #: khi máy-thợ vẫn đang chạy ngon lành.
 IMAGE_TIMEOUT_S = 100.0
 
+#: Hạn riêng cho bảng truy vấn liên quan của Google Trends.
+#:
+#: Job này có thể phải đi HAI trang trong một lượt: trang Khám phá mới trước (30s cuộn để trang
+#: chịu xin bảng), và nếu tài khoản của máy-thợ không được phục vụ bảng ở đó thì quay về trang cũ
+#: (thêm một lần tải + 20s). Cộng hai lần tải trang là chạm 90s của `BATCH_TIMEOUT_S` — đo
+#: 2026-09-05, lượt đầu tiên có đủ hai chặng đã hết giờ ở đúng con số đó.
+#:
+#: Không rút ngắn phần cuộn để vừa hạn cũ: chính khoảng cuộn ấy là thứ khiến trang chịu xin bảng.
+TRENDS_TIMEOUT_S = 120.0
+
 #: Chỉ nhận các job crawl qua extension. Là ranh giới an ninh, không phải quy ước đặt tên:
 #: thiếu nó, ai gọi được relay cũng sai khiến được trình duyệt-thợ gọi mạng tới nơi tuỳ ý.
 ALLOWED_TYPES = {
