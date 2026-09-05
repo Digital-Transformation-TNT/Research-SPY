@@ -22,7 +22,15 @@ from dataclasses import dataclass
 from lib.core.jscompat import clamp, jround, to_fixed, unique
 
 from .normalize import Vocabulary, best_display, vocabulary_for
-from .providers import NATIVE_SCORE_NOTE, PRIMARY_SOURCE, SOURCE_LABEL
+from .providers import KEYWORD_PROVIDERS, NATIVE_SCORE_NOTE, PRIMARY_SOURCE, SOURCE_LABEL
+
+#: Những nguồn được hỏi bằng ngôn ngữ CỦA RIÊNG NÓ, không phải ngôn ngữ của ô Quốc gia.
+#:
+#: Suy từ chính sổ đăng ký thay vì chép tay một danh sách: thêm một nguồn kiểu Temu về sau mà
+#: quên cập nhật ở đây thì kết quả của nó bị loại sạch mà không có lỗi nào phát ra — xem `keep`.
+TRANSLATED_SOURCES = frozenset(
+    pid for pid, provider in KEYWORD_PROVIDERS.items() if provider.query_market
+)
 from .types import KeywordCandidate, KeywordScore, SourceHit
 
 
@@ -312,9 +320,21 @@ def rank_keywords(
         Bảng "đang tăng" thì KHÔNG được miễn: nó bám theo sự kiện thời sự, và đã quan sát
         thấy nó trả về "giá vàng hôm nay" lẫn "thế vận hội mùa đông 2026" cho một từ gốc
         thời trang.
+
+        NGUỒN HỎI BẰNG NGÔN NGỮ KHÁC được đối chiếu với CỤM ĐÃ HỎI, không phải với từ gốc.
+        Temu luôn được hỏi bằng tiếng Anh (`KeywordProvider.query_market`), nên nó trả về
+        "headphone case" trong khi từ gốc là "tai nghe" — hai chuỗi không chia sẻ một chữ nào,
+        và phép khớp chuỗi loại sạch. Đo 2026-09-05: Temu trả về từ khoá thật nhưng bảng cuối
+        cùng rỗng trơn, `totalFound = 0`.
+
+        `via_term` là cụm ta THẬT SỰ gõ vào Temu ("headphone", "headphone women"), tức nó đã ở
+        đúng ngôn ngữ của kết quả — nên nó là mốc đối chiếu đúng, và phép lọc vẫn còn hiệu lực
+        thật chứ không bị tắt đi: một cụm Temu trôi khỏi chủ đề vẫn bị loại như thường.
         """
         if hit.demand is not None and not hit.rising:
             return True
+        if hit.source in TRANSLATED_SOURCES:
+            return vocab.is_on_topic(hit.raw, hit.via_term)
         return vocab.is_on_topic(hit.raw, seed)
 
     relevant = [hit for hit in all_hits if keep(hit)]

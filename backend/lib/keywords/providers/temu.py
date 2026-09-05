@@ -49,11 +49,13 @@ MAX_TERMS = 12
 
 #: Temu bán xuyên biên giới bằng MỘT tên miền `temu.com`, khác Shopee (mỗi nước một tên miền).
 #:
-#: Ô Quốc gia vẫn có tác dụng gián tiếp: `expand_with_provider` dùng `ctx.country` để chọn
-#: ngôn ngữ của các tiền tố mở rộng, nên chọn VN thì gõ tiền tố tiếng Việt. Nhưng bản thân
-#: endpoint gợi ý không nhận tham số vùng nào — nó trả theo phiên của chính máy-thợ. Vì vậy
-#: `geo_targeted = False`, giống TikTok: để giao diện GIẢI THÍCH cho đúng chứ không phải để
-#: ẩn ô chọn đi.
+#: Endpoint gợi ý không nhận tham số vùng nào — nó trả theo phiên của chính máy-thợ. Vì vậy
+#: `geo_targeted = False`, giống TikTok: để giao diện GIẢI THÍCH cho đúng chứ không phải để ẩn
+#: ô chọn đi.
+#:
+#: Ô Quốc gia TỪNG có tác dụng gián tiếp — nó chọn ngôn ngữ của các cụm mở rộng — và đó là một
+#: cái bẫy chứ không phải một tính năng: chọn Việt Nam thì công cụ đi gõ "tai nghe nữ" vào một
+#: ô tìm kiếm phục vụ bằng tiếng Anh. Nay `query_market = "US"` cắt hẳn đường đó.
 MARKETS = None
 
 
@@ -65,6 +67,10 @@ class Temu(KeywordProvider):
     has_native_score = False
     markets = MARKETS
     geo_targeted = False
+    #: LUÔN hỏi bằng tiếng Anh, bất kể ô Quốc gia. Xem `KeywordProvider.query_market` và ghi chú
+    #: `MARKETS` ngay trên: ô gợi ý của Temu phục vụ bằng tiếng Anh, và hỏi nó bằng tiếng Việt
+    #: không cho ra bảng rỗng mà cho ra tiếng vọng — tệ hơn hẳn.
+    query_market = "US"
     #: Hỏi gộp: xem ghi chú đầu file.
     batches_terms = True
     max_terms = MAX_TERMS
@@ -117,10 +123,21 @@ class Temu(KeywordProvider):
             words = group.get("suggestions") or []
             if not term or not isinstance(words, list):
                 continue
+            # LOẠI TIẾNG VỌNG: gợi ý trùng đúng cụm ta vừa gõ thì không mang thông tin nào.
+            #
+            # Endpoint gợi ý của Temu trả lại chính truy vấn trong payload, và `parseTemuSuggest`
+            # bên extension nhặt mọi chuỗi nằm dưới các khoá kiểu `query`/`keyword` nên nhặt luôn
+            # cả nó. Khi Temu KHÔNG có gợi ý thật — đúng thứ xảy ra khi hỏi bằng tiếng Việt — thì
+            # tiếng vọng là thứ duy nhất về, và bảng kết quả đầy những chuỗi do CHÍNH TA bịa ra để
+            # dò. Đo 2026-09-05 với từ gốc "tai nghe": 13 "từ khoá" trả về thì cả 13 là cụm ta gõ,
+            # gồm cả "tai nghe n", "tai nghe c", "tai nghe d" — không ai tìm những cụm đó cả.
+            #
+            # Nguy hiểm hơn một bảng rỗng: bảng rỗng thì người dùng biết là không có gì.
+            echo = _norm(term)
             by_term[term] = [
                 Suggestion(keyword=str(w).strip())
                 for w in words
-                if isinstance(w, str) and w.strip()
+                if isinstance(w, str) and w.strip() and _norm(w) != echo
             ]
 
         if not any(by_term.values()):
@@ -140,6 +157,11 @@ class Temu(KeywordProvider):
         vỡ — chỉ chậm hơn, và chậm thì thấy được còn vỡ thì không.
         """
         return (await self.fetch_suggestions_batch([term], ctx)).get(term, [])
+
+
+def _norm(text: str) -> str:
+    """Khoá so sánh tiếng vọng: chữ thường, gộp khoảng trắng. Đủ cho việc so đúng-bằng."""
+    return " ".join(str(text or "").lower().split())
 
 
 def _with_debug(result: dict) -> str:

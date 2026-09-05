@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from lib.core.http import sleep
 
 from ..market import joins_without_space, merge_by_language
+from ..translate import seed_for_market
 from ..provider import KeywordProvider
 from ..types import WORLDWIDE, SearchContext, SourceHit
 
@@ -392,11 +393,24 @@ async def expand_with_provider(
         scope = "phạm vi toàn thế giới" if country.upper() == WORLDWIDE else country
         return ExpansionOutcome(hits=[], calls=0, error=f"{provider.label} không hoạt động ở {scope}")
 
+    # NGUỒN CÓ NGÔN NGỮ RIÊNG được hỏi bằng ngôn ngữ ấy, không phải ngôn ngữ của ô Quốc gia.
+    #
+    # Đổi CẢ HAI thứ chứ không chỉ từ gốc, và đó là điểm dễ làm nửa vời: dịch "tai nghe" thành
+    # "headphone" rồi vẫn ghép hậu tố tiếng Việt sẽ đi hỏi "headphone nữ", "headphone mùa hè" —
+    # sai kiểu mới, không khá hơn kiểu cũ.
+    #
+    # `country` GỐC vẫn được giữ nguyên cho phần còn lại (kiểm thị trường ở trên đã chạy xong,
+    # và ô Quốc gia vẫn phải nói đúng thứ người dùng chọn ở mọi chỗ khác).
+    market = country
+    if provider.query_market:
+        market = provider.query_market
+        seed = await seed_for_market(seed, market)
+
     # Nguồn không mở rộng được thì hỏi đúng một lần bằng chính từ gốc.
     if not provider.expands_terms:
         terms = [seed]
     else:
-        terms = build_terms(seed, country)[: DEPTH_CALLS[depth]]
+        terms = build_terms(seed, market)[: DEPTH_CALLS[depth]]
 
     # Trần riêng của nguồn cắt SAU trần theo mức, không thay thế nó: mức "Nhanh" đã dưới trần
     # thì trần không được phép nới nó rộng ra.

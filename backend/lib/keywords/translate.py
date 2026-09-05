@@ -19,6 +19,7 @@ import re
 
 from lib.core.config import env_string
 from lib.core.http import get_client
+from lib.core.store import DiskStore
 from lib.ads.keyword_extract import region_lang  # region → tên ngôn ngữ đích (dùng chung, khỏi trùng map)
 
 _API_KEY = env_string("GEMINI_API_KEY")
@@ -86,3 +87,44 @@ async def translate_keyword(keyword: str, regions: list[str]) -> tuple[dict[str,
             continue
         return fallback, False  # 4xx khác (key sai…) → không dịch
     return fallback, False
+
+
+#: Cache bản dịch từ gốc. GHI XUỐNG ĐĨA và để hạn DÀI, vì nó không hỏng theo thời gian: nghĩa
+#: tiếng Anh của "tai nghe" hôm nay và tháng sau là một. Thứ đáng tiết kiệm ở đây là lượt gọi
+#: Gemini, và mỗi lần backend restart mà mất cache là trả tiền lại từ đầu cho cùng câu hỏi.
+_SEED_STORE = DiskStore("kwtranslate")
+_SEED_TTL_MS = 30 * 24 * 60 * 60 * 1000
+
+
+async def seed_for_market(seed: str, market: str) -> str:
+    """
+    Từ gốc, viết bằng ngôn ngữ của `market` — dùng cho nguồn khai `query_market`.
+
+    LUÔN HỎI GEMINI CHỨ KHÔNG TỰ ĐOÁN THEO CHỮ VIẾT, và đây là điểm dễ làm sai. Phép kiểm chữ
+    viết sẵn có (`seed_looks_out_of_market`) chỉ thấy được "có dấu hay không", nên nó nói
+    "tai nghe" hợp với thị trường Mỹ — chuỗi ấy đúng là ASCII thuần. Dựa vào nó thì đúng những
+    từ tiếng Việt không dấu, tức phần lớn từ khoá ngành hàng, sẽ lọt qua mà không được dịch.
+
+    Gemini đã được dặn trả nguyên văn nếu từ khoá vốn đã đúng ngôn ngữ, nên gõ "headphone" vào
+    thì nhận lại "headphone", không mất gì.
+
+    Hỏng thì TRẢ VỀ NGUYÊN từ gốc chứ không ném lỗi: thiếu khoá Gemini là chuyện cấu hình, và
+    biến nó thành một nguồn chết hẳn thì tệ hơn là một nguồn hỏi bằng ngôn ngữ chưa tối ưu.
+    """
+    seed = (seed or "").strip()
+    market = (market or "").strip().upper()
+    if not seed or not market:
+        return seed
+
+    key = f"seed:{market}:{seed.lower()}"
+    cached = _SEED_STORE.get(key)
+    if isinstance(cached, str) and cached:
+        return cached
+
+    mapped, from_gemini = await translate_keyword(seed, [market])
+    out = (mapped.get(market) or seed).strip() or seed
+    # Chỉ cache khi Gemini THẬT SỰ trả lời. Bản dự phòng là "nguyên từ gốc", và cache nó 30
+    # ngày sẽ biến một lần hết hạn mức thành một tháng tưởng như tính năng dịch không tồn tại.
+    if from_gemini:
+        _SEED_STORE.set(key, out, _SEED_TTL_MS)
+    return out

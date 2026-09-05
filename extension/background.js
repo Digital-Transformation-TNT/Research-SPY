@@ -1284,9 +1284,23 @@ const TEMU_SUGGEST_MAX_TERMS = 12;
 // Hình dạng `search_suggest` chưa được xác nhận và Temu đổi nó bất cứ lúc nào. Duyệt cây tìm
 // những khoá NGHE NHƯ từ khoá còn bền hơn là bám vào một đường dẫn cụ thể — sai lầm ấy hỏng
 // lặng lẽ (trả mảng rỗng, trông như "sàn không có gợi ý") thay vì hỏng ồn ào.
-function parseTemuSuggest(text) {
+/**
+ * Bóc gợi ý ra khỏi response search_suggest của Temu.
+ *
+ * `typed` là cụm ta vừa gõ, và nó bị LOẠI khỏi kết quả. Không phải để cho gọn: Temu trả lại
+ * chính truy vấn trong payload, mà hàm này nhặt mọi chuỗi nằm dưới các khoá kiểu `query`/
+ * `keyword` nên nhặt luôn nó. Hậu quả có hai tầng, tầng sau nặng hơn tầng trước:
+ *
+ *   1. Khi Temu không có gợi ý thật, tiếng vọng là thứ duy nhất về — bảng kết quả đầy những
+ *      chuỗi do CHÍNH TA bịa ra để dò ("headphone c", "headphone d"). Không ai tìm chúng.
+ *   2. Vòng chờ bên dưới thoát ngay khi `suggestions.length` khác 0. Tiếng vọng về gần như
+ *      tức thì, nên nó cắt vòng chờ TRƯỚC khi gợi ý thật kịp tới — tức nó không chỉ thêm rác
+ *      mà còn làm mất dữ liệu thật.
+ */
+function parseTemuSuggest(text, typed) {
   const out = [];
   const seen = new Set();
+  const echo = String(typed || '').toLowerCase().split(/\s+/).filter(Boolean).join(' ');
   const KEYS = /^(query|text|keyword|word|suggest_word|suggestWord|name|title|search_key|searchKey)$/i;
   let data;
   try { data = JSON.parse(text); } catch (e) { return out; }
@@ -1302,6 +1316,7 @@ function parseTemuSuggest(text) {
         // phải cụm tìm kiếm. Bỏ chuỗi có ký tự xuống dòng hoặc trông như URL.
         if (s.length >= 2 && s.length <= 60 && !/[\n\r]/.test(s) && !/^https?:/i.test(s)) {
           const key = s.toLowerCase();
+          if (echo && key.split(/\s+/).filter(Boolean).join(' ') === echo) continue;
           if (!seen.has(key)) { seen.add(key); out.push(s); }
         }
       } else if (v && typeof v === 'object') {
@@ -1419,7 +1434,7 @@ async function temuSuggestBatch(terms, region) {
         if (/login\.html/.test(r.href)) { sawLogin = true; break; }
         for (const text of r.hit) {
           if (!debug.sample) debug.sample = String(text).slice(0, 400);
-          for (const s of parseTemuSuggest(text)) {
+          for (const s of parseTemuSuggest(text, term)) {
             if (!suggestions.includes(s)) suggestions.push(s);
           }
         }

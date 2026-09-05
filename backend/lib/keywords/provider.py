@@ -88,6 +88,20 @@ class KeywordProvider(ABC):
     #: dùng `ctx.country` để chọn ngôn ngữ của các tiền tố mở rộng. Nên cờ này để giao diện
     #: GIẢI THÍCH cho đúng, không phải để ẩn ô chọn đi.
     geo_targeted: bool = True
+    #: Nguồn này LUÔN được hỏi bằng ngôn ngữ của thị trường nào, bất kể người dùng chọn nước gì.
+    #:
+    #: `None` (mặc định) nghĩa là hỏi bằng ngôn ngữ của ô Quốc gia — đúng cho mọi sàn có tên
+    #: miền riêng từng nước: chọn Việt Nam thì hỏi shopee.vn bằng tiếng Việt.
+    #:
+    #: Temu thì khác về bản chất chứ không phải khác về cấu hình: nó bán xuyên biên giới qua
+    #: MỘT tên miền và ô gợi ý của nó phục vụ bằng tiếng Anh. Hỏi nó bằng tiếng Việt không trả
+    #: về bảng rỗng — nó trả về CHÍNH CỤM TA VỪA GÕ, nên bảng trông như có dữ liệu trong khi
+    #: không có gì cả (đo 2026-09-05: 13 "từ khoá" thì cả 13 là chuỗi do ta bịa ra để dò).
+    #:
+    #: Khai ở đây chứ không viết cứng trong `providers/temu.py`, vì nó đổi hành vi của bộ mở
+    #: rộng — cả từ gốc lẫn danh sách hậu tố/tiền tố đều phải theo ngôn ngữ này. Xem
+    #: `expand_with_provider`.
+    query_market: str | None = None
     #: Khoảng cách tối thiểu giữa hai lượt gọi của RIÊNG nguồn này, tính bằng mili giây.
     #:
     #: `None` nghĩa là dùng `CALL_DELAY_MS` chung. Nằm trên provider vì sức chịu đựng là thuộc
