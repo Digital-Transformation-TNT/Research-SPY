@@ -299,7 +299,27 @@ function trendsLooksLikeTable(text, seed) {
   return [raw, esc, esc.split('\\').join('\\\\')].some((form) => text.indexOf(form) !== -1);
 }
 
-async function trendsRelated(payload) {
+/**
+ * Bọc `trendsRelated` bằng một hạn cứng, và trả về NHỮNG GÌ ĐÃ GOM ĐƯỢC khi hết hạn.
+ *
+ * VÌ SAO CẦN: đo 2026-09-05, log backend cho thấy máy-thợ hỏi job đều đặn nhưng KHÔNG hề có một
+ * `POST /api/relay/result` nào trong suốt 120 giây — tức handler im lặng luôn, không phải chạy
+ * chậm. Một handler im lặng là kiểu hỏng đắt nhất ở đây: backend chỉ biết "hết giờ", còn nguyên
+ * nhân thật thì không để lại dấu vết nào.
+ *
+ * Nên hạn này KHÔNG phải để tối ưu tốc độ; nó để bảo đảm LUÔN có câu trả lời kèm mẫu vật. Đặt
+ * dưới hạn của trang máy-thợ (110s) để bên bỏ cuộc trước vẫn là bên biết vì sao mình bỏ cuộc.
+ */
+function trendsRelatedGuarded(payload) {
+  const partial = { responses: [], frames: [] };
+  const guard = new Promise((resolve) =>
+    setTimeout(() => resolve({ ...partial, error: 'hết ngân sách trong extension' }), 95000)
+  );
+  return Promise.race([trendsRelated(payload, partial).catch((e) => ({ ...partial, error: String(e) })), guard]);
+}
+
+async function trendsRelated(payload, partial) {
+  const bag = partial || { responses: [], frames: [] };
   await ensurePageHook();
   const url = String(payload.url || '');
   const legacyUrl = String(payload.legacyUrl || '');
@@ -326,6 +346,7 @@ async function trendsRelated(payload) {
     // khoản, nên không được coi việc nó im lặng là hỏng.
     await waitForComplete(tab.id, 20000);
     const frames = await trendsCollect(tab.id, TRENDS_FRAMES, '', 30000, false);
+    bag.frames = frames;
     if (frames.some((t) => trendsLooksLikeTable(t, payload.seed))) return { responses: [], frames };
 
     // Không có gì ⇒ tài khoản này chưa được phục vụ bảng ở trang mới. Về TRANG CŨ, vẫn trong
@@ -335,6 +356,7 @@ async function trendsRelated(payload) {
     await chrome.tabs.update(tab.id, { url: legacyUrl });
     await waitForComplete(tab.id, 20000);
     const responses = await trendsCollect(tab.id, TRENDS_WIDGET, '"keywordType":"QUERY"', 20000, true);
+    bag.responses = responses;
     // Trả kèm cả frame của trang mới: chúng vô dụng để dựng bảng, nhưng là mẫu vật chẩn đoán —
     // backend cất lại khi không đọc được gì, và đó là thứ nói cho ta biết trang mới đã bắn gì.
     return { responses, frames };
@@ -2356,7 +2378,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // Slot tab RIÊNG (không `withCooldown` chung với sàn nào): Trends chạy trên google.com, và nhịp
   // gọi của nó do `TRENDS_MIN_INTERVAL_MS` bên backend giữ chứ không phải cooldown ở đây.
   if (msg.type === 'RS_TRENDS_RELATED') {
-    trendsRelated(msg).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, responses: [], frames: [], error: String(e) }));
+    trendsRelatedGuarded(msg).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, responses: [], frames: [], error: String(e) }));
     return true;
   }
 

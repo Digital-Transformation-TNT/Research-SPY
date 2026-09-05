@@ -971,10 +971,14 @@ async def _related_via_worker(seed: str, ctx: SearchContext) -> RelatedOutcome |
     if frames:
         _remember_frames_sample(frames, seed)
 
+    # Câu của thợ (nếu có) đi kèm NGUYÊN VĂN. Trước đây nó bị nuốt, nên một handler treo và một
+    # tài khoản chưa đăng nhập đọc ra y hệt nhau ở phía người dùng.
+    note = result.get("error")
     return RelatedOutcome(
         message=(
             f'"{seed}" — máy-thợ mở được trang Trends nhưng không đọc được bảng truy vấn liên '
             "quan. Kiểm tra Chrome của máy-thợ đã đăng nhập Google chưa, rồi thử lại."
+            + (f" (thợ báo: {note})" if isinstance(note, str) and note else "")
         )
     )
 
