@@ -295,17 +295,26 @@ const BACKEND = '';
 const PF_LABEL = { etsy: 'Etsy', facebook: 'Facebook', tiktok: 'TikTok', douyin: 'Douyin 抖音' };
 const PRICE_SCALE = 100000;
 
-// Modal Giá vốn: tỉ giá ¥(CNY)→TIỀN CỦA SÀN + ngưỡng % (giá nhập/giá bán). Giá vốn 1688 là ¥ nên
-// phải quy về ĐÚNG tiền của sàn đối thủ mới chia ra % — mỗi tiền một tỉ giá riêng. Mặc định ~2026;
-// user chỉnh ở modal, lưu localStorage THEO TỪNG TIỀN (rs_cost_rate_<CUR>). Ngưỡng % dùng chung.
-const COST_RATE_DEFAULTS = { VND: 3900, PHP: 7.9, THB: 4.9, MYR: 0.62, IDR: 2200, SGD: 0.19, TWD: 4.4, USD: 0.14, GBP: 0.11, EUR: 0.13, BRL: 0.79, MXN: 2.6, JPY: 21 };
+// Modal Giá vốn — QUY VỀ ¥ TRUNG: giá bán đối thủ (tiền sàn) → ₫ → ¥, rồi so với giá vốn 1688 (vốn
+// là ¥). Cần HAI tỉ giá: ¥→₫ (chung, ~3900) và [tiền sàn]→₫ (riêng từng nước; VN = 1). Ngưỡng %
+// chung. User chỉnh ở modal, lưu localStorage: rs_cost_cny_vnd (¥→₫) + rs_cost_curvnd_<CUR> ([nước]→₫).
+const CNY_VND_DEFAULT = 3900;
+const CUR_VND_DEFAULTS = { VND: 1, PHP: 494, THB: 730, MYR: 5900, IDR: 1.6, SGD: 19400, TWD: 820, USD: 26000, GBP: 33000, EUR: 28000, BRL: 4800, MXN: 1400, JPY: 175 };
 const COST_THRESH_DEFAULT = 30;
-function costRate(cur) {
+function cnyVnd() { try { const v = parseFloat(localStorage.getItem('rs_cost_cny_vnd')); if (v > 0) return v; } catch (e) {} return CNY_VND_DEFAULT; }
+function curVnd(cur) {
   cur = cur || 'VND';
-  try { const v = parseFloat(localStorage.getItem('rs_cost_rate_' + cur)); if (v > 0) return v; } catch (e) {}
-  return COST_RATE_DEFAULTS[cur] || COST_RATE_DEFAULTS.VND;
+  try { const v = parseFloat(localStorage.getItem('rs_cost_curvnd_' + cur)); if (v > 0) return v; } catch (e) {}
+  return CUR_VND_DEFAULTS[cur] != null ? CUR_VND_DEFAULTS[cur] : 1;
 }
 function costThresh() { try { const v = parseFloat(localStorage.getItem('rs_cost_thresh')); return v > 0 ? v : COST_THRESH_DEFAULT; } catch (e) { return COST_THRESH_DEFAULT; } }
+// Giá bán đối thủ (tiền sàn) → quy ¥: price × ([nước]→₫) ÷ (¥→₫). Null nếu thiếu/không hợp lệ.
+function sellToCny(cur, price) {
+  if (price == null || !(price > 0)) return null;
+  const cv = curVnd(cur), cy = cnyVnd();
+  if (!(cv > 0) || !(cy > 0)) return null;
+  return (price * cv) / cy;
+}
 
 // Cấu hình sàn: active = đã có adapter; regions = mảng nước (có region), [] = nội địa/toàn cầu
 // (không chọn region), 'any' = lọc mọi nước (Facebook). Region động theo sàn đang chọn.
@@ -517,14 +526,13 @@ function cost1688Cell(p) {
   const cny = cost1688[rawImg(p.image)];
   // Chưa tra (undefined) hoặc đã tra nhưng không ra ('none') → '—'. Chỉ số ¥ mới tính ₫/%.
   if (typeof cny !== 'number') return { html: '<span class="sub" title="Bấm 💰 Giá vốn ở cột Thao tác, hoặc nút Giá vốn hàng loạt">—</span>', cheap: false };
-  const cur = curOf(p);                 // tiền của SÀN dòng này (VND/PHP/THB…)
-  const rate = costRate(cur), thresh = costThresh();
-  const conv = Math.round(cny * rate);  // giá vốn ¥ quy về tiền của sàn
-  const canRatio = p.price != null && p.price > 0; // giá bán đối thủ cùng tiền → chia ra %
-  const ratio = canRatio ? (conv / p.price) * 100 : null;
+  const thresh = costThresh();
+  const sellCny = sellToCny(curOf(p), p.price); // giá bán đối thủ quy về ¥ (qua ₫)
+  const ratio = sellCny ? (cny / sellCny) * 100 : null; // % = giá vốn ¥ ÷ giá bán ¥
   const cheap = ratio != null && ratio < thresh;
   const ratioHtml = ratio != null ? `<div class="costratio${cheap ? ' cheap' : ''}">${ratio.toFixed(1)}% giá bán</div>` : '';
-  return { html: `<span class="price" title="¥${cny} × ${fmtInt(rate)} = giá vốn quy ${cur}">${fmtPrice(conv, cur)}</span>${ratioHtml}`, cheap };
+  const tip = sellCny ? `giá bán đối thủ ≈ ¥${sellCny.toFixed(1)}` : 'giá vốn 1688 rẻ nhất';
+  return { html: `<span class="price" title="${tip}">¥${cny}</span>${ratioHtml}`, cheap };
 }
 function cost1688Td(p) { const c = cost1688Cell(p); return `<td class="num costcell${c.cheap ? ' cheap' : ''}">${c.html}</td>`; }
 
@@ -1230,15 +1238,24 @@ async function openCostModal(p) {
   // Ghi giá vốn 1688 rẻ nhất về store theo ảnh dòng → cột "Giá vốn 1688" ở bảng chính hiện ngay.
   if (p.img != null && min.priceValue != null) { cost1688[p.img] = min.priceValue; render(); }
   $('costHeadline').innerHTML = `Giá vốn nhỏ nhất <b>${esc(min.price || ('¥' + min.priceValue))}</b>`;
-  const rate = costRate(costCur); // tỉ giá ¥→tiền của sàn dòng này
-  const sellNote = costSell != null
-    ? ` · giá bán đối thủ ${fmtPrice(costSell, costCur)} · % = giá nhập ÷ giá bán`
+  const cy = cnyVnd();
+  const sellCny = sellToCny(costCur, costSell); // giá bán đối thủ quy về ¥
+  const sellNote = (costSell != null && sellCny)
+    ? ` · giá bán ${fmtPrice(costSell, costCur)} ≈ ¥${sellCny.toFixed(1)} · % = giá vốn ÷ giá bán`
     : ' · dòng này thiếu giá bán nên không tính %';
-  setCostStatus(`${offers.length} chào hàng 1688${res.cached ? ' (cache)' : ''}. Tỉ giá ¥→${costCur} = ${fmtInt(rate)}${sellNote}`, 'ok');
+  const curNote = costCur !== 'VND' ? ` · ${costCur}→₫ = ${fmtInt(curVnd(costCur))}` : '';
+  setCostStatus(`${offers.length} chào hàng 1688${res.cached ? ' (cache)' : ''}. ¥→₫ = ${fmtInt(cy)}${curNote}${sellNote}`, 'ok');
 
-  // Nhãn ô tỉ giá theo tiền của sàn (¥→PHP, ¥→₫…) + nạp giá trị hiện tại, hiện controls, dựng card.
-  $('costRateCur').textContent = '¥→' + (costCur === 'VND' ? '₫' : costCur);
-  $('costRate').value = rate;
+  // Nạp 2 ô tỉ giá: ¥→₫ (chung) + [nước]→₫ (ẩn nếu sàn VN vì =1). Rồi ngưỡng, hiện controls, dựng card.
+  $('costRate').value = cy;
+  const curWrap = $('costCurRateWrap');
+  if (costCur === 'VND') {
+    curWrap.hidden = true;
+  } else {
+    curWrap.hidden = false;
+    $('costCurRateLabel').textContent = costCur + '→₫';
+    $('costCurRate').value = curVnd(costCur);
+  }
   $('costThresh').value = costThresh();
   $('costControls').hidden = false;
   renderCostCards();
@@ -1247,17 +1264,13 @@ async function openCostModal(p) {
 // Dựng lại các card 1688 theo TỈ GIÁ + NGƯỠNG hiện tại (KHÔNG fetch lại). Mỗi card = một nguồn
 // nhập: hiện giá quy ₫ và % = (giá 1688 × tỉ giá) ÷ giá bán đối thủ. Dưới ngưỡng → class 'cheap' (xanh).
 function renderCostCards() {
-  // Ưu tiên số đang gõ trong ô (nguồn sự thật khi modal mở), rớt về localStorage/mặc định.
-  const rInput = parseFloat($('costRate').value);
   const tInput = parseFloat($('costThresh').value);
-  const rate = rInput > 0 ? rInput : costRate(costCur);
   const thresh = tInput > 0 ? tInput : costThresh();
-  const canRatio = costSell != null && costSell > 0; // giá bán đối thủ cùng tiền costCur → chia ra %
+  // Giá bán đối thủ quy ¥ (đọc tỉ giá từ localStorage qua cnyVnd/curVnd — onCostCtrlChange đã lưu).
+  const sellCny = sellToCny(costCur, costSell);
   $('costGrid').innerHTML = costOffers.map((o, i) => {
-    const conv = o.priceValue != null ? Math.round(o.priceValue * rate) : null;
-    const ratio = (canRatio && conv != null) ? (conv / costSell) * 100 : null;
+    const ratio = (sellCny && o.priceValue != null) ? (o.priceValue / sellCny) * 100 : null; // % = chào hàng ¥ ÷ giá bán ¥
     const cheap = ratio != null && ratio < thresh;
-    const vndHtml = conv != null ? `<div class="cvnd">≈ ${fmtPrice(conv, costCur)}</div>` : '';
     const ratioHtml = ratio != null ? `<div class="cratio">${ratio.toFixed(1)}% giá bán</div>` : '';
     return (
       `<a class="ccard${cheap ? ' cheap' : ''}" href="${esc(o.link)}" target="_blank" rel="noreferrer">` +
@@ -1265,7 +1278,7 @@ function renderCostCards() {
       `${i === 0 ? '<span class="mbadge">Rẻ nhất</span>' : ''}</div>` +
       `<div class="cbody">` +
       `<div class="cost-price">${esc(o.price || ('¥' + o.priceValue))}</div>` +
-      vndHtml + ratioHtml +
+      ratioHtml +
       `<div class="ccopy">${esc(o.title || '')}</div>` +
       `<div class="cmeta">${[o.supplier, o.location, o.sold != null ? 'đã bán ' + fmtInt(o.sold) : o.note]
         .filter(Boolean).map(esc).join(' · ')}</div>` +
@@ -1330,16 +1343,19 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('costM
 
 // Chỉnh tỉ giá / ngưỡng → lưu localStorage (giữ cho lần sau) rồi tính lại % + tô màu ngay, không fetch lại.
 function onCostCtrlChange() {
-  const r = parseFloat($('costRate').value);
+  const r = parseFloat($('costRate').value);      // ¥→₫ (chung)
+  const cr = parseFloat($('costCurRate').value);  // [nước]→₫ (riêng từng nước)
   const t = parseFloat($('costThresh').value);
   try {
-    if (r > 0) localStorage.setItem('rs_cost_rate_' + costCur, String(r)); // tỉ giá riêng theo tiền sàn
+    if (r > 0) localStorage.setItem('rs_cost_cny_vnd', String(r));
+    if (cr > 0 && costCur !== 'VND') localStorage.setItem('rs_cost_curvnd_' + costCur, String(cr));
     if (t > 0) localStorage.setItem('rs_cost_thresh', String(t));
   } catch (e) { /* storage bị chặn — vẫn tính lại theo giá trị đang gõ */ }
   renderCostCards();
   render(); // cột "Giá vốn 1688" ở bảng chính cũng đổi theo tỉ giá/ngưỡng mới
 }
 $('costRate').addEventListener('input', onCostCtrlChange);
+$('costCurRate').addEventListener('input', onCostCtrlChange);
 $('costThresh').addEventListener('input', onCostCtrlChange);
 
 // Giá vốn NHANH: một tab find_similar duy nhất → gọi recommend_post cho top N cùng lúc trong tab
