@@ -918,11 +918,15 @@ async def _related_via_worker(seed: str, ctx: SearchContext) -> RelatedOutcome |
     except WorkerOffline:
         return None
     except WorkerTimeout:
-        # KHÔNG rơi về Playwright: thợ chậm không có nghĩa là Playwright sẽ nhanh, và lượt rơi
-        # ấy tốn thêm một phút để nhận về đúng cái bảng nghèo mà ta vừa bỏ công tránh.
-        return RelatedOutcome(
-            message=f'"{seed}" — máy-thợ không kịp trả bảng Google Trends (quá 120s). Thử lại sau.'
-        )
+        # RƠI VỀ PLAYWRIGHT. Bản trước cố ý không rơi, lập luận là "thợ chậm thì Playwright cũng
+        # chẳng nhanh hơn, rơi về chỉ tốn thêm một phút để nhận cái bảng nghèo". Lập luận ấy sai ở
+        # chỗ nó so một bảng nghèo với một bảng đầy — trong khi lựa chọn thật là so bảng nghèo với
+        # KHÔNG CÓ GÌ.
+        #
+        # Đo 2026-09-05: máy-thợ hết giờ liên tiếp bốn lượt, và vì không rơi về nên nguồn Google
+        # trả về tay không mỗi lần — tức một bản "cải tiến" làm tính năng tệ hơn hẳn lúc chưa
+        # động vào. 23 dòng không kèm cột Thay đổi vẫn dùng được; bảng rỗng thì không.
+        return None
     except Exception:
         # Relay hỏng là chuyện của relay — để Playwright thử, đừng làm chết cả nguồn.
         return None
@@ -973,14 +977,10 @@ async def _related_via_worker(seed: str, ctx: SearchContext) -> RelatedOutcome |
 
     # Câu của thợ (nếu có) đi kèm NGUYÊN VĂN. Trước đây nó bị nuốt, nên một handler treo và một
     # tài khoản chưa đăng nhập đọc ra y hệt nhau ở phía người dùng.
-    note = result.get("error")
-    return RelatedOutcome(
-        message=(
-            f'"{seed}" — máy-thợ mở được trang Trends nhưng không đọc được bảng truy vấn liên '
-            "quan. Kiểm tra Chrome của máy-thợ đã đăng nhập Google chưa, rồi thử lại."
-            + (f" (thợ báo: {note})" if isinstance(note, str) and note else "")
-        )
-    )
+    # CŨNG RƠI VỀ PLAYWRIGHT, cùng lý do với nhánh hết giờ ở trên: thợ không đọc được bảng thì
+    # lựa chọn còn lại là bảng nghèo hay bảng rỗng, và bảng rỗng thì vô dụng. Mẫu vật đã cất ở
+    # trên nên vẫn còn nguyên thứ để lần sau đọc.
+    return None
 
 
 async def fetch_related_queries(seed: str, ctx: SearchContext) -> RelatedOutcome:
