@@ -26,6 +26,12 @@ và không tốn thêm request nào.
 Cùng triết lý với `lib/core/browser.py`: để trang tự phát request đã ký thay vì dựng lại
 cách ký — nên nó cũng không hỏng khi Google đổi cách ký. Bắt buộc phải có phiên đăng nhập:
 ẩn danh thì trang dừng ở màn hình mời đăng nhập và không gọi RPC nào.
+
+HAI ĐƯỜNG CHẠY, KHÔNG PHẢI MỘT (2026-09-05). Ưu tiên MÁY-THỢ (Chrome thật), Playwright chỉ còn
+là đường lui — xem `_related_via_worker`. Lý do không nằm ở tốc độ mà ở CHẤT LƯỢNG DỮ LIỆU: cùng
+máy, cùng tài khoản, cùng từ khoá, Playwright nhận 23 dòng không kèm cột "Thay đổi" và bảng "đang
+tăng" rỗng, trong khi Chrome thật nhận 50 dòng đủ cột. Không có 429, không có lỗi nào để bắt —
+chỉ thiếu hơn nửa bảng, và những dòng lấy được thì vẫn đúng. Đó là lý do nó sống được lâu.
 """
 
 from __future__ import annotations
@@ -56,6 +62,14 @@ from lib.core.browser import describe_browser_error, launch_browser
 from lib.core.config import config, env_number, env_string
 from lib.core.jscompat import average, jround
 from lib.core.rate_limit import schedule
+from lib.core.store import STORE_DIR
+from lib.core.worker_relay import (
+    BATCH_TIMEOUT_S,
+    WorkerOffline,
+    WorkerTimeout,
+    run_on_worker,
+    worker_online,
+)
 
 from .types import WORLDWIDE, SearchContext
 
@@ -432,7 +446,13 @@ class RelatedQuery:
     value: float
     rising: bool
     #: Phần trăm thay đổi so với kỳ trước, đúng con số giao diện hiện ở cột "Thay đổi".
-    change_percent: float = 0.0
+    #:
+    #: `None` NGHĨA LÀ KHÔNG BIẾT, và phải khác 0.0 cho bằng được. Trước đây mặc định 0.0, nên khi
+    #: response không chở cột này — đúng thứ xảy ra với mọi lượt đi bằng Playwright, đo 2026-09-05 —
+    #: giao diện hiện `→ 0%` ở TẤT CẢ các dòng, tức là nói với người dùng rằng "Google công bố cụm
+    #: này không đổi" trong khi Google chưa nói gì cả. Một con số bịa trông đáng tin hơn hẳn một ô
+    #: trống, nên nó là kiểu sai đắt nhất.
+    change_percent: float | None = None
 
 
 #: ĐƯỜNG THỨ HAI cho bảng truy vấn liên quan, và từ 2026-08-26 nó là đường DUY NHẤT còn chạy.
@@ -467,6 +487,65 @@ def is_related_widget(url: str) -> bool:
     return WIDGET_QUERY_MARK in unquote(url)
 
 
+#: Các tên trường mà Google đã dùng cho cột "Thay đổi" ở widget này.
+#:
+#: DÒ THEO TÊN chứ không chốt một tên, và đó là quyết định có giá: đường đi bằng Playwright nhận
+#: response KHÔNG có cột này (đo 2026-09-05: mỗi mục chỉ có `query`, `value`, `formattedValue`,
+#: `hasData`, `link`), nên tên thật của trường chỉ lộ ra ở response của Chrome thật — thứ chạy ở
+#: máy-thợ, không quan sát được từ máy dev. Liệt kê mọi biến thể hợp lý rồi lấy cái nào có, kèm
+#: `_remember_widget_sample` để lần chạy thật tự khai ra tên đúng, thì rẻ hơn hẳn một vòng
+#: deploy-đo-sửa-deploy chỉ để biết một chuỗi.
+_CHANGE_NUMBER_KEYS = ("trendiness", "change", "percentChange", "valueChange", "growth", "delta")
+_CHANGE_TEXT_KEYS = ("formattedTrendiness", "formattedChange", "trendinessFormatted", "formattedDelta")
+
+#: "+6%", "−10%" (dấu trừ Unicode của giao diện Google), "-1 %".
+_PERCENT = re.compile(r"([+\-−]?\s*\d[\d.,]*)\s*%")
+
+
+def _widget_change(item: dict) -> float | None:
+    """
+    Cột "Thay đổi" của một hàng, hoặc `None` khi response không chở nó.
+
+    `None` chứ không phải 0.0 — xem `RelatedQuery.change_percent`.
+    """
+    for key in _CHANGE_NUMBER_KEYS:
+        value = item.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return float(value)
+    for key in _CHANGE_TEXT_KEYS:
+        text = item.get(key)
+        if isinstance(text, str):
+            match = _PERCENT.search(text)
+            if match:
+                # Dấu trừ Unicode và dấu phân cách hàng nghìn đều đến từ chỗ chuỗi này được
+                # định dạng ĐỂ ĐỌC, không phải để máy đọc lại.
+                raw = match.group(1).replace("−", "-").replace(",", "").replace(" ", "")
+                try:
+                    return float(raw)
+                except ValueError:
+                    return None
+    return None
+
+
+#: Nơi cất một bản response thật để đối chiếu khi cột "Thay đổi" vắng mặt.
+_WIDGET_SAMPLE = STORE_DIR / "trends-widget-sample.json"
+
+
+def _remember_widget_sample(raw_text: str) -> None:
+    """
+    Cất lại response cuối cùng KHÔNG đọc được cột "Thay đổi", để lần sau khỏi phải đoán.
+
+    Chỉ ghi khi dò tên trường thất bại, và ghi đè đúng một file — nó là mẫu vật chẩn đoán, không
+    phải nhật ký. Máy-thợ là một máy khác với máy dev, nên nếu không tự cất mẫu thì cách duy nhất
+    để biết Google gọi trường đó là gì sẽ là nhờ người khác mở DevTools hộ.
+    """
+    try:
+        STORE_DIR.mkdir(parents=True, exist_ok=True)
+        _WIDGET_SAMPLE.write_text(raw_text[:200_000], encoding="utf-8")
+    except OSError:
+        pass
+
+
 def parse_related_widget(raw_text: str) -> list[RelatedQuery]:
     """
     Tách phản hồi `widgetdata/relatedsearches` thành hai bảng: hàng đầu và đang tăng.
@@ -499,6 +578,7 @@ def parse_related_widget(raw_text: str) -> list[RelatedQuery]:
         return []
 
     out: list[RelatedQuery] = []
+    saw_change = False
     for index, block in enumerate(ranked[:2]):
         rising = index == 1
         for item in (block or {}).get("rankedKeyword") or []:
@@ -509,14 +589,15 @@ def parse_related_widget(raw_text: str) -> list[RelatedQuery]:
                 value = float(item.get("value") or 0)
             except (TypeError, ValueError):
                 value = 0.0
+            # Bảng "đang tăng": `value` CHÍNH LÀ phần trăm tăng, nên nó vừa là lượng vừa là mức
+            # thay đổi. Bảng hàng đầu thì hai thứ đó là hai cột khác nhau.
+            change = value if rising else _widget_change(item)
+            saw_change = saw_change or change is not None
             out.append(
-                RelatedQuery(
-                    query=query,
-                    value=value,
-                    rising=rising,
-                    change_percent=value if rising else 0.0,
-                )
+                RelatedQuery(query=query, value=value, rising=rising, change_percent=change)
             )
+    if out and not saw_change:
+        _remember_widget_sample(raw_text)
     return out
 
 
@@ -583,14 +664,88 @@ def parse_related(raw_text: str) -> list[RelatedQuery]:
                     query=query,
                     value=float(item[1]) if isinstance(item[1], (int, float)) else 0.0,
                     rising=rising,
+                    # Vắng phần tử thứ ba = response không chở cột "Thay đổi", KHÔNG phải "thay
+                    # đổi 0%". Xem `RelatedQuery.change_percent`.
                     change_percent=(
-                        float(item[2]) if len(item) > 2 and isinstance(item[2], (int, float)) else 0.0
+                        float(item[2]) if len(item) > 2 and isinstance(item[2], (int, float)) else None
                     ),
                 )
             )
         return out
 
     return rows(group[2], rising=False) + rows(group[1], rising=True)
+
+
+async def _related_via_worker(seed: str, ctx: SearchContext) -> RelatedOutcome | None:
+    """
+    Lấy bảng truy vấn liên quan bằng CHROME THẬT của máy-thợ.
+
+    VÌ SAO ĐƯỜNG NÀY TỒN TẠI. Playwright không hề bị chặn ở đây — và chính vì thế mà lỗi sống
+    được lâu tới vậy. Đo 2026-09-05, cùng máy cùng từ khoá "sạc điện thoại", Toàn thế giới, năm qua:
+
+        Playwright     23 dòng · bảng "đang tăng" RỖNG · JSON không có trường phần trăm thay đổi
+        Chrome thật    50 dòng · có bảng đang tăng     · đủ cột "Thay đổi" (+6%, −10%, …)
+
+    Ba lượt Playwright liên tiếp còn trả ba danh sách KHÁC NHAU, mỗi lượt ~23 dòng. Không có lỗi
+    nào để bắt, không có 429, số đo của những dòng lấy được thì vẫn đúng — chỉ thiếu hơn nửa bảng.
+    Cùng họ với chuyện Facebook Ad Library, khác ở chỗ FB trả 0 kết quả nên nhìn là thấy ngay.
+
+    Trả `None` nghĩa là "đường này không đi được, để Playwright thử" — thợ rớt giữa chừng, hoặc
+    thợ chưa nạp loại job này. Trả `RelatedOutcome` nghĩa là đã đi và đây là kết quả, kể cả rỗng.
+    """
+    try:
+        result = await run_on_worker(
+            "RS_TRENDS_RELATED",
+            {"url": explore_url([seed], ctx.country, ctx.time_range, ctx.gprop)},
+            timeout_s=BATCH_TIMEOUT_S,
+        )
+    except WorkerOffline:
+        return None
+    except WorkerTimeout:
+        # KHÔNG rơi về Playwright: thợ chậm không có nghĩa là Playwright sẽ nhanh, và lượt rơi
+        # ấy tốn thêm một phút để nhận về đúng cái bảng nghèo mà ta vừa bỏ công tránh.
+        return RelatedOutcome(
+            message=f'"{seed}" — máy-thợ không kịp trả bảng Google Trends (quá 90s). Thử lại sau.'
+        )
+    except Exception:
+        # Relay hỏng là chuyện của relay — để Playwright thử, đừng làm chết cả nguồn.
+        return None
+
+    if not isinstance(result, dict) or result.get("responses") is None:
+        # Extension bản cũ không biết loại job này. Nói đúng cách sửa thay vì để nó đọc thành
+        # "Google không có dữ liệu" — hai chuyện khác hẳn nhau và cách xử lý cũng khác hẳn.
+        return RelatedOutcome(
+            message=(
+                "Máy-thợ chưa nạp job Google Trends — vào chrome://extensions bấm Reload rồi "
+                "F5 tab Máy thợ."
+            )
+        )
+
+    # Mỗi lần tải trang chỉ phát MỘT response cho widget này, nhưng cứ lấy bản nhiều dòng nhất
+    # phòng khi trang xin lại: bản đến sau không nhất thiết đầy đủ hơn bản đến trước.
+    best: list[RelatedQuery] = []
+    for text in result.get("responses") or []:
+        if not isinstance(text, str):
+            continue
+        try:
+            queries = parse_related_widget(text)
+        except Exception:
+            continue
+        if len(queries) > len(best):
+            best = queries
+
+    if best:
+        _note_data_received()
+        return RelatedOutcome(queries=best)
+
+    # Thợ chạy xong mà không chộp được gì. KHÔNG kết luận "bị chặn" — nhiều khả năng hơn là
+    # Chrome của máy-thợ chưa đăng nhập Google, hoặc trang chưa kịp xin widget trong ngân sách.
+    return RelatedOutcome(
+        message=(
+            f'"{seed}" — máy-thợ mở được trang Trends nhưng không thấy bảng truy vấn liên quan. '
+            "Kiểm tra Chrome của máy-thợ đã đăng nhập Google chưa, rồi thử lại."
+        )
+    )
 
 
 async def fetch_related_queries(seed: str, ctx: SearchContext) -> RelatedOutcome:
@@ -613,6 +768,14 @@ async def fetch_related_queries(seed: str, ctx: SearchContext) -> RelatedOutcome
 
     def elapsed() -> int:
         return round((time.monotonic() - started_at) * 1000)
+
+    # ĐƯỜNG ƯU TIÊN: máy-thợ. Đi TRƯỚC cả phép kiểm phiên đăng nhập, vì máy-thợ dùng phiên Chrome
+    # của chính nó — bắt nó phải có `.auth/google.json` là dựng một điều kiện không liên quan.
+    if worker_online():
+        via_worker = await _serialise(lambda: _related_via_worker(seed, ctx))
+        if via_worker is not None:
+            via_worker.took_ms = elapsed()
+            return via_worker
 
     if not session_paths(GOOGLE_SESSION):
         return RelatedOutcome(

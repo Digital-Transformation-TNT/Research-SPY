@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Research-SPY Fetcher",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Lấy dữ liệu sản phẩm bằng chính phiên đăng nhập của bạn (Cách A). Cookie không bao giờ rời trình duyệt này.",
   "permissions": [
     "scripting",
@@ -48,6 +48,8 @@
     "https://*.douyin.com/*",
     "https://www.google.com/*",
     "https://www.google.com.vn/*",
+    "https://trends.google.com/*",
+    "https://trends.google.com.vn/*",
     "https://*.facebook.com/*",
     "http://localhost:8000/*",
     "http://127.0.0.1:8000/*",
@@ -85,6 +87,8 @@
         "https://*.tmall.com/*",
         "https://*.temu.com/*",
         "https://*.facebook.com/*",
+        "https://trends.google.com/*",
+        "https://trends.google.com.vn/*",
         "https://www.tiktok.com/*",
         "https://www.douyin.com/*",
         "https://*.douyin.com/*",

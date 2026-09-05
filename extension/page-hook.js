@@ -22,6 +22,7 @@
     '/api/search/video',            // TikTok search video (biến thể)
     '/api/v4/search/search_items',  // Shopee search (trang tự gọi + ký anti-bot, ta chộp response)
     '/api/graphql',                 // Facebook Ad Library (trang tự ký AdLibrarySearchPaginationQuery)
+    '/trends/api/widgetdata/',      // Google Trends (trang tự xin widget bằng token của chính nó)
   ];
   function match(u) {
     if (typeof u !== 'string') return false;
@@ -34,6 +35,9 @@
       // FB bắn RẤT nhiều /api/graphql (filter options, đếm…); chỉ giữ response CÓ quảng cáo
       // (ad_archive_id) để không đẩy trôi response tìm-kiếm khỏi bộ đệm 40 phần tử.
       if (url.indexOf('/api/graphql') !== -1 && text.indexOf('ad_archive_id') === -1) return;
+      // Trends bắn 4 widget mỗi lần tải trang (biểu đồ, bản đồ, chủ đề, truy vấn); chỉ giữ
+      // widget TRUY VẤN liên quan — ba cái kia nặng và sẽ đẩy nó khỏi bộ đệm 40 phần tử.
+      if (url.indexOf('/trends/api/widgetdata/') !== -1 && url.indexOf('relatedsearches') === -1) return;
       window.__rsCap.push({ url: url, text: text, ts: Date.now() });
       // Giữ nhiều hơn: TikTok/infinite-scroll bắn 1 response/trang, auto-scroll gom chục trang.
       if (window.__rsCap.length > 40) window.__rsCap.shift();

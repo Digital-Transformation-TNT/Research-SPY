@@ -70,7 +70,10 @@ def _decode(raw: object) -> list[RelatedQuery] | None:
                 query=str(e["q"]),
                 value=float(e["v"]),
                 rising=bool(e["r"]),
-                change_percent=float(e.get("c") or 0.0),
+                # `None` PHẢI sống sót qua cache. `float(e.get("c") or 0.0)` của bản trước quy cả
+                # "chưa biết" lẫn "đúng bằng 0" về 0.0, nên mọi bản ghi cũ đọc lại đều thành
+                # "Google công bố 0%" — xem `RelatedQuery.change_percent`.
+                change_percent=None if e.get("c") is None else float(e["c"]),
             )
             for e in raw
         ]
@@ -95,7 +98,12 @@ class TrendsRelated(KeywordProvider):
         # Cả ba ô chọn đều nằm trong khoá cache. Bảng truy vấn liên quan của "Năm qua" và của
         # "24 giờ qua" là hai tập khác hẳn nhau, và Google Mua sắm lại là tập thứ ba — dùng
         # chung một khoá thì lần chọn sau nhận nguyên kết quả của lần chọn trước.
-        key = f"trendsrel:{ctx.country.upper()}:{ctx.time_range}:{ctx.gprop}:{term.lower()}"
+        #: `trendsrel2` — ĐỔI TIỀN TỐ để bỏ hẳn mọi bản ghi cũ, cố ý chứ không phải đổi tên cho vui.
+        #: Bản ghi cũ do Playwright lấy: khoảng 23 dòng, không có bảng "đang tăng", và cột "Thay
+        #: đổi" nằm trong đó dưới dạng 0.0 — tức là một con số bịa. TTL bảy ngày nghĩa là không
+        #: đổi khoá thì cả tuần sau người dùng vẫn nhận đúng cái bảng nghèo ấy, dù máy-thợ đã
+        #: sẵn sàng phục vụ bản đầy đủ.
+        key = f"trendsrel2:{ctx.country.upper()}:{ctx.time_range}:{ctx.gprop}:{term.lower()}"
 
         queries = _decode(_STORE.get(key))
         if queries is None:

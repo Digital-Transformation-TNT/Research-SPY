@@ -75,6 +75,10 @@ ALLOWED_TYPES = {
     # Video quảng cáo (Facebook Ad Library). FB soft-block playwright trên VPS (headless LẪN
     # headed → 200 kèm 0), Chrome thật của máy-thợ ra >50k — xem `lib/ads/platforms/facebook.py`.
     "RS_FB_ADLIB",
+    # Bảng truy vấn liên quan của Google Trends. Playwright KHÔNG bị chặn ở đây — nó bị phục vụ
+    # bản nghèo hơn (23 dòng, không bảng "đang tăng", không cột "Thay đổi") trong khi Chrome thật
+    # ra 50 dòng đủ cột. Xem `lib/keywords/trends.py`.
+    "RS_TRENDS_RELATED",
     # Tiện ích: ping, đọc cookie (kiểm tra đăng nhập), fetch, tìm tương tự, giá vốn
     "RS_PING", "RS_COOKIE", "RS_FETCH", "RS_FIND_SIMILAR", "RS_COST_BATCH",
 }

@@ -37,13 +37,27 @@ ensureHook();
 
 // Đăng ký hook CHUNG (page-hook.js) cho Taobao/Tmall/Temu — chộp response search mà chính trang tự gọi
 // (ta không tự ký được mtop x5sec / anti-content của họ). Cài document_start world MAIN. Gọi lại an toàn.
+const PAGE_HOOK_MATCHES = [
+  'https://*.taobao.com/*', 'https://*.tmall.com/*', 'https://*.temu.com/*', 'https://*.facebook.com/*',
+  'https://trends.google.com/*', 'https://trends.google.com.vn/*',
+];
 async function ensurePageHook() {
   try {
     const existing = await chrome.scripting.getRegisteredContentScripts({ ids: ['rs-page-hook'] });
-    if (existing.length) return;
+    // ĐÃ ĐĂNG KÝ THÌ VẪN PHẢI SO DANH SÁCH HOST, không được `return` sớm.
+    //
+    // Bản đăng ký cũ sống trong hồ sơ Chrome, không sống theo file: máy-thợ đang chạy đã có
+    // `rs-page-hook` với bốn host cũ, nên thêm host mới vào mảng này mà thoát sớm thì hook
+    // KHÔNG BAO GIỜ chạy trên host mới — và triệu chứng là "job chạy nhưng không chộp được gì",
+    // đúng kiểu lỗi tốn cả buổi để tìm.
+    if (existing.length) {
+      const have = new Set(existing[0].matches || []);
+      if (PAGE_HOOK_MATCHES.every((m) => have.has(m))) return;
+      await chrome.scripting.unregisterContentScripts({ ids: ['rs-page-hook'] });
+    }
     await chrome.scripting.registerContentScripts([{
       id: 'rs-page-hook',
-      matches: ['https://*.taobao.com/*', 'https://*.tmall.com/*', 'https://*.temu.com/*', 'https://*.facebook.com/*'],
+      matches: PAGE_HOOK_MATCHES,
       js: ['page-hook.js'],
       runAt: 'document_start',
       world: 'MAIN',
@@ -156,6 +170,70 @@ async function fbAdLibrary(payload) {
       }
     }
     return { pages };
+  } finally {
+    try { await chrome.tabs.remove(tab.id); } catch (e) {}
+  }
+}
+
+// GOOGLE TRENDS qua máy-thợ. Cùng một nguyên nhân với Ad Library, nhưng triệu chứng tinh vi hơn
+// nên khó thấy hơn nhiều: Chromium do Playwright dựng KHÔNG bị chặn — nó vẫn trả HTTP 200 kèm dữ
+// liệu thật — mà bị phục vụ một bản NGHÈO HƠN. Đo 2026-09-05 trên "sạc điện thoại", cùng máy cùng
+// tài khoản: playwright ra 23 dòng, không có bảng "đang tăng", và trong JSON KHÔNG có trường phần
+// trăm thay đổi; Chrome thật của máy-thợ ra 50 dòng kèm đủ cột "Thay đổi".
+//
+// Đây là kiểu hỏng tệ nhất trong họ soft-block: không có lỗi nào để bắt, bảng vẫn hiện ra, số vẫn
+// đúng — chỉ thiếu hơn nửa dữ liệu. Ba lượt fetch liên tiếp còn trả ba danh sách khác nhau.
+//
+// KÝ SINH y như FB: điều hướng tab tới /trends/explore của từ khoá, để CHÍNH TRANG xin widget bằng
+// token của nó, page-hook chộp response, trả text thô về backend parse.
+const TRENDS_WIDGET = '/trends/api/widgetdata/relatedsearches';
+
+async function trendsRelated(payload) {
+  await ensurePageHook();
+  const url = String(payload.url || '');
+  if (!url.startsWith('https://trends.google.')) return { responses: [], error: 'url không phải Google Trends' };
+
+  const tab = await chrome.tabs.create({ url, active: false });
+  const responses = [];
+  const seen = new Set();
+  try {
+    await waitForComplete(tab.id, 25000);
+    const deadline = Date.now() + 40000;
+    while (Date.now() < deadline && !responses.length) {
+      await sleep(1200);
+      let cap = [];
+      try {
+        const out = await chrome.scripting.executeScript({
+          target: { tabId: tab.id }, world: 'MAIN',
+          // CÙNG một endpoint phục vụ hai widget, phân biệt bằng `keywordType` nằm trong tham số
+          // `req` đã mã hoá phần trăm: QUERY là "Truy vấn liên quan" (thứ ta cần), ENTITY là "Chủ
+          // đề liên quan". Nhận nhầm ENTITY thì backend đọc ra một bảng rỗng và tưởng bị chặn.
+          func: (needle) => (window.__rsCap || [])
+            .filter((c) => c.url.indexOf(needle) !== -1 && decodeURIComponent(c.url).indexOf('"keywordType":"QUERY"') !== -1)
+            .map((c) => ({ ts: c.ts, text: c.text })),
+          args: [TRENDS_WIDGET],
+        });
+        cap = (out && out[0] && out[0].result) || [];
+      } catch (e) { /* trang chưa sẵn sàng */ }
+      for (const c of cap) {
+        const key = c.ts + ':' + (c.text ? c.text.length : 0);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        responses.push(c.text);
+      }
+      // Bảng truy vấn liên quan nằm CUỐI trang và chỉ được xin khi cuộn tới. Tab nền không paint
+      // nên cuộn là best-effort — nhưng Trends dùng cuộn thường chứ không dùng IntersectionObserver
+      // như FB, nên ở đây nó ăn.
+      if (!responses.length) {
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id }, world: 'MAIN',
+            func: () => window.scrollTo(0, document.body ? document.body.scrollHeight : 20000),
+          });
+        } catch (e) {}
+      }
+    }
+    return { responses };
   } finally {
     try { await chrome.tabs.remove(tab.id); } catch (e) {}
   }
@@ -2168,6 +2246,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   if (msg.type === 'RS_COST_BATCH') {
     costBatch(msg.seedUrl, msg.products || []).then((results) => sendResponse({ ok: true, results }));
+    return true;
+  }
+
+  // Slot tab RIÊNG (không `withCooldown` chung với sàn nào): Trends chạy trên google.com, và nhịp
+  // gọi của nó do `TRENDS_MIN_INTERVAL_MS` bên backend giữ chứ không phải cooldown ở đây.
+  if (msg.type === 'RS_TRENDS_RELATED') {
+    trendsRelated(msg).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, responses: [], error: String(e) }));
     return true;
   }
 

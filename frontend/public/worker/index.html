@@ -57,6 +57,7 @@ const JOB_TIMEOUT_MS = {
   RS_LENS_IMAGE: 88000,     // mở google.com, thả ảnh, chờ trang kết quả, cuộn cho ảnh kịp tải
   RS_TAOBAO_IMAGE: 88000,   // mở taobao.com, bấm nút máy ảnh, thả ảnh, chờ tab kết quả
   RS_FB_ADLIB: 80000,       // mở tab Ad Library, chờ trang bắn query + cuộn lấy vài trang (deadline 45s + mở tab)
+  RS_TRENDS_RELATED: 80000, // mở tab /trends/explore, chờ trang tự xin widget truy vấn liên quan (deadline 40s + mở tab)
 };
 
 function rsCall(msg, timeoutMs = 40000) {
