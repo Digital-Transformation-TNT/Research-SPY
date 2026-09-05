@@ -250,23 +250,25 @@ async function trendsCollect(tabId, needle, extra, budgetMs, stopOnFirst) {
             const h = document.body ? document.body.scrollHeight : 20000;
             window.scrollTo(0, Math.round(h * frac));
           } catch (e) {}
-          // Mọi khung có thể cuộn — không lọc theo tên thẻ hay class: giao diện Google đổi tên
-          // liên tục, còn "cao hơn phần nhìn thấy" thì luôn đúng.
+          // Khung cuộn bên trong — TỐI ĐA BA CÁI, và đây là giới hạn phải có chứ không phải cho
+          // gọn. Bản trước quét `querySelectorAll('*')` rồi gán `scrollTop` cho MỌI phần tử cao
+          // hơn phần nhìn thấy. Trên trang Trends, số đó lên tới hàng trăm, mỗi lần gán lại bắn
+          // một sự kiện scroll và trang chạy xử lý cho từng cái — đủ để khoá luôn renderer.
+          //
+          // Hậu quả đo được ngày 2026-09-05: `chrome.scripting.executeScript` KHÔNG BAO GIỜ trả
+          // về, nên handler treo và máy-thợ im lặng suốt hai lượt — log backend không có lấy một
+          // `POST /api/relay/result` nào. Bản trước đó, không có đoạn quét này, POST bình thường.
+          //
+          // Ba khung là đủ: trang chỉ có một khung cuộn thật, hai cái còn lại là dự phòng.
           try {
-            document.querySelectorAll('*').forEach((el) => {
-              if (el.scrollHeight > el.clientHeight + 200) {
+            const nodes = document.querySelectorAll('div,main,section');
+            let found = 0;
+            for (let i = 0; i < nodes.length && found < 3; i++) {
+              const el = nodes[i];
+              if (el.scrollHeight > el.clientHeight + 400) {
                 el.scrollTop = Math.round((el.scrollHeight - el.clientHeight) * frac);
+                found++;
               }
-            });
-          } catch (e) {}
-          try {
-            const x = Math.round(window.innerWidth / 2);
-            const y = Math.round(window.innerHeight / 2);
-            const target = document.elementFromPoint(x, y) || document.body;
-            if (target) {
-              target.dispatchEvent(
-                new WheelEvent('wheel', { deltaY: 900, bubbles: true, cancelable: true, clientX: x, clientY: y })
-              );
             }
           } catch (e) {}
         },
