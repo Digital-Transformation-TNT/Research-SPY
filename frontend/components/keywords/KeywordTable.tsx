@@ -14,7 +14,8 @@ export type SourceInfo = {
 }
 
 /**
- * Lượng tìm của một cụm — thanh 0–100 cộng phần trăm thay đổi.
+ * Lượng tìm của một cụm — thanh 0–100. Phần trăm thay đổi nằm ở cột kế bên (`ChangeCell`),
+ * đúng cách Google Trends bày hai cột.
  *
  * Đây là bản sao đúng hai con số mà bảng "Cụm từ tìm kiếm hàng đầu" của chính Google Trends
  * hiện ra, và cả hai đến từ cùng một hàng trong RPC đó (`RelatedQuery.value` và
@@ -37,7 +38,7 @@ export type SourceInfo = {
  * miễn phí nào cấp được.
  */
 function DemandCell({ item }: { item: KeywordCandidate }) {
-  const { demand, changePercent } = item.score
+  const { demand } = item.score
 
   if (demand === undefined || demand === null) {
     // Cụm chỉ có mặt ở bảng "đang tăng" thì không có thứ hạng lượng tìm, nhưng "đang tăng"
@@ -65,8 +66,6 @@ function DemandCell({ item }: { item: KeywordCandidate }) {
     )
   }
 
-  const dir = changePercent == null ? 'flat' : changePercent > 0 ? 'up' : changePercent < 0 ? 'down' : 'flat'
-
   return (
     <div className="demand">
       <span
@@ -77,13 +76,44 @@ function DemandCell({ item }: { item: KeywordCandidate }) {
       >
         <i style={{ width: `${demand}%` }} />
       </span>
-      {changePercent != null && (
-        <span className={`delta ${dir}`} title={DELTA_HINT[dir]}>
-          {dir === 'up' ? '↑' : dir === 'down' ? '↓' : '→'} {changePercent > 0 ? '+' : ''}
-          {changePercent}%
-        </span>
-      )}
     </div>
+  )
+}
+
+/**
+ * Cột "Thay đổi" — dựng lại đúng cột cùng tên của Google Trends: mũi tên, rồi phần trăm.
+ *
+ * CỘT RIÊNG, không nhét cạnh thanh như trước. Google tách hai cột vì chúng là hai đại lượng
+ * khác nhau — một cái là mức, một cái là chiều — và tách ra thì các phần trăm nằm thẳng hàng
+ * nên đọc lướt cả bảng được. Nhét chung một ô thì mỗi dòng phần trăm bắt đầu ở một chỗ.
+ *
+ * `null` NGHĨA LÀ CHƯA BIẾT, và ô để trống chứ không hiện `0%`. Bản trước mặc định 0.0 nên mọi
+ * dòng hiện `→ 0%` — một phán quyết mà Google chưa hề đưa ra. Xem `RelatedQuery.change_percent`.
+ * Ô trống xuất hiện khi bảng đến từ đường lui Playwright: response đường đó không chở cột này.
+ */
+function ChangeCell({ item }: { item: KeywordCandidate }) {
+  const { demand, changePercent } = item.score
+
+  if (demand === undefined || demand === null || changePercent == null) {
+    return (
+      <span
+        className="muted small"
+        title="Google Trends chưa công bố mức thay đổi cho cụm này ở lượt lấy vừa rồi."
+      >
+        —
+      </span>
+    )
+  }
+
+  const dir = changePercent > 0 ? 'up' : changePercent < 0 ? 'down' : 'flat'
+  return (
+    <span className={`delta ${dir}`} title={DELTA_HINT[dir]}>
+      <i className="delta-arrow">{dir === 'up' ? '↑' : dir === 'down' ? '↓' : '→'}</i>
+      <b>
+        {changePercent > 0 ? '+' : ''}
+        {changePercent}%
+      </b>
+    </span>
   )
 }
 
@@ -230,6 +260,11 @@ function Row({
           <DemandCell item={item} />
         </td>
       )}
+      {showDemand && (
+        <td className="change">
+          <ChangeCell item={item} />
+        </td>
+      )}
       <td>
         <PresenceCell item={item} sources={sources} sourceTotals={sourceTotals} />
       </td>
@@ -298,8 +333,16 @@ export default function KeywordTable({
           {hasPrimary && <th>#</th>}
           <th>Từ khoá</th>
           {showDemand && (
-            <th title="Thang 0–100 so với cụm được tìm nhiều nhất trong nhóm truy vấn liên quan — KHÔNG phải số lượt tìm tuyệt đối. Kèm phần trăm thay đổi so với kỳ trước. Cả hai đúng như Google Trends công bố.">
+            <th title="Thang 0–100 so với cụm được tìm nhiều nhất trong nhóm truy vấn liên quan — KHÔNG phải số lượt tìm tuyệt đối, đúng như Google Trends công bố.">
               Lượng tìm — {timeLabel}
+            </th>
+          )}
+          {showDemand && (
+            <th
+              className="change"
+              title="Phần trăm thay đổi so với kỳ trước, đúng con số Google Trends hiện ở cột “Thay đổi”. Gạch ngang nghĩa là lượt lấy vừa rồi không kèm số này — KHÔNG phải 0%."
+            >
+              Thay đổi
             </th>
           )}
           {/* Tên cột đổi theo việc có nguồn chấm chính hay không, vì nội dung cột đổi thật:

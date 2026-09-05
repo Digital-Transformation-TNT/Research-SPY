@@ -48,9 +48,13 @@
    bẫy chỉ lộ ra khi chuỗi đó đổi, nên `.actions a` bên dưới thêm `white-space: nowrap` —
    lần sau nhãn có dài thêm thì cột bị đẩy rộng ra, không phải chữ bị bẻ đôi. */
 .kwtable td:nth-child(2) { width: 34%; }
-.kwtable td:nth-child(3) { width: 22%; }
-.kwtable td:nth-child(4) { width: 28%; }
-.kwtable td:nth-child(5) { width: 132px; }
+/* Lượng tìm và Thay đổi là HAI CỘT, y như trang Google Trends bày chúng. Cả hai ghim cứng
+   theo px chứ không theo phần trăm: nội dung của chúng có bề rộng cố định (thanh 118px, và
+   một chuỗi kiểu "+250%"), nên cho chúng co giãn theo bảng chỉ đẻ ra khoảng trắng ở giữa. */
+.kwtable td:nth-child(3) { width: 176px; }
+.kwtable td:nth-child(4) { width: 104px; }
+.kwtable td:nth-child(5) { width: 28%; }
+.kwtable td:nth-child(6) { width: 132px; }
 
 /* Chỉ Shopee/TikTok: cột lượng tìm không tồn tại, vì hai sàn không đo được nhu cầu.
    Xem `KeywordTable`.
@@ -310,16 +314,42 @@
   min-width: 2px;
 }
 
+/* Cột "Thay đổi": mũi tên bên trái, phần trăm canh phải — đúng bố cục của Google Trends.
+   `space-between` chứ không phải một dấu cách: các phần trăm phải thẳng hàng theo mép phải
+   thì mới liếc dọc cả bảng được, mà "+3%" và "+250%" dài khác nhau. */
+.kwtable td.change,
+.kwtable th.change {
+  text-align: right;
+}
+
 .delta {
-  font-size: 11.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 68px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   cursor: help;
 }
 
-.delta.up { color: var(--good); }
-.delta.down { color: var(--bad); }
-.delta.flat { color: var(--text-mute); }
+.delta b { font-weight: 500; }
+
+/* Mũi tên KHÔNG tô màu xanh/đỏ, giống hệt Google. Không phải chuyện thẩm mỹ: cột này đứng
+   cạnh cột lượng tìm, và tô đỏ mọi dòng giảm sẽ đọc thành "từ khoá xấu" — trong khi phần lớn
+   mức giảm ở đây là mùa vụ, và một cụm giảm 20% vẫn có thể là cụm nhiều lượt tìm nhất bảng.
+   Chiều đã nằm ở chính mũi tên rồi; thêm màu là thêm một phán quyết mà số liệu không đưa ra. */
+.delta .delta-arrow {
+  font-style: normal;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text);
+}
+
+.delta.up,
+.delta.down,
+.delta.flat { color: var(--text); }
 
 /* Cụm chỉ có ở bảng "đang tăng": phần trăm tăng trưởng, KHÔNG cùng thang với thanh ở trên,
    nên nó cố ý không có thanh nào để không mời gọi so sánh trực tiếp. */
