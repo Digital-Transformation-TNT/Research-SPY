@@ -386,16 +386,40 @@ class Facebook(AdPlatform):
 
         collected: list[Ad] = []
         seen: set[str] = set()
-        for text in result.get("pages") or []:
-            if not isinstance(text, str):
-                continue
+        pages = [text for text in (result.get("pages") or []) if isinstance(text, str)]
+        raw_count = 0
+        for text in pages:
             raw, _cursor = _extract_ads(text)
+            raw_count += len(raw)
             for raw_ad in raw:
                 ad = _normalise(raw_ad, request.country)
                 if ad is None or ad.id in seen:
                     continue
                 seen.add(ad.id)
                 collected.append(ad)
+
+        # RỖNG THÌ PHẢI NÓI RỖNG Ở ĐÂU. Ba nguyên nhân dưới đây trông giống hệt nhau từ ngoài
+        # ("Facebook 0") mà phải đi sửa ba chỗ khác nhau:
+        #
+        #   0 trang            → tab máy-thợ không chộp được response GraphQL nào (FB chặn máy
+        #                        đó, hoặc trang chưa kịp bắn query trước khi hết 45s)
+        #   có trang, 0 raw    → chộp được nhưng trong đó không có `ad_archive_id` — FB trả lưới
+        #                        rỗng cho cụm này, hoặc hình dạng response đã đổi
+        #   có raw, 0 ad       → `_normalise` vứt hết (thiếu trường bắt buộc)
+        #
+        # Con số kèm theo là thứ phân biệt được chúng, và nó rẻ: chỉ là độ dài của thứ đã có.
+        if not collected:
+            chars = sum(len(t) for t in pages)
+            note = (
+                f"máy-thợ trả {len(pages)} trang ({chars:,} ký tự), đọc ra {raw_count} quảng cáo thô "
+                f"→ 0 dùng được cho “{request.keyword}” {request.country}"
+            )
+            # `debug` chỉ có khi thợ không chộp được trang nào; nó nói tab đó đã ở tình trạng gì
+            # (hook chạy chưa, trang có gọi /api/graphql không, có đúng trang Ad Library không).
+            dbg = result.get("debug")
+            if isinstance(dbg, dict):
+                note += " · tab: " + ", ".join(f"{k}={v}" for k, v in dbg.items())
+            return PlatformSearchOutcome(ads=[], notice=note)
 
         limit = request.limit
         if request.relax_keyword:

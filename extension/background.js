@@ -169,7 +169,35 @@ async function fbAdLibrary(payload) {
         } catch (e) {}
       }
     }
-    return { pages };
+    // KHÔNG CHỘP ĐƯỢC GÌ THÌ PHẢI NÓI ĐƯỢC VÌ SAO. Đo 2026-09-06 từ máy-thợ: job chạy hết 45 giây
+    // rồi trả về 0 trang cho MỌI từ khoá, kể cả "kem chống nắng" — trong khi cùng truy vấn đó mở
+    // bằng Chrome thường ra ~7.500 kết quả và trang có gọi `/api/graphql` năm lần. Tức lỗi nằm ở
+    // môi trường của tab này, và bốn số dưới đây tách được bốn nguyên nhân:
+    //
+    //   hooked=false   page-hook.js không chạy trên tab → xem `ensurePageHook` / bấm Reload
+    //   gql=0          trang KHÔNG hề gọi /api/graphql → tab nền không paint nên React của FB
+    //                  chưa bao giờ đi xin dữ liệu (đúng thứ đã xảy ra với Google Trends)
+    //   gql>0, cap=0   có gọi mà hook không bắt được → FB đổi cách gọi, `NEEDLES` cần sửa
+    //   bodyLen nhỏ    không phải trang Ad Library — chặn, đăng nhập, hoặc checkpoint
+    let debug = null;
+    if (!pages.length) {
+      try {
+        const out = await chrome.scripting.executeScript({
+          target: { tabId: tab.id }, world: 'MAIN',
+          func: () => ({
+            hooked: !!window.__rsCapHooked,
+            cap: (window.__rsCap || []).length,
+            gql: performance.getEntriesByType('resource').filter((e) => e.name.indexOf('/api/graphql') !== -1).length,
+            vis: document.visibilityState,
+            title: document.title,
+            bodyLen: document.body ? document.body.innerText.length : 0,
+            url: location.href.slice(0, 160),
+          }),
+        });
+        debug = (out && out[0] && out[0].result) || null;
+      } catch (e) { debug = { error: String(e) }; }
+    }
+    return debug ? { pages, debug } : { pages };
   } finally {
     try { await chrome.tabs.remove(tab.id); } catch (e) {}
   }
