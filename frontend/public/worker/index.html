@@ -49,8 +49,14 @@ let _seq = 0;
  * nạp loại job này", tức là một câu chẩn đoán SAI HẲN so với nguyên nhân thật.
  *
  * Mỗi con số dưới đây phải LỚN HƠN ngân sách của chính handler bên `background.js`, và NHỎ
- * HƠN hạn của backend (`BATCH_TIMEOUT_S` 90s / `IMAGE_TIMEOUT_S` 100s) — thứ tự ấy giữ cho
- * bên bỏ cuộc trước luôn là bên biết vì sao mình bỏ cuộc.
+ * HƠN hạn của backend cho cùng loại job (`SUBMIT_TIMEOUTS` ở `lib/core/worker_relay.py`) —
+ * thứ tự ấy giữ cho bên bỏ cuộc trước luôn là bên biết vì sao mình bỏ cuộc.
+ *
+ * THIẾU MỘT DÒNG Ở BẢNG NÀY LÀ HỎNG IM LẶNG, và đã hỏng đúng như vậy với hai nguồn VIDEO:
+ * `RS_TIKTOK` và `RS_DOUYIN` không có tên ở đây nên rơi về 40 giây mặc định, trong khi
+ * `searchTiktok`/`searchDouyin` bên `background.js` đều có ngân sách 120 giây. Trang bỏ cuộc ở
+ * giây 40, POST `result: null` về, và cửa sổ video hiện "Không có video" — không phân biệt
+ * được với việc thật sự không có video nào. Thêm nguồn dài mới thì thêm dòng ở đây TRƯỚC.
  */
 const JOB_TIMEOUT_MS = {
   RS_TEMU_SUGGEST: 80000,   // gõ tối đa 12 cụm vào ô tìm kiếm Temu, ngân sách extension 75s
@@ -58,6 +64,8 @@ const JOB_TIMEOUT_MS = {
   RS_TAOBAO_IMAGE: 88000,   // mở taobao.com, bấm nút máy ảnh, thả ảnh, chờ tab kết quả
   RS_FB_ADLIB: 80000,       // mở tab Ad Library, chờ trang bắn query + cuộn lấy vài trang (deadline 45s + mở tab)
   RS_TRENDS_RELATED: 110000, // đi tối đa HAI trang: Khám phá mới (30s cuộn) rồi mới rơi về trang cũ (20s), cộng hai lần tải
+  RS_TIKTOK: 140000,        // totalDeadline 120s cho cả loạt cụm, cộng mở tab + focus + gom kết quả
+  RS_DOUYIN: 140000,        // như TikTok, và Douyin còn hay chen màn xác minh 滑块 giữa chừng
 };
 
 function rsCall(msg, timeoutMs = 40000) {
@@ -134,14 +142,27 @@ async function loop() {
     log(`Nhận job ${job.id} · ${job.type} · ${JSON.stringify(job.payload).slice(0,80)}`);
     let result = null;
     try {
-      result = await rsCall({ type: job.type, ...job.payload }, JOB_TIMEOUT_MS[job.type] || 40000);
-      if (result && result.__timeout) { log('  extension không trả lời (timeout).', 'err'); result = null; }
-    } catch (e) { log('  lỗi chạy job: ' + e, 'err'); result = null; }
+      const budget = JOB_TIMEOUT_MS[job.type] || 40000;
+      result = await rsCall({ type: job.type, ...job.payload }, budget);
+      // KHÔNG trả `null` ở đây. `null` đã có sẵn một nghĩa mà nửa tầng `lib` đang dựa vào:
+      // "extension chưa nạp loại job này, vào chrome://extensions bấm Reload". Trang này hết
+      // giờ chờ extension là chuyện khác hẳn, và trả nhầm `null` là đẩy người đi sửa sai chỗ.
+      // Cờ `__workerError` giữ hai chuyện tách nhau; `blocked`+`error` để cửa sổ video hiện
+      // đúng lý do thay vì "không có video".
+      if (result && result.__timeout) {
+        const why = `Máy-thợ chạy ${job.type} quá ${Math.round(budget / 1000)}s mà extension chưa trả lời.`;
+        log('  extension không trả lời (timeout).', 'err');
+        result = { __workerError: true, ok: false, blocked: true, error: why, items: [] };
+      }
+    } catch (e) {
+      log('  lỗi chạy job: ' + e, 'err');
+      result = { __workerError: true, ok: false, blocked: true, error: `Máy-thợ lỗi khi chạy ${job.type}: ${e}`, items: [] };
+    }
 
     try {
       await fetch('/api/relay/result', { method: 'POST', headers: wkHeaders({ 'content-type': 'application/json' }), body: JSON.stringify({ id: job.id, result }) });
       done++; $('done').textContent = done; $('last').textContent = `${job.type} · ${new Date().toLocaleTimeString()}`;
-      log(`  ✓ trả kết quả job ${job.id}`, result ? 'ok' : 'warn');
+      log(`  ✓ trả kết quả job ${job.id}`, result && !result.__workerError ? 'ok' : 'warn');
     } catch (e) { log('  lỗi trả kết quả: ' + e, 'err'); }
   }
 }

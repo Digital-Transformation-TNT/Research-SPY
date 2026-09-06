@@ -71,6 +71,57 @@ IMAGE_TIMEOUT_S = 100.0
 #: Không rút ngắn phần cuộn để vừa hạn cũ: chính khoảng cuộn ấy là thứ khiến trang chịu xin bảng.
 TRENDS_TIMEOUT_S = 120.0
 
+#: Hạn riêng cho hai nguồn VIDEO (TikTok, Douyin).
+#:
+#: `searchTiktok` và `searchDouyin` bên `background.js` đều đặt `totalDeadline = 120s` cho cả
+#: loạt cụm, cộng thời gian mở tab, focus và gom kết quả. Bốn mươi lăm giây của
+#: `SUBMIT_TIMEOUT_S` hụt gần ba lần — và hụt IM LẶNG: backend trả 504, `relaySend` nuốt lỗi
+#: thành `null`, trang đọc `null` thành "không có video". Đúng kiểu hỏng mà ghi chú
+#: `RS_TIMEOUT_MS` ở `research.js` đã cảnh báo, chỉ khác là lần này nút thắt nằm ở relay.
+VIDEO_TIMEOUT_S = 155.0
+
+#: Hạn của `/submit` THEO TỪNG LOẠI JOB.
+#:
+#: Mọi nơi gọi `run_on_worker` từ trong `lib` đều tự chọn hạn hợp với việc mình sai (ảnh 100s,
+#: Temu/FB 90s, Trends 120s). Riêng `/submit` — đường mà TRANG đi, tức mọi máy client không có
+#: extension — trước đây dùng một con số chung 45s cho tất cả, nên ba loại job dài nhất không
+#: bao giờ về kịp. Bảng này để `/submit` chọn đúng như các nơi kia.
+#:
+#: Mỗi số phải LỚN HƠN hạn của trang `/worker` (`JOB_TIMEOUT_MS`) cho cùng loại job, và NHỎ HƠN
+#: `RS_TIMEOUT_MS` (240s) của `research.js`. Thứ tự ấy giữ cho bên bỏ cuộc trước luôn là bên
+#: biết vì sao mình bỏ cuộc.
+SUBMIT_TIMEOUTS: dict[str, float] = {
+    "RS_TIKTOK": VIDEO_TIMEOUT_S,
+    "RS_DOUYIN": VIDEO_TIMEOUT_S,
+    "RS_TRENDS_RELATED": TRENDS_TIMEOUT_S,
+    "RS_LENS_IMAGE": IMAGE_TIMEOUT_S,
+    "RS_TAOBAO_IMAGE": IMAGE_TIMEOUT_S,
+    "RS_TEMU_SUGGEST": BATCH_TIMEOUT_S,
+    "RS_FB_ADLIB": BATCH_TIMEOUT_S,
+}
+
+
+def submit_timeout_for(job_type: str) -> float:
+    """Hạn chờ hợp với loại job. Không có tên trong bảng = lệnh crawl sàn ngắn (≤18s)."""
+    return SUBMIT_TIMEOUTS.get(job_type, SUBMIT_TIMEOUT_S)
+
+
+#: Khoá đánh dấu "máy-thợ có nhận job nhưng không chạy xong", do trang `/worker` gắn vào kết quả.
+#:
+#: PHẢI phân biệt được với `None`. `None` có đúng một nguyên nhân hay gặp — extension chưa nạp
+#: loại job này (quên bấm Reload) — và nhiều nơi trong `lib` đang dựa vào đúng nghĩa ấy để in ra
+#: câu chẩn đoán. Trang `/worker` hết giờ chờ extension là chuyện KHÁC HẲN, nên nó gắn cờ này
+#: thay vì POST `null` và làm hỏng câu chẩn đoán kia.
+WORKER_ERROR_KEY = "__workerError"
+
+
+def worker_error(result: Any) -> str | None:
+    """Lý do máy-thợ không chạy xong job, hoặc `None` nếu kết quả bình thường."""
+    if isinstance(result, dict) and result.get(WORKER_ERROR_KEY):
+        return str(result.get("error") or "máy-thợ không nói rõ lý do")
+    return None
+
+
 #: Chỉ nhận các job crawl qua extension. Là ranh giới an ninh, không phải quy ước đặt tên:
 #: thiếu nó, ai gọi được relay cũng sai khiến được trình duyệt-thợ gọi mạng tới nơi tuỳ ý.
 ALLOWED_TYPES = {

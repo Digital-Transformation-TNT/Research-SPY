@@ -314,22 +314,15 @@ function trendsLooksLikeTable(text, seed) {
  */
 function trendsRelatedGuarded(payload) {
   const partial = { responses: [], frames: [] };
-  // GIỮ NHỊP CHO SERVICE WORKER. MV3 kết liễu service worker sau khoảng 30 giây "rảnh", và job
-  // này có đoạn chờ trang tải dài 20 giây không gọi API nào — đủ để rơi vào khe đó. Khi worker bị
-  // giết giữa chừng thì `sendResponse` biến mất cùng nó: trang máy-thợ không nhận được trả lời,
-  // và backend chỉ thấy "hết giờ" mà không có gì để lần.
-  //
-  // Gọi một API `chrome.*` rẻ tiền mỗi 20 giây là cách chính thống để đặt lại đồng hồ ấy. Phải
-  // dọn trong `finally`, nếu không mỗi job để lại một nhịp chạy mãi.
-  const beat = setInterval(() => { try { chrome.runtime.getPlatformInfo(() => {}); } catch (e) {} }, 20000);
-  const done = () => clearInterval(beat);
+  // Nhịp giữ service worker sống nằm ở `withHeartbeat` — cùng một helper với TikTok/Douyin/FB,
+  // vì cả bốn job đều dài và đều có quãng ngồi chờ trang tải mà MV3 tính là "rảnh".
   const guard = new Promise((resolve) =>
     setTimeout(() => resolve({ ...partial, error: 'hết ngân sách trong extension' }), 95000)
   );
-  return Promise.race([
+  return withHeartbeat(Promise.race([
     trendsRelated(payload, partial).catch((e) => ({ ...partial, error: String(e) })),
     guard,
-  ]).finally(done);
+  ]));
 }
 
 async function trendsRelated(payload, partial) {
@@ -1342,6 +1335,26 @@ function withTimeout(p, ms, fallback) {
     Promise.resolve(p).catch(() => fallback),
     new Promise((resolve) => setTimeout(() => resolve(fallback), ms)),
   ]);
+}
+
+/**
+ * GIỮ NHỊP CHO SERVICE WORKER trong suốt một job dài.
+ *
+ * MV3 kết liễu service worker sau khoảng 30 giây "rảnh", và "rảnh" tính theo lời gọi API
+ * `chrome.*`, không theo việc mã của ta có đang chạy hay không. Mọi job dài ở đây đều có những
+ * quãng chỉ ngồi chờ trang tải hoặc chờ cuộn — TikTok và Douyin đặt ngân sách 120 giây, thừa sức
+ * rơi vào khe đó.
+ *
+ * Bị giết giữa chừng là kiểu hỏng TỆ NHẤT trong cả đường đi này: `sendResponse` biến mất cùng
+ * service worker, nên trang `/worker` không nhận được trả lời, backend chỉ thấy "hết giờ", và
+ * cửa sổ video hiện "Không có video" — không phân biệt được với việc thật sự không có video nào.
+ *
+ * Gọi một API `chrome.*` rẻ tiền mỗi 20 giây là cách chính thống để đặt lại đồng hồ ấy. `finally`
+ * là bắt buộc: bỏ sót thì mỗi job để lại một nhịp chạy mãi và service worker không bao giờ ngủ.
+ */
+function withHeartbeat(p) {
+  const beat = setInterval(() => { try { chrome.runtime.getPlatformInfo(() => {}); } catch (e) {} }, 20000);
+  return Promise.resolve(p).finally(() => clearInterval(beat));
 }
 
 // Bơm một hàm vào tab, có hạn giờ. Trả `null` nếu quá hạn hoặc lỗi.
@@ -2412,7 +2425,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 
   if (msg.type === 'RS_FB_ADLIB') {
-    fbAdLibrary(msg).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, pages: [], error: String(e) }));
+    withHeartbeat(fbAdLibrary(msg)).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, pages: [], error: String(e) }));
     return true;
   }
 
@@ -2448,8 +2461,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
+  // `withHeartbeat`: ngân sách 120 giây, và có quãng chỉ ngồi chờ trang tải — không giữ nhịp thì
+  // MV3 giết service worker giữa job và `sendResponse` mất theo.
   if (msg.type === 'RS_TIKTOK') {
-    withCooldown('tiktok', searchTiktok(msg.keyword, msg.count, msg.keywords, msg.region, msg.mode, msg.anchor).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: false, error: String(e) })));
+    withCooldown('tiktok', withHeartbeat(searchTiktok(msg.keyword, msg.count, msg.keywords, msg.region, msg.mode, msg.anchor)).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: false, error: String(e) })));
     return true;
   }
 
@@ -2459,7 +2474,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 
   if (msg.type === 'RS_DOUYIN') {
-    withCooldown('douyin', searchDouyin(msg.keyword, msg.count, msg.keywords, msg.anchor).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: false, error: String(e) })));
+    withCooldown('douyin', withHeartbeat(searchDouyin(msg.keyword, msg.count, msg.keywords, msg.anchor)).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: false, error: String(e) })));
     return true;
   }
 

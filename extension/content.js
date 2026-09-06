@@ -37,6 +37,18 @@
     }
   }
 
+  /** Lỗi cầu nối, kèm cách sửa khi nhận ra được kiểu lỗi. `__workerError` để backend phân biệt
+   *  "thợ nhận job nhưng không chạy được" với `null` (không có ai trả lời gì cả). */
+  function callFailure(type, error) {
+    let why = `Extension không chạy được ${type}: ${error}`;
+    if (/establish connection|Receiving end does not exist/i.test(error)) {
+      why += ' — nhiều khả năng extension chưa nạp loại job này. Vào chrome://extensions bấm Reload rồi F5 tab Máy thợ.';
+    } else if (/message port closed/i.test(error)) {
+      why += ' — service worker bị Chrome kết liễu giữa job (MV3). Bấm lại; nếu lặp lại thì job này cần giữ nhịp bằng `withHeartbeat`.';
+    }
+    return { __workerError: true, ok: false, blocked: true, error: why, items: [] };
+  }
+
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
     const data = event.data;
@@ -69,10 +81,25 @@
         return;
       }
       forward(msg, (resp, error) => {
-        // Trả `null` khi hỏng, KHÔNG phải một object lỗi: mọi chỗ gọi ở trang Research đều đã
-        // kiểm `!res || !res.ok` sẵn, nên `null` rơi đúng vào nhánh báo lỗi tác giả đã viết.
+        // Hỏng thì trả object CÓ LÝ DO, không phải `null`.
+        //
+        // Bản trước trả `null` với lập luận "mọi chỗ gọi đều kiểm `!res || !res.ok` sẵn" — đúng
+        // phần rơi vào nhánh lỗi, nhưng vứt mất `chrome.runtime.lastError`, thứ duy nhất nói
+        // được vì sao. Và hai nguyên nhân hay gặp nhất lại cần hai cách sửa khác hẳn nhau:
+        //
+        //   "Could not establish connection…"  → extension chưa nạp loại job này, phải Reload
+        //   "message port closed before…"      → MV3 giết service worker giữa job (job dài)
+        //
+        // Object dưới đây vẫn có `ok: false` nên mọi nhánh `!res || !res.ok` sẵn có chạy y như
+        // cũ; `blocked` + `error` là đúng hình dạng mà `background.js` dùng cho nguồn bị chặn,
+        // nên cửa sổ video hiện thẳng lý do thay vì "Không có video".
         window.postMessage(
-          { source: FROM_EXT, type: 'CALL_RESULT', id: data.id, result: error ? null : resp ?? null },
+          {
+            source: FROM_EXT,
+            type: 'CALL_RESULT',
+            id: data.id,
+            result: error ? callFailure(msg.type, error) : resp ?? null,
+          },
           '*'
         );
       });

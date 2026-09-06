@@ -27,13 +27,13 @@ from lib.core.config import env_string
 from lib.core.jwt_util import is_configured as jwt_ready
 from lib.core.worker_relay import (
     ALLOWED_TYPES,
-    SUBMIT_TIMEOUT_S,
     WorkerOffline,
     WorkerTimeout,
     deliver_result,
     inflight_count,
     queue_depth,
     run_on_worker,
+    submit_timeout_for,
     take_job,
     worker_online,
 )
@@ -97,8 +97,11 @@ async def submit(request: Request) -> JSONResponse:
         return JSONResponse({"ok": False, "error": f"type không hợp lệ: {job_type!r}"}, status_code=400)
 
     payload = {k: v for k, v in body.items() if k != "type"}
+    # Hạn CHỌN THEO LOẠI JOB, không phải một con số chung — xem `SUBMIT_TIMEOUTS`. Con số chung
+    # 45s trước đây cắt ngang TikTok và Douyin (ngân sách extension 120s) ở mọi máy client không
+    # có extension, và cắt im lặng: 504 → `relaySend` trả `null` → trang hiện "không có video".
     try:
-        result = await run_on_worker(job_type, payload, timeout_s=SUBMIT_TIMEOUT_S)
+        result = await run_on_worker(job_type, payload, timeout_s=submit_timeout_for(job_type))
     except WorkerOffline as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=503)
     except WorkerTimeout as e:

@@ -38,6 +38,7 @@ from lib.core.worker_relay import (
     WorkerOffline,
     WorkerTimeout,
     run_on_worker,
+    worker_error,
 )
 
 from ..provider import KeywordProvider, Suggestion
@@ -96,6 +97,11 @@ class Temu(KeywordProvider):
             raise RuntimeError(f"Temu cần máy-thợ: {e}") from e
         except WorkerTimeout as e:
             raise RuntimeError(f"Temu không kịp trả gợi ý: {e}") from e
+
+        # Thợ NHẬN job nhưng không chạy xong — cờ `__workerError` chở theo lý do thật, nói
+        # lại đúng lý do đó thay vì câu chẩn đoán của nhánh `None` bên dưới.
+        if (why := worker_error(result)) is not None:
+            raise RuntimeError(f"Temu: {why}")
 
         # `None` KHÔNG phải "dữ liệu lạ" — nó có đúng một nguyên nhân hay gặp, và nói thẳng ra
         # tiết kiệm được một vòng đi tìm nhầm chỗ. Chuỗi đường đi: extension không có handler

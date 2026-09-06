@@ -46,6 +46,7 @@ from lib.core.worker_relay import (
     WorkerOffline,
     WorkerTimeout,
     run_on_worker,
+    worker_error,
 )
 
 #: Cạnh dài tối đa của ảnh gửi xuống thợ.
@@ -110,6 +111,12 @@ async def ask_worker(job_type: str, payload: dict[str, Any], source: str) -> dic
         raise RuntimeError(f"{source} cần máy-thợ: {error}") from error
     except WorkerTimeout as error:
         raise RuntimeError(f"{source} không kịp trả kết quả: {error}") from error
+
+    # Thợ NHẬN job nhưng không chạy xong (extension treo, service worker bị MV3 giết, hoặc
+    # trang `/worker` hết giờ chờ). `content.js` và trang `/worker` gắn cờ `__workerError` kèm
+    # lý do thật — nói lại đúng lý do đó, đừng gộp vào câu chẩn đoán của nhánh `None` bên dưới.
+    if (why := worker_error(result)) is not None:
+        raise RuntimeError(f"{source}: {why}")
 
     # Chuỗi đường đi của `None`: extension không có handler cho loại job này →
     # `chrome.runtime.lastError` → `content.js` trả `result: null` → trang /worker POST null về.

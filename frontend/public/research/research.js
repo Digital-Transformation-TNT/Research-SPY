@@ -128,7 +128,7 @@ function rsSend(msg) {
       // Ít nhất phải để lại dấu vết. Trang xử `null` như "không có kết quả", nên nếu không có
       // dòng này thì một lượt hết giờ trông y hệt một lượt trả về rỗng.
       console.warn(`[research] ${msg && msg.type} không có trả lời sau ${RS_TIMEOUT_MS / 1000}s — extension còn sống không?`);
-      resolve(null);
+      resolve(relayFailure(`extension không trả lời ${msg && msg.type} sau ${RS_TIMEOUT_MS / 1000}s.`));
     }, RS_TIMEOUT_MS);
 
     function onMessage(event) {
@@ -157,6 +157,18 @@ function rsSend(msg) {
  */
 let RELAY_MODE = false;
 
+/**
+ * Hình dạng "hỏng có nói lý do".
+ *
+ * Trả `null` là cách chắc chắn làm mất lý do: mọi nơi đọc kết quả đều viết `(x && x.items) || []`,
+ * nên một lượt hết giờ trông y hệt một lượt thật sự không có kết quả — người dùng chỉ thấy
+ * "Không có video". `blocked` + `error` là đúng hình dạng mà `background.js` dùng khi một nguồn
+ * bị chặn, nên các nhánh `if (tk && tk.blocked && tk.error)` sẵn có hiện ra ngay, không phải sửa.
+ */
+function relayFailure(why) {
+  return { ok: false, blocked: true, error: why, items: [] };
+}
+
 async function relaySend(msg) {
   try {
     // rsAuthFetch kèm JWT: khi backend bật auth, /submit đòi đăng nhập (máy-thợ chạy trên IP dân
@@ -166,11 +178,17 @@ async function relaySend(msg) {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(msg),
     });
-    const j = await r.json();
-    return j && j.ok ? j.result : null;
+    let j = null;
+    try { j = await r.json(); } catch (e) { /* backend restart → text, không phải JSON */ }
+    if (j && j.ok) return j.result;
+    // 503 = chưa có máy-thợ, 504 = thợ không kịp trả — HAI việc phải đi sửa khác hẳn nhau, nên
+    // đừng gộp chúng (và gộp cả với "không có kết quả") thành một dấu lặng.
+    const why = (j && j.error) || `máy-thợ trả HTTP ${r.status}`;
+    console.warn(`[research] relay ${msg && msg.type} hỏng:`, why);
+    return relayFailure(why);
   } catch (e) {
     console.warn('[research] relay lỗi:', e);
-    return null;
+    return relayFailure(`không gọi được máy-thợ (${e})`);
   }
 }
 
@@ -1498,6 +1516,10 @@ detectMode().then(refreshLogin);
 // Gọi backend /api/ads/match-image: seed keyword (tên SP) lấy ứng viên Facebook/TikTok, rồi backend
 // so pHash poster video với ẢNH sản phẩm, chỉ trả video TRÙNG ảnh. Cần backend chạy.
 let vidToken = 0; // chống race: mỗi lần mở gắn một token, chỉ render kết quả của token mới nhất.
+// Douyin có TOKEN RIÊNG. Dùng chung `vidToken` thì bấm 🎥 Douyin sẽ bump token và giết luôn lượt
+// TikTok đang chạy — mà TikTok chạy tới hơn hai phút, nên gần như lần nào bấm Douyin giữa chừng
+// cũng mất sạch phần TikTok, đúng ngược với ý "gộp thêm vào grid, không xoá TikTok/FB đã có".
+let vidDyToken = 0;
 let vidState = null; // { p, usedKw, fbAds, marketAds } — giữ FB/Sàn để đổi NƯỚC chỉ tải lại TikTok.
 
 function proxyMedia(url) { return url ? `${BACKEND}/api/media?url=${encodeURIComponent(url)}` : ''; }
@@ -1505,6 +1527,10 @@ function setVidStatus(msg, kind) { $('vidStatusText').textContent = msg; $('vidS
 // Đóng cửa sổ là dọn SẠCH: lưới, hàng lọc, danh sách trong bộ nhớ, và cả lớp phủ phát nếu
 // đang mở. Bỏ sót cái nào thì lần mở sau sẽ thấy thoáng qua kết quả của sản phẩm trước.
 function closeVideoModal() {
+  // Bấm đóng là HUỶ, không chỉ là giấu. Không bump token thì lượt tải TikTok/Douyin đang bay
+  // (tới hơn hai phút) vẫn về đích và ghi trạng thái + lưới của SẢN PHẨM CŨ vào cửa sổ — thấy
+  // rõ nhất ở dòng “Không có video cho …” mang tên một sản phẩm khác cái đang mở.
+  vidToken++;
   closeTkPlayer();
   $('vidModal').classList.remove('on');
   $('vidGrid').innerHTML = '';
@@ -1513,10 +1539,17 @@ function closeVideoModal() {
   vidShown = [];
   vidPick = 'all';
   vidState = null;
+  vidDyToken++;
 }
 
 async function openVideoModal(p) {
   const my = ++vidToken;
+  // Xoá state của SP trước ngay từ đầu: `vidState` là thứ mà nút Douyin và ô chọn nước đọc,
+  // và trong quãng chờ Gemini + Facebook (có thể hàng chục giây) cửa sổ đã mở rồi.
+  vidState = null;
+  vidAll = [];
+  vidShown = [];
+  $('vidFilter').innerHTML = '';
   $('vidTitle').textContent = p.name || '(không tên)';
   $('vidGrid').innerHTML = '';
   $('vidModal').classList.add('on');
@@ -1552,6 +1585,15 @@ async function openVideoModal(p) {
   const fbAds = data.ads || [];
   const usedKw = data.keyword || '(từ khoá)';
 
+  // LÝ DO Facebook rỗng, lấy từ `statuses` mà backend vẫn trả kèm nhưng cửa sổ này chưa từng đọc.
+  // Facebook đi qua máy-thợ (Chrome thật) vì playwright trên VPS bị soft-block, nên nó rỗng vì
+  // nhiều lý do khác nhau — thợ offline, thợ chưa nạp job, thợ không kịp trả — và mỗi lý do phải
+  // đi sửa một chỗ khác. Hiện trần "Facebook 0" là bắt người dùng đoán.
+  const fbNote = (data.statuses || [])
+    .filter((st) => st && st.platform === 'facebook' && st.message && !st.count)
+    .map((st) => ' · FB: ' + st.message)
+    .join('');
+
   // Video SẢN PHẨM từ SÀN TMĐT: lấy thẳng từ list đã search (rows) — SP nào có videoUrl (Shopee/
   // Taobao/1688/Temu). Không phụ thuộc NƯỚC TikTok nên tính một lần, giữ nguyên khi đổi nước.
   const marketAds = (Array.isArray(rows) ? rows : [])
@@ -1570,7 +1612,7 @@ async function openVideoModal(p) {
 
   // Lưu FB + Sàn + region GỐC (của SP) để đổi NƯỚC TikTok chỉ tải lại phần TikTok. `homeRegion`
   // dùng để quyết định mode: chọn khác nước SP → auto hashtag-only (đỡ cá nhân hoá theo account/IP).
-  vidState = { p, usedKw, fbAds, marketAds, homeRegion: region };
+  vidState = { p, usedKw, fbAds, marketAds, homeRegion: region, fbNote };
 
   // VẼ NGAY PHẦN ĐÃ CÓ, đừng chờ TikTok.
   //
@@ -1579,7 +1621,7 @@ async function openVideoModal(p) {
   // hình trống suốt quãng ấy, trong khi thứ họ hỏi ("có ai đang chạy quảng cáo món này không")
   // thì Facebook đã trả lời xong rồi.
   renderVideos(fbAds.concat(marketAds));
-  setVidStatus(`Facebook ${fbAds.length} · Sàn ${marketAds.length} — đang lấy TikTok…`);
+  setVidStatus(`Facebook ${fbAds.length} · Sàn ${marketAds.length}${fbNote} — đang lấy TikTok…`, fbNote ? 'err' : '');
 
   await loadModalTiktok(region);
 }
@@ -1601,6 +1643,9 @@ async function loadModalTiktok(region) {
   const st = vidState;
   if (!st) return;
   const my = ++vidToken; // đổi nước = huỷ lần tải TikTok trước (chống race)
+  // `vidState === st` là chốt thứ hai, phòng khi cửa sổ đã chuyển sang SP khác: token một mình
+  // không đủ nếu về sau có thêm đường gọi nào khác không đi qua `openVideoModal`.
+  const alive = () => my === vidToken && vidState === st;
   const p = st.p, usedKw = st.usedKw;
 
   // MỘT cụm, MỘT lượt tìm.
@@ -1616,7 +1661,7 @@ async function loadModalTiktok(region) {
   try {
     const vkParams = new URLSearchParams({ title: p.name || usedKw, region });
     const vr = await fetch(`${BACKEND}/api/ads/video-keywords?${vkParams.toString()}`);
-    if (my !== vidToken) return;
+    if (!alive()) return;
     if (vr.ok) {
       const vk = await vr.json();
       const first = (Array.isArray(vk.keywords) ? vk.keywords : []).map((x) => String(x || '').trim()).filter(Boolean)[0];
@@ -1629,7 +1674,7 @@ async function loadModalTiktok(region) {
   let tkItems = [], tkNote = '', tkCounts = null, tkMode = null;
   try {
     const tk = await new Promise((res) => chrome.runtime.sendMessage({ type: 'RS_TIKTOK', keyword: tkTerm, keywords: [tkTerm], region, mode: 'mixed', count: 100 }, (x) => res(x)));
-    if (my !== vidToken) return;
+    if (!alive()) return;
     tkItems = (tk && tk.items) || [];
     tkCounts = (tk && tk.counts) || null;
     tkMode = (tk && tk.mode) || 'mixed';
@@ -1667,7 +1712,16 @@ async function loadModalTiktok(region) {
   // CC lên đầu (country filter thật) → organic TikTok → Douyin → sàn.
   const all = st.fbAds.concat(ccAds).concat(tkAds).concat(st.dyAds || []).concat(st.marketAds);
   if (!all.length) {
-    setVidStatus(`Không có video cho "${usedKw}" ${flag} ${country}.${tkNote} Thử nước khác hoặc SP khác.`, 'err');
+    // Rỗng vì HỎNG và rỗng vì THẬT SỰ KHÔNG CÓ là hai câu trả lời khác nhau. `tkNote`/`fbNote`
+    // có chữ nghĩa là đã hỏng ở đâu đó — đừng khuyên "thử nước khác", đổi nước không sửa được
+    // một máy-thợ đang offline.
+    const why = `${st.fbNote || ''}${tkNote}`;
+    setVidStatus(
+      why
+        ? `Không lấy được video cho "${usedKw}" ${flag} ${country}:${why}`
+        : `Không có video cho "${usedKw}" ${flag} ${country}. Thử nước khác hoặc SP khác.`,
+      'err',
+    );
     return;
   }
   // Nhắc rõ vì sao có video khác ngôn ngữ: TikTok cá nhân hoá theo account/IP, không theo URL.
@@ -1675,7 +1729,7 @@ async function loadModalTiktok(region) {
     ? ` (khớp ${flag} ${tkCounts.match} · trung tính ${tkCounts.neutral} · khác ngôn ngữ ${tkCounts.other})`
     : '';
   const ccBreak = ccAds.length ? ` · CC ${flag}${ccAds.length}` : '';
-  setVidStatus(`${all.length} video · "${usedKw}" · TikTok ${flag}${country} ${tkItems.length} · ${tkMode || modeLabel}${langBreak}${ccBreak} · FB ${st.fbAds.length} · Sàn ${st.marketAds.length}${tkNote}`, 'ok');
+  setVidStatus(`${all.length} video · "${usedKw}" · TikTok ${flag}${country} ${tkItems.length} · ${tkMode || modeLabel}${langBreak}${ccBreak} · FB ${st.fbAds.length} · Sàn ${st.marketAds.length}${st.fbNote || ''}${tkNote}`, 'ok');
   renderVideos(all);
   // Vẽ xong rồi mới đi lấy tim/bình luận/lượt xem — xem ghi chú ở `fillTiktokStats`. Không
   // `await`: lưới đã dùng được ngay, số điền vào sau.
@@ -1980,7 +2034,8 @@ async function loadModalDouyin() {
   const st = vidState;
   if (!st) return;
   const p = st.p, usedKw = st.usedKw;
-  const my = ++vidToken;
+  const my = ++vidDyToken;
+  const alive = () => my === vidDyToken && vidState === st;
 
   // MỘT cụm, dịch sang tiếng Trung (CN) — cùng lý do như TikTok: mỗi cụm là một lượt mở tab,
   // gõ, cuộn, và Douyin còn hay chen màn xác minh 滑块 giữa chừng.
@@ -1988,7 +2043,7 @@ async function loadModalDouyin() {
   try {
     const vkParams = new URLSearchParams({ title: p.name || usedKw, region: 'CN' });
     const vr = await fetch(`${BACKEND}/api/ads/video-keywords?${vkParams.toString()}`);
-    if (my !== vidToken) return;
+    if (!alive()) return;
     if (vr.ok) {
       const vk = await vr.json();
       const first = (Array.isArray(vk.keywords) ? vk.keywords : []).map((x) => String(x || '').trim()).filter(Boolean)[0];
@@ -2000,7 +2055,7 @@ async function loadModalDouyin() {
   let dyItems = [], dyNote = '';
   try {
     const dy = await new Promise((res) => chrome.runtime.sendMessage({ type: 'RS_DOUYIN', keyword: dyTerm, keywords: [dyTerm], anchor: dyTerm, count: 60 }, (x) => res(x)));
-    if (my !== vidToken) return;
+    if (!alive()) return;
     dyItems = (dy && dy.items) || [];
     if (dy && dy.blocked && dy.error) dyNote = ' · Douyin: ' + dy.error;
   } catch (e) { dyNote = ' · Douyin: extension chưa sẵn sàng'; }
@@ -2028,7 +2083,14 @@ async function loadModalDouyin() {
   // vào vidState.dyAds và trigger re-render qua nút.
   st.dyAds = merge((st.dyAds || []).concat(dyAds));
   const all = st.fbAds.concat(st.tkAds || []).concat(st.dyAds).concat(st.marketAds);
-  setVidStatus(`${all.length} video · Douyin ${dyItems.length}${dyNote}`, dyItems.length ? 'ok' : 'err');
+  // "Douyin 0" trần trụi trông giống một lượt còn đang chạy. Có `dyNote` thì đó là lý do hỏng;
+  // không có mà vẫn rỗng thì nói thẳng là tìm không ra, kèm cụm đã tìm để người dùng tự đánh giá.
+  setVidStatus(
+    dyItems.length
+      ? `${all.length} video · Douyin ${dyItems.length}`
+      : `${all.length} video · Douyin${dyNote || ` không tìm thấy video nào cho “${dyTerm}”.`}`,
+    dyItems.length ? 'ok' : 'err',
+  );
   renderVideos(all);
 }
 $('vidModal').addEventListener('click', (e) => { if (e.target === $('vidModal')) closeVideoModal(); });

@@ -30,6 +30,7 @@ from lib.core.worker_relay import (
     WorkerOffline,
     WorkerTimeout,
     run_on_worker,
+    worker_error,
     worker_online,
 )
 
@@ -370,6 +371,12 @@ class Facebook(AdPlatform):
             return None
         except WorkerTimeout:
             return PlatformSearchOutcome(ads=[], notice="Máy-thợ FB không kịp trả (quá 90s).")
+
+        # Thợ có nhận job nhưng không chạy xong (extension treo / hết giờ bên trang `/worker`).
+        # Câu "chưa nạp job" bên dưới CHỈ đúng cho `None`, và nói nhầm nó ở đây là đẩy người ta đi
+        # bấm Reload trong khi extension vẫn đang chạy tốt.
+        if (why := worker_error(result)) is not None:
+            return PlatformSearchOutcome(ads=[], notice=f"Máy-thợ không lấy được Facebook: {why}")
 
         if not isinstance(result, dict) or result.get("pages") is None:
             return PlatformSearchOutcome(
