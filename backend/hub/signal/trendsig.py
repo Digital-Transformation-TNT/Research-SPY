@@ -265,7 +265,11 @@ def build(region: str = "ALL", saved_cfg: dict | None = None,
         "rows": rows,
         "all_rows": all_rows,
         "dropped": dropped,
-        "value_kind": (sorted(kinds)[0] if len(kinds) == 1 else "mixed"),
+        # Bảng rỗng thì thang đo là "chưa có", KHÔNG phải "trộn" — `len(kinds) != 1` gộp cả
+        # hai trường hợp vào một nhánh và làm trang báo đỏ "đang trộn hai thang" ngay lúc
+        # chưa có lấy một từ khoá nào.
+        "value_kind": ("index" if not kinds else
+                       (sorted(kinds)[0] if len(kinds) == 1 else "mixed")),
         "mixed_scale": len(kinds) > 1,
         "comparable": kinds == {"anchored"},
         "level_range": ([levels[0], levels[-1]] if levels else None),

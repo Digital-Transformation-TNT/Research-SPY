@@ -682,11 +682,16 @@ const STATUS_LB = {real:['Sàn có bán','up'], niche:['Ngách hẹp','info'],
                    wrong:['Sàn hiểu khác','warn'], not_found:['Sàn không gợi ý','mut']};
 const TIER_LB = {core:'Sát nhất', adjacent:'Liền kề', hidden:'Khám phá'};
 
+/* Số của Hub gắn vào một món đề xuất — và phải nói rõ số đó đo CHÍNH món đó hay đo một cụm
+   rộng hơn. "kem chống nắng nâng tông" mượn số của "kem chống nắng" thì vẫn hữu ích, nhưng
+   trình bày như thể đã đo đúng món ấy là nói quá điều mình biết. */
 function sigLine(s){
   if(!s) return '<div class="sig none">chưa đo trong Hub</div>';
   const p = function(x){return x==null?'—':((x>0?'+':'')+(x*100).toFixed(0)+'%')};
-  return '<div class="sig">'+esc(s.kind||'')+' · chỉ số '+(s.L==null?'—':s.L)
-    +' · bền '+p(s.mSustain)+' · vọt '+p(s.mShort)+'</div>';
+  const head = (s.match === 'broader' && s.keyword)
+    ? ('theo cụm rộng hơn “'+esc(s.keyword)+'”: ') : '';
+  return '<div class="sig'+(s.match==='broader'?' none':'')+'">'+head+esc(s.kind||'')
+    +' · chỉ số '+(s.L==null?'—':s.L)+' · bền '+p(s.mSustain)+' · vọt '+p(s.mShort)+'</div>';
 }
 function renderChat(){
   const el = $('thread');
