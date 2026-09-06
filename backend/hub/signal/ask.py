@@ -60,7 +60,9 @@ def digest(trends_region: str, platform: str | None, market: str | None) -> dict
     nhìn cùng một bộ số — dựng riêng hai lần là mở đường cho lời đáp nói một đằng còn bảng
     hiện một nẻo.
     """
-    sig = trendsig.build(trends_region, store.get_config("trends"), up_only=True)
+    watch = (store.get_config("watchlist") or {}).get("keywords") or []
+    sig = trendsig.build(trends_region, store.get_config("trends"),
+                         up_only=True, only=watch)
     lines: list[str] = []
     index: dict[str, dict] = {}
 

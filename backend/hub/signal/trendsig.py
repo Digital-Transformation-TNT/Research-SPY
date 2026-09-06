@@ -197,12 +197,18 @@ def _why(row: dict, cfg: dict) -> str:
 
 
 def build(region: str = "ALL", saved_cfg: dict | None = None,
-          up_only: bool = True) -> dict:
+          up_only: bool = True, only: list[str] | None = None) -> dict:
     """
     Bảng tín hiệu của một vùng.
 
     `up_only` mặc định True theo chốt của spec (bỏ đi ngang, đi xuống). Vẫn để tắt được
     vì lúc dò xem một từ khoá đã rơi khỏi bảng vì lý do gì thì cần nhìn cả phần bị loại.
+
+    `only` giới hạn theo DANH SÁCH THEO DÕI. `trends_daily` là kho append-only nên chuỗi của
+    một từ khoá đã bỏ theo dõi vẫn nằm đó — không lọc thì nó cứ hiện mãi trong bảng, ngày
+    một cũ đi, và không có nút nào bỏ nó ra. Danh sách theo dõi mới là thứ người dùng quản
+    lý; kho chỉ là chỗ chứa. Bỏ từ khoá khỏi danh sách là nó biến khỏi bảng, thêm lại thì
+    chuỗi cũ vẫn còn nguyên chứ không phải cào lại từ đầu.
     """
     cfg = merged_config(saved_cfg)
     rows: list[dict] = []
@@ -213,7 +219,14 @@ def build(region: str = "ALL", saved_cfg: dict | None = None,
     #: một nhãn thang duy nhất, và cột `Chỉ số` trông như so được với nhau trong khi không.
     kinds: set[str] = set()
 
-    for kw in store.tracked_keywords(region):
+    stored = store.tracked_keywords(region)
+    if only:
+        wanted = {k.strip() for k in only if k and k.strip()}
+        keywords = [k for k in stored if k in wanted]
+    else:
+        keywords = stored
+
+    for kw in keywords:
         d_rows = store.series(kw, region, "day")
         w_rows = store.series(kw, region, "week")
         daily = [r["value"] for r in d_rows]
@@ -273,6 +286,11 @@ def build(region: str = "ALL", saved_cfg: dict | None = None,
         "mixed_scale": len(kinds) > 1,
         "comparable": kinds == {"anchored"},
         "level_range": ([levels[0], levels[-1]] if levels else None),
+        # Từ khoá có trong danh sách theo dõi mà kho chưa có chuỗi nào — khác hẳn "đã cào
+        # nhưng bị loại vì đứng im". Gộp hai thứ này lại là người dùng đi chỉnh ngưỡng
+        # trong khi việc phải làm là bấm cào.
+        "not_crawled": ([k for k in (only or []) if k and k.strip() and k.strip() not in stored]
+                        if only else []),
         "min_days": MIN_DAYS,
         "min_weeks": MIN_WEEKS,
     }

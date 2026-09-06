@@ -866,12 +866,21 @@ def filter_options():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/signal/trends")
-def signal_trends(region: str = "ALL", up_only: bool = True):
-    """① Bảng tín hiệu Google Trends của một vùng, kèm ngưỡng đang áp dụng."""
+def signal_trends(region: str | None = None, up_only: bool = True):
+    """
+    ① Bảng tín hiệu Google Trends, kèm ngưỡng đang áp dụng.
+
+    Vùng và danh sách từ khoá lấy từ DANH SÁCH THEO DÕI, không phải từ kho: `trends_daily`
+    là append-only nên từ khoá đã bỏ theo dõi vẫn còn chuỗi trong đó. Xem `trendsig.build`.
+    """
     from .signal import store as sig_store, trendsig
-    out = trendsig.build(region, sig_store.get_config("trends"), up_only=up_only)
+    wl = sig_store.get_config("watchlist") or {}
+    region = region or wl.get("region") or "ALL"
+    watch = wl.get("keywords") or []
+    out = trendsig.build(region, sig_store.get_config("trends"),
+                         up_only=up_only, only=watch)
     out["regions"] = sig_store.tracked_regions()
-    out["n_tracked"] = len(sig_store.tracked_keywords(region))
+    out["n_tracked"] = len(watch) if watch else len(sig_store.tracked_keywords(region))
     return out
 
 

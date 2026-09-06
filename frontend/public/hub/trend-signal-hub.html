@@ -470,6 +470,14 @@ function trRender(d){
         : 'Hạ ngưỡng xuống quanh <b>'+Math.max(1,Math.floor(rg[0]))+'</b> rồi áp dụng lại.')
       +'</div>');
 
+  /* "Chưa cào bao giờ" khác hẳn "đã cào nhưng bị loại" — gộp hai thứ là người dùng đi
+     chỉnh ngưỡng trong khi việc phải làm là bấm cào. */
+  const nc = d.not_crawled||[];
+  if(nc.length)
+    notes.push('<div class="note w"><b>'+nc.length+' từ khoá chưa cào lần nào:</b> '
+      +nc.slice(0,8).map(esc).join(' · ')+(nc.length>8?' …':'')
+      +'. Mở <b>Danh sách theo dõi</b> rồi bấm <b>Cào Trends ngay</b>.</div>');
+
   const dr=d.dropped||{}; const nd=Object.keys(dr).reduce(function(s,k){return s+(dr[k]||0)},0);
   if(nd) notes.push('<div class="note i"><b>Đã loại '+nd+' từ khoá.</b> '
     +'quá nhỏ '+(dr['quá nhỏ']||0)+' · đứng im '+(dr['đứng im']||0)+' · đi xuống '+(dr['đi xuống']||0)
