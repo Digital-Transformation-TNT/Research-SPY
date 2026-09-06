@@ -284,7 +284,10 @@ def build(region: str = "ALL", saved_cfg: dict | None = None,
         "value_kind": ("index" if not kinds else
                        (sorted(kinds)[0] if len(kinds) == 1 else "mixed")),
         "mixed_scale": len(kinds) > 1,
-        "comparable": kinds == {"anchored"},
+        # So được giữa các dòng chỉ khi TẤT CẢ cùng neo vào ĐÚNG MỘT từ khoá.
+        "comparable": len(kinds) == 1 and next(iter(kinds), "").startswith("anchored:"),
+        "anchor": (next(iter(kinds)).split(":", 1)[1]
+                   if len(kinds) == 1 and next(iter(kinds)).startswith("anchored:") else None),
         "level_range": ([levels[0], levels[-1]] if levels else None),
         # Từ khoá có trong danh sách theo dõi mà kho chưa có chuỗi nào — khác hẳn "đã cào
         # nhưng bị loại vì đứng im". Gộp hai thứ này lại là người dùng đi chỉnh ngưỡng

@@ -87,7 +87,12 @@ def refresh(keywords: list[str], geo: str = "VN", region: str = "ALL",
     if not keywords:
         return {"keywords": 0, "day_points": 0, "week_points": 0, "missing": []}
 
-    kind = "anchored" if anchor else "index"
+    # Ghi kèm TÊN từ khoá neo, không chỉ ghi "anchored". Hai đợt cào neo vào hai từ khác
+    # nhau là hai thước đo khác nhau y như neo-với-không-neo, nhưng nếu cả hai cùng mang
+    # nhãn "anchored" thì bộ dò trộn thang không thấy gì — và cột `Chỉ số` lại trông như
+    # so được với nhau. Đã suýt dính: 8 từ khoá neo vào "nồi cơm điện" nằm chung bảng với
+    # một từ còn neo vào "điện thoại" từ đợt trước.
+    kind = f"anchored:{anchor}" if anchor else "index"
     day_pts = _fetch(keywords, DAY_RANGE, geo, anchor)
     week_pts = _fetch(keywords, week_range(), geo, anchor)
 

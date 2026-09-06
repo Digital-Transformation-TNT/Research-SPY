@@ -2116,9 +2116,30 @@ async function searchShopee(keyword, domain) {
       let r = null;
       try {
         const out = await chrome.scripting.executeScript({
-          target: { tabId: tab.id }, world: 'MAIN',
-          func: () => {
-            const cap = (window.__rsCap || []).filter((c) => /\/api\/v4\/search\/search_items/.test(c.url)).map((c) => c.text);
+          target: { tabId: tab.id }, world: 'MAIN', args: [keyword],
+          func: (kw) => {
+            // CHỈ NHẬN JSON CỦA ĐÚNG TỪ KHOÁ ĐANG HỎI. `executeScript` có thể chạy trúng
+            // TÀI LIỆU CŨ khi `tabs.update` chưa commit xong, và lúc đó `__rsCap` vẫn còn
+            // nguyên `search_items` của lần tìm trước — có `texts` nên vòng lặp thoát ngay
+            // và trả về kết quả của từ khoá TRƯỚC, kèm cờ thành công.
+            //
+            // Đã xảy ra thật (06/09/2026, mẻ chụp 10 từ khoá): "nồi chiên không dầu" nhận
+            // trọn 60 tai nghe Bluetooth, "quạt tích điện" nhận máy hút bụi, "giá đỡ điện
+            // thoại" nhận đúng từng byte của "balo laptop". Không có gì báo sai cả — đây là
+            // kiểu hỏng đắt nhất, vì dữ liệu bẩn vẫn trông hoàn toàn hợp lệ ở mọi lớp sau.
+            const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+            const want = norm(kw);
+            const sameKw = (u) => {
+              const m = /[?&]keyword=([^&]*)/.exec(u || '');
+              if (!m) return false;
+              let got = m[1];
+              try { got = decodeURIComponent(got.replace(/\+/g, ' ')); } catch (e) {}
+              return norm(got) === want;
+            };
+            const onRightPage = sameKw(location.href);
+            const cap = (window.__rsCap || [])
+              .filter((c) => /\/api\/v4\/search\/search_items/.test(c.url) && sameKw(c.url))
+              .map((c) => c.text);
             // search_items KHÔNG có URL video, chỉ DOM có badge `data-testid="badge-video"`. Bóc LINK
             // sản phẩm có badge đó (shopid.itemid trong href) — sau này backend trỏ vào link lấy video.
             const vids = [];
@@ -2128,13 +2149,16 @@ async function searchShopee(keyword, domain) {
               const m = (a.getAttribute('href') || '').match(/-i\.(\d+)\.(\d+)/);
               if (m) vids.push({ shopid: m[1], itemid: m[2], url: a.href.split('?')[0] });
             });
-            return { cap, vids, href: location.href, body: document.body ? document.body.innerText.slice(0, 300) : '' };
+            return { cap, vids, onRightPage, href: location.href, body: document.body ? document.body.innerText.slice(0, 300) : '' };
           },
         });
         r = out && out[0] && out[0].result;
       } catch (e) { /* trang chưa sẵn sàng */ }
       if (r) {
         if (/\/(buyer\/)?login|\/verify/i.test(r.href) || /verify|captcha|robot|xác minh/i.test(r.body || '')) { return { texts: [], blocked: true, error: 'Shopee đòi đăng nhập/xác minh — mở shopee.vn đăng nhập rồi bấm lại.' }; }
+        // Còn đang ở trang của từ khoá cũ thì bỏ QUA CẢ LƯỢT, kể cả phần badge video ở dưới:
+        // `vids` cũng bóc từ DOM cũ nên nó bẩn y hệt `cap`.
+        if (!r.onRightPage) continue;
         if (r.cap && r.cap.length) { texts = r.cap; if (textsIter < 0) textsIter = iter; }
         for (const v of (r.vids || [])) videoItems[v.itemid] = v;
         // Có JSON + đã bắt badge (hoặc chờ thêm ~2s cho DOM render badge) → thoát.

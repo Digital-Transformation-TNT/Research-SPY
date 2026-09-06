@@ -419,6 +419,7 @@ const TR_KNOBS = [
    tip:'Chỉ để dán nhãn hướng dựa trên M_bền. Trong khoảng ±mức này coi như đi ngang — và đi ngang thì '
      +'bị loại khỏi bảng. Ít khi cần chỉnh.'}
 ];
+const ANCHORED = (k)=>/^anchored:/.test(k||'');
 let TR = null, SHOW_ALL = false;
 
 function trKnobsHtml(cfg){
@@ -450,7 +451,10 @@ function trRender(d){
       +'<b>từ khoá neo</b>, phần còn lại thì không — hai nhóm ấy nằm trên hai thước khác nhau, nên cột '
       +'<b>Chỉ số</b> không so được giữa các dòng và một ngưỡng quy mô chung sẽ cắt nhầm. '
       +'Cào lại <b>toàn bộ</b> danh sách với cùng một từ khoá neo là hết.</div>');
-  else if(d.value_kind !== 'anchored' && all.length)
+  /* `value_kind` mang luôn TÊN từ khoá neo ('anchored:nồi cơm điện'), vì hai đợt neo vào
+     hai từ khác nhau là hai thước đo khác nhau. So bằng `=== 'anchored'` là bỏ lọt đúng
+     trường hợp đó. */
+  else if(!ANCHORED(d.value_kind) && all.length)
     notes.push('<div class="note w"><b>Thang đo chưa neo.</b> Chỉ số của mỗi từ khoá đang được Google '
       +'chuẩn hoá theo đỉnh của chính nó, nên cột <b>Chỉ số</b> không so được giữa các dòng và ngưỡng quy mô '
       +'chỉ đúng tương đối. Khai <b>từ khoá neo</b> trong Danh sách theo dõi rồi cào lại là hết.</div>');
@@ -463,7 +467,7 @@ function trRender(d){
     notes.push('<div class="note w"><b>Ngưỡng quy mô đang cắt sạch bảng.</b> '
       +tooSmall+' từ khoá bị loại vì chỉ số dưới '+d.config.MIN_INDEX+', trong khi cả danh sách chỉ nằm trong '
       +'khoảng <b>'+rg[0]+'–'+rg[1]+'</b>. '
-      +(d.value_kind==='anchored'
+      +(ANCHORED(d.value_kind)
         ? 'Đây là hệ quả bình thường của việc neo: mọi chỉ số tính theo thước của từ khoá neo, nên neo vào một '
           +'từ khoá càng lớn thì các ngách càng nhỏ. Hạ ngưỡng xuống quanh <b>'+Math.max(1,Math.floor(rg[0]))+'</b>, '
           +'hoặc chọn một từ khoá neo vừa tầm hơn.'
@@ -516,7 +520,8 @@ function trRender(d){
     +'<div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
     +'<button class="btn ghost sm" id="trCsv">Tải CSV</button>'
     +'<span style="font-size:12.5px;color:var(--ink3)">'+(SHOW_ALL ? (shown.length+' từ khoá (mờ = đã bị loại)') : (d.rows.length+' tín hiệu đi lên'))
-    +(shown[0].last_date?(' · mốc mới nhất '+esc(shown[0].last_date)):'')+'</span></div>';
+    +(shown[0].last_date?(' · mốc mới nhất '+esc(shown[0].last_date)):'')
+    +(d.anchor?(' · chỉ số tính theo thước “'+esc(d.anchor)+'” = 100'):'')+'</span></div>';
   $('trCsv').onclick = function(){
     csv([['tu khoa','chi so 7 ngay','vot ngan','tang ben','YoY','nhan','do nong','vi sao']].concat(
       shown.map(function(r){return [r.keyword,r.L,r.m_short,r.m_sustain,r.yoy,r.kind,r.heat,r.why]})),

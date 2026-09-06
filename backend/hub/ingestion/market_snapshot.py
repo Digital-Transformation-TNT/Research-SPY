@@ -50,19 +50,31 @@ async def _shopee(keyword: str, market: str, trace: dict) -> list[dict]:
     domain = DOMAIN.get(country)
     if not domain:
         raise RuntimeError(f"Shopee không hoạt động ở {country}")
-    result = await run_on_worker("RS_SHOPEE", {"keyword": keyword, "domain": domain})
-    if (why := worker_error(result)):
-        raise RuntimeError(why)
+    # THỬ LẠI MỘT LƯỢT. Shopee bắn `search_items` ngay khi tải trang, và extension chỉ có
+    # 15 giây để chộp — đo thật ngày 06/09/2026: 6/10 từ khoá trong một mẻ trượt vì trang
+    # chưa render kịp, lượt sau thì được. Một mẻ mất 60% từ khoá là một ngày thủng mốc, mà
+    # cả hai chỉ số của mục ② đều là hiệu giữa hai lần chụp.
+    result = None
+    for attempt in (0, 1):
+        result = await run_on_worker("RS_SHOPEE", {"keyword": keyword, "domain": domain})
+        if (why := worker_error(result)):
+            raise RuntimeError(why)
+        if (result or {}).get("texts"):
+            break
+        trace[f"try{attempt + 1}"] = str((result or {}).get("error") or "rỗng")[:120]
+
     texts = (result or {}).get("texts") or []
     trace["texts"] = len(texts)
     trace["chars"] = sum(len(t) for t in texts)
     if (result or {}).get("blocked"):
         trace["blocked"] = True
-    if (result or {}).get("error"):
-        trace["worker_error"] = str(result["error"])[:160]
     if not texts:
-        raise RuntimeError("máy-thợ mở được trang nhưng không chộp được mảnh JSON nào "
-                           "(`search_items`) — thường là chưa đăng nhập Shopee trên máy-thợ")
+        # Dùng NGUYÊN lý do của máy-thợ khi nó có nói. Bản trước ghi đè bằng phỏng đoán
+        # "thường là chưa đăng nhập" — trong khi máy-thợ đang nói chính xác hơn hẳn
+        # ("chưa chộp được search_items, thử lại"), và phỏng đoán ấy đẩy người dùng đi
+        # kiểm phiên đăng nhập vốn không có vấn đề gì.
+        raise RuntimeError(str((result or {}).get("error")
+                               or "máy-thợ trả 0 mảnh JSON và không nói lý do"))
 
     req = PlatformSearchInput(
         keyword=keyword, country=country, limit=PER_KEYWORD,
