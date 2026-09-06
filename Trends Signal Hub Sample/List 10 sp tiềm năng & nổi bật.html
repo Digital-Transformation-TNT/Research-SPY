@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPEC cho Dev — Top 10 chính & Top 10 nổi bật</title>
+<style>
+  :root {
+    --bg: #faf9f5; --card: #ffffff; --ink: #2c2c2a; --ink-soft: #5f5e5a; --border: #d8d6cd;
+    --coral: #993c1d; --coral-bg: #faece7;
+    --teal: #0f6e56;  --teal-bg: #e1f5ee;
+    --blue: #185fa5;  --blue-bg: #e6f1fb;
+    --amber: #854f0b; --amber-bg: #faeeda;
+    --gray-bg: #f1efe8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 40px 24px 72px; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.62; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+
+  .topline { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; flex-wrap: wrap; }
+  .eyebrow { color: var(--coral); font-weight: 700; font-size: 13px; letter-spacing: .04em; margin: 0; }
+  .stamp { font-size: 11.5px; font-weight: 700; color: var(--blue); background: var(--blue-bg);
+    border: 1px solid var(--blue); border-radius: 20px; padding: 2px 10px; }
+  h1 { font-size: 26px; font-weight: 700; margin: 0 0 8px; line-height: 1.25; }
+  .lead { color: var(--ink-soft); font-size: 15.5px; margin: 0 0 30px; max-width: 82ch; }
+
+  h2 { font-size: 20px; font-weight: 700; margin: 0 0 4px; display: flex; align-items: baseline; gap: 10px; }
+  h2 .p { color: var(--coral); font-size: 14px; font-weight: 700; }
+  .sec-sub { color: var(--ink-soft); font-size: 14.5px; margin: 0 0 16px; max-width: 84ch; }
+  hr.div { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+
+  .part { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 0 0 8px; }
+  .partcard { border: 1px solid var(--border); border-radius: 12px; padding: 15px 17px; background: var(--card); border-left: 4px solid var(--coral); }
+  .partcard .k { font-size: 12px; font-weight: 700; color: var(--coral); margin: 0 0 4px; }
+  .partcard .t { font-weight: 700; font-size: 14.5px; margin: 0 0 4px; }
+  .partcard .d { font-size: 13px; color: var(--ink-soft); margin: 0; }
+
+  table.cmp { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden; font-size: 13.5px; margin: 0 0 8px; }
+  table.cmp th, table.cmp td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.cmp thead th { font-weight: 700; font-size: 13.5px; background: var(--gray-bg); }
+  table.cmp tr:last-child td { border-bottom: none; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  table.cmp td .type { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--blue); }
+  table.cmp .req { color: var(--coral); font-weight: 700; font-size: 11px; }
+  table.cmp .opt { color: var(--ink-soft); font-weight: 700; font-size: 11px; }
+  table.cmp td:first-child { font-weight: 700; color: var(--ink); }
+
+  .steps { counter-reset: step; margin: 0; padding: 0; list-style: none; }
+  .steps li { position: relative; border: 1px solid var(--border); border-radius: 12px; background: var(--card);
+    padding: 14px 16px 14px 54px; margin: 0 0 12px; }
+  .steps li::before { counter-increment: step; content: counter(step); position: absolute; left: 14px; top: 14px;
+    width: 26px; height: 26px; border-radius: 50%; background: var(--blue-bg); color: var(--blue);
+    border: 1.5px solid var(--blue); font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+  .steps .st { font-weight: 700; font-size: 14.5px; margin: 0 0 3px; }
+  .steps .sd { font-size: 13px; color: var(--ink-soft); margin: 0; }
+
+  .diagram-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 22px; overflow-x: auto; margin: 0 0 8px; }
+  .mermaid text { fill: var(--ink) !important; }
+  .mermaid svg { max-width: 100%; height: auto; }
+
+  .fbox { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 16px 0 4px; }
+  .f { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; background: var(--card); }
+  .f .h { padding: 12px 16px; font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .f.main .h { background: var(--teal-bg); color: var(--teal); }
+  .f.hot .h { background: var(--coral-bg); color: var(--coral); }
+  .f .b { padding: 14px 16px; }
+  .formula { background: var(--gray-bg); border-radius: 8px; padding: 10px 13px; font-size: 12.5px;
+    font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--ink); margin: 0 0 8px; line-height: 1.7; }
+  .f .note { font-size: 12.5px; color: var(--ink-soft); margin: 0; }
+
+  .cfg { border: 1px solid var(--amber); border-radius: 14px; overflow: hidden; background: var(--card); margin: 0 0 8px; }
+  .cfg .h { background: var(--amber-bg); color: var(--amber); font-weight: 700; font-size: 15px; padding: 12px 18px;
+    display: flex; align-items: center; gap: 8px; }
+  .cfg table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .cfg td { padding: 11px 18px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .cfg tr:last-child td { border-bottom: none; }
+  .cfg td:first-child { white-space: nowrap; width: 30%; }
+  .knob { font-family: ui-monospace, Menlo, Consolas, monospace; background: var(--amber-bg); color: var(--amber);
+    padding: 1px 7px; border-radius: 5px; font-size: 12.5px; font-weight: 700; }
+  .def { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--teal); font-weight: 700; }
+  .userknob { border: 1.5px solid var(--coral); }
+  .userbadge { font-size: 10.5px; font-weight: 700; color: #fff; background: var(--coral); border-radius: 4px; padding: 1px 6px; margin-left: 6px; vertical-align: 1px; }
+
+  .callout { background: var(--teal-bg); border: 1px solid var(--teal); border-radius: 12px; padding: 13px 17px; font-size: 13.5px; margin: 16px 0 0; }
+  .callout b { color: var(--teal); }
+  .callout.warn { background: var(--amber-bg); border-color: var(--amber); }
+  .callout.warn b { color: var(--amber); }
+
+  code { background: var(--gray-bg); padding: 1px 6px; border-radius: 5px; font-size: 12.5px;
+    font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+  .ex { border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 16px 18px; margin: 0 0 14px; }
+  .ex h4 { margin: 0 0 8px; font-size: 14.5px; }
+  .ex .row { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; background: var(--gray-bg);
+    border-radius: 7px; padding: 8px 11px; margin: 6px 0; line-height: 1.7; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 20px; }
+  .pill.ok { color: var(--teal); background: var(--teal-bg); border: 1px solid var(--teal); }
+  .pill.no { color: var(--coral); background: var(--coral-bg); border: 1px solid var(--coral); }
+
+  .uimock { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 14px 16px; }
+  .bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  .selby { font-size: 12px; color: var(--ink-soft); }
+  .sel { border: 1.5px solid var(--blue); background: var(--blue-bg); color: var(--blue); border-radius: 8px;
+    padding: 6px 12px; font-size: 13px; font-weight: 700; }
+  .sel.gray { border-color: var(--border); background: var(--gray-bg); color: var(--ink); font-weight: 600; }
+  .tabs { display: flex; gap: 8px; margin-top: 4px; }
+  .tab { border-radius: 8px 8px 0 0; padding: 7px 14px; font-size: 13px; font-weight: 700; }
+  .tab.a { background: var(--teal-bg); color: var(--teal); border: 1px solid var(--teal); border-bottom: none; }
+  .tab.b { background: var(--coral-bg); color: var(--coral); border: 1px solid var(--coral); border-bottom: none; }
+
+  .foot { color: var(--ink-soft); font-size: 12.5px; text-align: center; margin-top: 34px; }
+  @media (max-width: 720px) { .part, .fbox { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topline">
+    <p class="eyebrow">TREND SIGNAL HUB · SPEC KỸ THUẬT CHO DEV</p>
+    <span class="stamp">v2 · XẾP THEO % TĂNG TRƯỞNG</span>
+  </div>
+  <h1>Spec Top 10 chính &amp; Top 10 nổi bật</h1>
+  <p class="lead">Mô tả <b>data đầu vào</b> và <b>cách tính</b> đủ để dev implement. Mỗi nhánh xếp theo <b>một chỉ số % tăng trưởng duy nhất</b> (không có điểm tổng hợp, không cần chuẩn hoá). Nguyên tắc bao trùm: <b style="color:var(--coral)">không gộp sàn, không gộp thị trường</b> — mọi phép tính chạy trong nội bộ một cặp (Platform × Market). Nguồn: <b>Shopee · Taobao · 1688</b> (mở rộng sau).</p>
+
+  <!-- 0. PARTITION -->
+  <h2><span class="p">0</span> Nguyên tắc gốc — Partition (đọc trước)</h2>
+  <p class="sec-sub">Mỗi sàn đặt tên sản phẩm khác nhau (khó khớp tự động) và lượng bán/đơn vị tiền tệ mỗi nước một khác. Vì vậy đơn vị tính của cả hệ là <b>partition</b>.</p>
+  <div class="part">
+    <div class="partcard">
+      <p class="k">ĐỊNH NGHĨA</p>
+      <p class="t">partition = (platform, market)</p>
+      <p class="d">Ví dụ: <code>shopee·PH</code>, <code>shopee·VN</code>, <code>taobao·CN</code>, <code>1688·CN</code>. Mỗi partition là một bảng xếp hạng độc lập.</p>
+    </div>
+    <div class="partcard">
+      <p class="k">HỆ QUẢ</p>
+      <p class="t">Không so chéo, không quy đổi tiền</p>
+      <p class="d">Cổng chặn &amp; xếp hạng <b>tính trong 1 partition</b>. Không cộng điểm giữa các sàn/nước. Không cần đổi PHP↔VND↔CNY vì không bao giờ so tiền giữa hai thị trường.</p>
+    </div>
+  </div>
+  <div class="callout warn"><b>Khớp sản phẩm chỉ trong partition:</b> cùng một sàn thì cấu trúc tên/ID giống nhau, ghép listing theo <code>product_id</code> mới đáng tin. Không có bước "khớp sản phẩm across sàn" — đó là lý do phải tách.</div>
+
+  <hr class="div">
+
+  <!-- A. DATA ĐẦU VÀO -->
+  <h2><span class="p">A</span> Data đầu vào — bảng snapshot (crawler xuất ra)</h2>
+  <p class="sec-sub">Một dòng = <b>một listing tại một lần cào</b>. Bắt buộc cào <b>≥ 2 lần theo thời gian</b> cho cùng listing (khuyến nghị mỗi ngày) — 1 lần chụp thì không tính được % tăng trưởng, cả hai bảng đều gãy.</p>
+  <table class="cmp">
+    <thead>
+      <tr><th style="width:20%">Trường</th><th style="width:16%">Kiểu</th><th>Ý nghĩa</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>platform</td><td><span class="type">enum</span> <span class="req">BẮT BUỘC</span></td><td>shopee · taobao · 1688</td></tr>
+      <tr><td>market</td><td><span class="type">enum</span> <span class="req">BẮT BUỘC</span></td><td>Mã thị trường: ph · vn · th · id… (taobao/1688 = cn). Ghép với platform thành partition.</td></tr>
+      <tr><td>product_id</td><td><span class="type">string</span> <span class="req">BẮT BUỘC</span></td><td>Mã native rút từ URL: Shopee <code>shopid_itemid</code> · Taobao <code>item_id</code> · 1688 <code>offer_id</code>. Bám đúng listing dù seller đổi tên.</td></tr>
+      <tr><td>crawled_at</td><td><span class="type">datetime</span> <span class="req">BẮT BUỘC</span></td><td>Thời điểm cào (UTC). Dùng để tính số ngày giữa hai lần cào.</td></tr>
+      <tr><td>sold_cumulative</td><td><span class="type">int</span> <span class="req">BẮT BUỘC</span></td><td>Số "đã bán" <b>lũy kế</b> sàn hiển thị (cộng dồn). Là nguyên liệu chính của cả hai nhánh.</td></tr>
+      <tr><td>price</td><td><span class="type">number</span> <span class="opt">nên có</span></td><td>Giá theo <b>tiền tệ gốc</b> của thị trường. Không quy đổi.</td></tr>
+      <tr><td>currency</td><td><span class="type">enum</span> <span class="opt">nên có</span></td><td>PHP · VND · CNY… (chỉ để hiển thị).</td></tr>
+      <tr><td>title · url · image_url · shop_id</td><td><span class="type">string</span> <span class="opt">tùy</span></td><td>Ngữ cảnh &amp; hiển thị UI. Không tham gia xếp hạng.</td></tr>
+    </tbody>
+  </table>
+  <div class="callout"><b>Tối thiểu để hệ chạy:</b> <code>platform, market, product_id, crawled_at, sold_cumulative</code> × ít nhất 2 mốc thời gian.</div>
+
+  <hr class="div">
+
+  <!-- B. PIPELINE -->
+  <h2><span class="p">B</span> Pipeline xử lý — làm trong từng partition</h2>
+  <p class="sec-sub">Chạy độc lập cho mỗi partition. Hai nhánh dùng chung 2 bước đầu, tách ra ở bước tính %.</p>
+  <ol class="steps">
+    <li>
+      <p class="st">Gom &amp; vệ sinh</p>
+      <p class="sd">Group theo <code>(platform, market, product_id)</code>, sort theo <code>crawled_at</code>. Loại <b>Δ âm</b> (sold lũy kế mà giảm = lỗi/reset đếm). Ngày trống thì chia đúng số ngày thật.</p>
+    </li>
+    <li>
+      <p class="st">Tính bán/ngày (upd) — chỉ cần cho Nhánh 2</p>
+      <p class="sd">Với hai mốc liền nhau: <code>upd = (sold[sau] − sold[trước]) / số_ngày</code>. Chỉ giữ <code>upd ≥ 0</code>. Chuỗi <code>upd</code> theo thời gian là nguyên liệu tính đột biến.</p>
+    </li>
+    <li>
+      <p class="st">Chỉ số Nhánh 1 — % tăng lũy kế (dài hạn)</p>
+      <p class="sd"><code>growth_long% = (sold[nay] − sold[nay − W_main]) / sold[nay − W_main] × 100</code>. Đo mức tăng của tổng đã bán trên cửa sổ dài <span class="knob">W_main</span> → phản ánh "bán khoẻ, ổn định, lâu ngày".</p>
+    </li>
+    <li>
+      <p class="st">Chỉ số Nhánh 2 — % đột biến (ngắn hạn)</p>
+      <p class="sd"><code>spike% = (mean(upd, T_fast ngày cuối) − mean(upd, nền)) / mean(upd, nền) × 100</code>. <code>T_fast</code> = 1–2 ngày; "nền" = cửa sổ ngay trước. Đây là con số "+500% trong 1–2 ngày".</p>
+    </li>
+  </ol>
+  <div class="callout"><b>Không cần chuẩn hoá 0–100:</b> mỗi nhánh xếp theo <b>một chỉ số % duy nhất</b> (native cùng đơn vị), nên xếp trực tiếp — bỏ được bước normalize của bản cũ.</div>
+
+  <hr class="div">
+
+  <!-- C. HAI NHÁNH + CÔNG THỨC -->
+  <h2><span class="p">C</span> Hai nhánh xếp hạng</h2>
+  <div class="fbox">
+    <div class="f main">
+      <div class="h">🟢 Nhánh 1 — Top 10 CHÍNH</div>
+      <div class="b">
+        <div class="formula">Chỉ số: growth_long% (% tăng lũy kế / W_main)<br>Xếp: growth_long% giảm dần → lấy 10</div>
+        <p class="note">Trả lời: sản phẩm nào <b>bán khoẻ, ổn định, tăng đều lâu ngày</b>. Chỉ đo <b>% tăng trưởng của bán lũy kế</b> trên cửa sổ dài — không dùng điểm tổng hợp. (Tuỳ chọn: guard <code>sold[nay − W_main] ≥ min_base_main</code> để loại listing quá non.)</p>
+      </div>
+    </div>
+    <div class="f hot">
+      <div class="h">🔴 Nhánh 2 — Top 10 NỔI BẬT</div>
+      <div class="b">
+        <div class="formula">Cổng lũy kế: sold ≥ <b>M_breakout</b> (mặc định 1000)<br>Guard nền: mean(upd nền) ≥ floor<br>Lọc: spike% ≥ <b>X%</b> (mặc định 500%) trong ≤ T_fast<br>Xếp: spike% giảm dần → lấy 10</div>
+        <p class="note">Trả lời: sản phẩm nào <b>đang phát nổ</b> (vd +500% trong 1–2 ngày). Cổng bán tối thiểu loại các trường bán nhỏ; xếp thuần theo tốc độ.</p>
+      </div>
+    </div>
+  </div>
+  <div class="callout warn"><b>Hai ô người dùng tự điền (Nhánh 2):</b> ngưỡng đột biến <span class="knob">X%</span> mặc định <b>500%</b> và bán tối thiểu <span class="knob">M_breakout</span> mặc định <b>1000 lượt</b>. Cổng bán tối thiểu chính là thứ loại "tăng ảo": 1→5 lượt là +400% nhưng chưa tới 1000 lượt lũy kế nên bị loại.</div>
+
+  <hr class="div">
+
+  <!-- D. THRESHOLD -->
+  <h2><span class="p">D</span> Tham số chỉnh — mỗi partition một bộ</h2>
+  <p class="sec-sub">Để ở config (DB/env), không chôn trong code. Mỗi partition có thể đặt số khác nhau vì quy mô mỗi thị trường khác.</p>
+  <div class="cfg">
+    <div class="h">⚙︎ Bảng tham số</div>
+    <table>
+      <tr>
+        <td><span class="knob">W_main</span><br><span class="def">mặc định: 30 ngày</span></td>
+        <td><b>Nhánh 1.</b> Cửa sổ đo % tăng lũy kế dài hạn. Dài hơn → "ổn định lâu ngày" rõ hơn nhưng phản ứng chậm.</td>
+      </tr>
+      <tr class="userknob">
+        <td><span class="knob">M_breakout</span> <span class="userbadge">NGƯỜI DÙNG</span><br><span class="def">mặc định: 1000</span></td>
+        <td><b>Nhánh 2.</b> Bán lũy kế tối thiểu để được xét đột biến. Loại các trường bán nhỏ, tăng ảo. Ô người dùng tự điền.</td>
+      </tr>
+      <tr class="userknob">
+        <td><span class="knob">X%</span> <span class="userbadge">NGƯỜI DÙNG</span><br><span class="def">mặc định: 500%</span></td>
+        <td><b>Nhánh 2.</b> Ngưỡng đột biến: spike% phải vượt X% (trong ≤ T_fast) để lọt bảng. Ô người dùng tự điền. Đặt sao cho chỉ số ít vượt.</td>
+      </tr>
+      <tr>
+        <td><span class="knob">T_fast</span><br><span class="def">mặc định: 1–2 ngày</span></td>
+        <td><b>Nhánh 2.</b> Cửa sổ ngắn để bắt đột biến. Ngắn = nhạy sóng sớm hơn.</td>
+      </tr>
+      <tr>
+        <td><span class="knob">floor</span><br><span class="def">mặc định: 1 đv/ngày</span></td>
+        <td><b>Nhánh 2.</b> Nền tối thiểu (mean upd) để tính spike% — chống chia cho gần 0. Nền dưới floor thì bỏ.</td>
+      </tr>
+      <tr>
+        <td><span class="knob">min_base_main</span><br><span class="def">mặc định: tắt (tuỳ chọn)</span></td>
+        <td><b>Nhánh 1.</b> Guard tuỳ chọn: lũy kế tại đầu cửa sổ phải đủ lớn, tránh listing quá non đội lên do base nhỏ.</td>
+      </tr>
+    </table>
+  </div>
+  <div class="callout warn"><b>Mọi con số là đặt tạm.</b> Cái bền là <i>cách tính</i> (hiệu lũy kế → % tăng trưởng → cổng bán tối thiểu). Con số cụ thể để người dùng chỉnh và để dữ liệu kết quả thật hiệu chỉnh dần.</div>
+
+  <hr class="div">
+
+  <!-- E. SƠ ĐỒ -->
+  <h2><span class="p">E</span> Sơ đồ luồng — một listing đi tới đâu</h2>
+  <div class="diagram-card">
+    <pre class="mermaid">
+flowchart TD
+  IN([Snapshot listing<br/>platform·market·product_id·crawled_at·sold]):::user
+  P["Chọn partition = (platform, market)<br/>mọi bước sau chạy TRONG partition"]:::code
+  G["Gom theo product_id · sort theo thời gian<br/>loại Δ âm · tính upd = hiệu sold ÷ ngày"]:::code
+
+  N1["Nhánh 1: growth_long%<br/>= % tăng sold lũy kế trên W_main"]:::code
+  MAIN["<b>TOP 10 CHÍNH</b><br/>xếp growth_long% giảm dần"]:::main
+
+  N2["Nhánh 2: spike%<br/>= đà upd (T_fast vs nền)"]:::code
+  G2{"Cổng nổi bật<br/>sold ≥ M_breakout (1000)<br/>và nền ≥ floor ?"}:::gate
+  BF{"spike% ≥ X% (500%)<br/>trong ≤ T_fast ?"}:::gate
+  HOT["<b>TOP 10 NỔI BẬT</b><br/>xếp spike% giảm dần"]:::hot
+  DROP["Loại — bán nhỏ /<br/>tăng ảo, không phải trend"]:::stop
+
+  IN --> P --> G
+  G --> N1 --> MAIN
+  G --> N2 --> G2
+  G2 -- Không --> DROP
+  G2 -- Có --> BF
+  BF -- Có --> HOT
+  BF -- Không --> DROP
+
+  classDef code fill:#e6f1fb,stroke:#185fa5,stroke-width:1.5px,color:#2c2c2a;
+  classDef gate fill:#faeeda,stroke:#854f0b,stroke-width:1.5px,color:#2c2c2a;
+  classDef main fill:#e1f5ee,stroke:#0f6e56,stroke-width:1.5px,color:#2c2c2a;
+  classDef hot fill:#faece7,stroke:#993c1d,stroke-width:1.5px,color:#2c2c2a;
+  classDef user fill:#ffffff,stroke:#d8d6cd,stroke-width:1.5px,color:#2c2c2a;
+  classDef stop fill:#f1efe8,stroke:#5f5e5a,stroke-width:1.5px,color:#2c2c2a;
+    </pre>
+  </div>
+  <p class="sec-sub" style="margin-top:6px">Hai nhánh độc lập từ cùng dữ liệu đã gom. Một sản phẩm có thể có mặt ở cả hai bảng (vừa tăng đều lâu dài, vừa đang đột biến).</p>
+
+  <hr class="div">
+
+  <!-- F. VÍ DỤ -->
+  <h2><span class="p">F</span> Ví dụ số — để dev kiểm tra logic</h2>
+  <p class="sec-sub">Cùng partition <code>shopee·PH</code>. Giả sử nền = 7 ngày trước, T_fast = 2 ngày, M_breakout = 1000, floor = 1, W_main = 30 ngày.</p>
+
+  <div class="ex">
+    <h4>Sản phẩm A — đột biến thật <span class="pill ok">VÀO NHÁNH 2</span></h4>
+    <div class="row">nền ~ 8 đv/ngày → 2 ngày cuối ~ 50 đv/ngày · tổng lũy kế = 1.240<br>spike% = (50 − 8) / 8 × 100 = <b>+525%</b> · lũy kế 1.240 ≥ 1000 ✔ · nền 8 ≥ floor ✔ · 525% ≥ 500% ✔</div>
+    <p class="note" style="font-size:12.5px;color:var(--ink-soft);margin:0">→ Qua cổng, vượt ngưỡng. Xếp Top 10 nổi bật theo spike% = 525%.</p>
+  </div>
+
+  <div class="ex">
+    <h4>Sản phẩm B — tăng ảo <span class="pill no">BỊ LOẠI Ở NHÁNH 2</span></h4>
+    <div class="row">nền ~ 0.3 đv/ngày → 2 ngày cuối ~ 2 đv/ngày · tổng lũy kế = 12<br>spike% = (2 − 0.3) / 0.3 × 100 = <b>+566%</b> nhưng lũy kế 12 &lt; M_breakout 1000 ✗</div>
+    <p class="note" style="font-size:12.5px;color:var(--ink-soft);margin:0">→ %tăng cao hơn A nhưng chỉ bán 12 lượt cả đời. Cổng bán tối thiểu 1000 loại đúng trường hợp này.</p>
+  </div>
+
+  <div class="ex">
+    <h4>Sản phẩm C — tăng đều lâu dài <span class="pill ok">VÀO NHÁNH 1</span></h4>
+    <div class="row">sold lũy kế: cách đây 30 ngày = 8.000 → nay = 9.800<br>growth_long% = (9.800 − 8.000) / 8.000 × 100 = <b>+22,5%</b> · không đột biến ngắn hạn</div>
+    <p class="note" style="font-size:12.5px;color:var(--ink-soft);margin:0">→ Không vào Nhánh 2 (không có sóng đột biến), nhưng % tăng lũy kế dài hạn cao → hạng tốt ở Top 10 chính.</p>
+  </div>
+
+  <hr class="div">
+
+  <!-- G. UI -->
+  <h2><span class="p">G</span> Giao diện — bộ lọc &amp; mặc định</h2>
+  <p class="sec-sub">Chọn partition trước, rồi hiển thị hai bảng của partition đó. <b>Mặc định: Platform = Shopee · Market = Philippines.</b> Ô nhập <code>X%</code> và <code>M_breakout</code> nằm ngay trên bảng nổi bật (mặc định 500% / 1000).</p>
+  <div class="uimock">
+    <div class="bar">
+      <span class="selby">Platform:</span>
+      <span class="sel">Shopee ▾</span>
+      <span class="selby" style="margin-left:8px">Market:</span>
+      <span class="sel">Philippines ▾</span>
+      <span class="sel gray" style="margin-left:auto">Taobao · Lazada · 1688 …</span>
+    </div>
+    <div class="tabs">
+      <span class="tab a">🟢 Top 10 chính</span>
+      <span class="tab b">🔴 Top 10 nổi bật · đột biến ≥ [500]% · bán ≥ [1000]</span>
+    </div>
+    <p class="note" style="font-size:12.5px;color:var(--ink-soft);margin:10px 2px 0">Đổi Platform/Market = nạp lại partition khác. Hai bảng luôn thuộc <b>đúng một</b> partition — không trộn.</p>
+  </div>
+  <div class="callout"><b>Quy tắc UI:</b> không có chế độ "tất cả các sàn gộp". Muốn so sánh sàn thì đặt hai partition cạnh nhau. Cột hiển thị nên có: hạng · tên · lũy kế · % tăng (dài hạn hoặc spike tuỳ bảng) · giá (tiền gốc).</div>
+
+  <p class="foot">Trend Signal Hub · Spec Top 10 chính &amp; nổi bật · v2 · Tách theo Platform × Market · Dùng nội bộ cho dev</p>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: true, theme: "base", securityLevel: "loose",
+    themeVariables: {
+      darkMode: false, background: "#ffffff",
+      primaryColor: "#eeedfe", primaryBorderColor: "#534ab7", primaryTextColor: "#2c2c2a",
+      lineColor: "#8a8a86", textColor: "#2c2c2a",
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      fontSize: "13px"
+    }
+  });
+</script>
+</body>
+</html>

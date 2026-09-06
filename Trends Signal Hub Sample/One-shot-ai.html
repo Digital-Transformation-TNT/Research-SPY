@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPEC cho Dev — Ingestion: các trường cần cào</title>
+<style>
+  :root {
+    --bg: #faf9f5; --card: #ffffff; --ink: #2c2c2a; --ink-soft: #5f5e5a; --border: #d8d6cd;
+    --coral: #993c1d; --coral-bg: #faece7;
+    --teal: #0f6e56;  --teal-bg: #e1f5ee;
+    --blue: #185fa5;  --blue-bg: #e6f1fb;
+    --amber: #854f0b; --amber-bg: #faeeda;
+    --purple: #5b3a9e; --purple-bg: #efe9fb;
+    --gray-bg: #f1efe8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 40px 24px 72px; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.62; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+
+  .topline { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; flex-wrap: wrap; }
+  .eyebrow { color: var(--coral); font-weight: 700; font-size: 13px; letter-spacing: .04em; margin: 0; }
+  .stamp { font-size: 11.5px; font-weight: 700; color: var(--amber); background: var(--amber-bg);
+    border: 1px solid var(--amber); border-radius: 20px; padding: 2px 10px; }
+  h1 { font-size: 26px; font-weight: 700; margin: 0 0 8px; line-height: 1.25; }
+  .lead { color: var(--ink-soft); font-size: 15.5px; margin: 0 0 26px; max-width: 86ch; }
+
+  h2 { font-size: 19px; font-weight: 700; margin: 0 0 4px; display: flex; align-items: center; gap: 10px; }
+  h2 .tag { font-size: 11px; font-weight: 700; border-radius: 20px; padding: 2px 10px; }
+  h2 .tag.mkt { color: var(--blue); background: var(--blue-bg); border: 1px solid var(--blue); }
+  h2 .tag.att { color: var(--teal); background: var(--teal-bg); border: 1px solid var(--teal); }
+  h2 .tag.sup { color: var(--purple); background: var(--purple-bg); border: 1px solid var(--purple); }
+  .sec-sub { color: var(--ink-soft); font-size: 14px; margin: 0 0 14px; max-width: 90ch; }
+  hr.div { border: none; border-top: 1px solid var(--border); margin: 38px 0; }
+
+  table.f { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden; font-size: 13px; margin: 0 0 8px; }
+  table.f th, table.f td { text-align: left; padding: 9px 13px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.f thead th { font-weight: 700; font-size: 12.5px; background: var(--gray-bg); }
+  table.f tr:last-child td { border-bottom: none; }
+  table.f td:first-child { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 700; font-size: 12px; color: var(--ink); white-space: nowrap; }
+  .col { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; color: var(--blue); }
+  .must { color: var(--coral); font-weight: 700; font-size: 11px; }
+  .nice { color: var(--teal); font-weight: 700; font-size: 11px; }
+  .skip { color: var(--ink-soft); font-weight: 700; font-size: 11px; }
+
+  .minrow { background: var(--teal-bg); border: 1px solid var(--teal); border-radius: 10px; padding: 10px 14px; font-size: 13px; margin: 0 0 8px; }
+  .minrow b { color: var(--teal); }
+  .minrow code { background: #fff; }
+
+  .callout { background: var(--teal-bg); border: 1px solid var(--teal); border-radius: 12px; padding: 13px 17px; font-size: 13.5px; margin: 14px 0 0; }
+  .callout b { color: var(--teal); }
+  .callout.warn { background: var(--amber-bg); border-color: var(--amber); }
+  .callout.warn b { color: var(--amber); }
+  .callout.stop { background: var(--coral-bg); border-color: var(--coral); }
+  .callout.stop b { color: var(--coral); }
+
+  .bigwarn { border: 2px solid var(--coral); border-radius: 14px; background: var(--coral-bg); padding: 16px 20px; margin: 0 0 26px; }
+  .bigwarn .h { font-weight: 700; font-size: 15px; color: var(--coral); margin: 0 0 6px; display: flex; align-items: center; gap: 8px; }
+  .bigwarn p { font-size: 13.5px; color: var(--ink); margin: 0 0 8px; }
+  .bigwarn table { width: 100%; border-collapse: collapse; font-size: 12.5px; background: #fff; border-radius: 8px; overflow: hidden; }
+  .bigwarn td, .bigwarn th { padding: 7px 11px; border-bottom: 1px solid var(--border); text-align: left; }
+  .bigwarn th { background: var(--gray-bg); font-weight: 700; }
+  .bigwarn tr:last-child td { border-bottom: none; }
+  .ok { color: var(--teal); font-weight: 700; } .bad { color: var(--coral); font-weight: 700; }
+
+  code { background: var(--gray-bg); padding: 1px 6px; border-radius: 5px; font-size: 12px;
+    font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .foot { color: var(--ink-soft); font-size: 12.5px; text-align: center; margin-top: 32px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topline">
+    <p class="eyebrow">TREND SIGNAL HUB · LỚP ① INGESTION</p>
+    <span class="stamp">CÁC TRƯỜNG CẦN CÀO</span>
+  </div>
+  <h1>Cào hàng ngày — lấy trường nào</h1>
+  <p class="lead">Ba crawler, mỗi cái ghi vào đúng một bảng. Với mỗi trường: <span class="must">BẮT BUỘC</span> (nuôi công thức, thiếu là gãy) · <span class="nice">NÊN CÓ</span> (hiển thị/độ tin) · <span class="skip">BỎ QUA</span> (nhiễu, không đáng cào). Cào mỗi ngày = mỗi listing thêm <b>một dòng/ngày</b> (append-only).</p>
+
+  <!-- BIG WARNING -->
+  <div class="bigwarn">
+    <p class="h">⚠︎ Trường quan trọng nhất: "đã bán" phải là LŨY KẾ (cộng dồn)</p>
+    <p>Toàn bộ công thức lấy <b>hiệu</b> của số đã bán giữa hai ngày → ra bán/ngày → growth% &amp; spike%. Vậy nên bộ đếm bán <b>phải là lũy kế</b>, không phải bán theo tháng. Cào nhầm loại là hỏng cả hệ.</p>
+    <table>
+      <tr><th>Sàn</th><th>Trường "đã bán" hiển thị</th><th>Dùng được?</th></tr>
+      <tr><td>Shopee</td><td>"Đã bán N" (lũy kế)</td><td class="ok">✔ lũy kế — dùng thẳng</td></tr>
+      <tr><td>1688</td><td>成交/销量 (lũy kế giao dịch)</td><td class="ok">✔ lũy kế — dùng thẳng</td></tr>
+      <tr><td>Taobao</td><td>已售/销量 (lũy kế)</td><td class="ok">✔ lũy kế — dùng thẳng</td></tr>
+    </table>
+    <p style="margin-top:8px"><b>Đã xác nhận:</b> cả ba sàn (Shopee · 1688 · Taobao) đều cào được số bán <b>lũy kế</b> → dùng thẳng, <b>không cần</b> xử lý cửa sổ tháng. Vẫn nên lưu cờ <code>sold_type = 'cumulative'</code> như một chốt an toàn: nếu sau này thêm nguồn mới chỉ cho bán/tháng, lớp tính nhìn cờ là biết ngay, không trộn nhầm.</p>
+  </div>
+
+  <!-- CRAWLER 1 -->
+  <h2>① Cào listing sàn <span class="tag mkt">→ listings_snapshot</span></h2>
+  <p class="sec-sub">Shopee · Taobao · 1688. Cào theo keyword của một partition (platform × market). Mỗi kết quả tìm kiếm = một listing.</p>
+  <div class="minrow"><b>Tối thiểu tuyệt đối:</b> <code>product_id</code> · <code>sold_cumulative</code> · <code>crawled_at</code> · <code>platform</code> · <code>market</code> · <code>keyword</code>. Thiếu 1 trong 6 = không dựng được bảng Top 10.</div>
+  <table class="f">
+    <thead><tr><th>Trường cào</th><th>→ Cột DB</th><th>Mức</th><th>Ghi chú lấy trường</th></tr></thead>
+    <tbody>
+      <tr><td>shopid + itemid</td><td class="col">product_id</td><td class="must">BẮT BUỘC</td><td>Ghép mã native: Shopee <code>shopid_itemid</code> · Taobao <code>item_id</code> · 1688 <code>offer_id</code>. Rút từ URL. Bám đúng listing dù seller đổi tên.</td></tr>
+      <tr><td>sold / historical_sold</td><td class="col">sold_cumulative</td><td class="must">BẮT BUỘC</td><td>Bộ đếm "đã bán" <b>lũy kế</b> (xem cảnh báo trên). Cả 3 sàn đều cho lũy kế → dùng thẳng.</td></tr>
+      <tr><td>(crawler đóng dấu)</td><td class="col">crawled_at</td><td class="must">BẮT BUỘC</td><td>Thời điểm cào (UTC). Là mốc để lấy hiệu theo ngày.</td></tr>
+      <tr><td>(cố định theo job)</td><td class="col">platform · market</td><td class="must">BẮT BUỘC</td><td>Ghi cứng theo crawler đang chạy: shopee·ph…</td></tr>
+      <tr><td>search term</td><td class="col">keyword</td><td class="must">BẮT BUỘC</td><td>Term đã dùng để tìm ra listing này — để gom theo term.</td></tr>
+      <tr><td>name / title</td><td class="col">title</td><td class="nice">NÊN CÓ</td><td>Hiển thị + đối chiếu người dùng.</td></tr>
+      <tr><td>price</td><td class="col">price</td><td class="nice">NÊN CÓ</td><td>Tiền gốc. <b>Shopee: chia 100000</b> (API trả price ×10⁵). Không quy đổi tiền.</td></tr>
+      <tr><td>currency</td><td class="col">currency</td><td class="nice">NÊN CÓ</td><td>PHP/VND/CNY — suy từ market, chỉ để hiển thị.</td></tr>
+      <tr><td>item_rating.rating_star</td><td class="col">rating</td><td class="nice">NÊN CÓ</td><td>Độ tin của listing; không tham gia xếp hạng.</td></tr>
+      <tr><td>cmt_count / review</td><td class="col">reviews</td><td class="nice">NÊN CÓ</td><td>Số đánh giá — proxy độ trưởng thành.</td></tr>
+      <tr><td>liked_count</td><td class="col">favorites</td><td class="nice">NÊN CÓ</td><td>Lượt thích — proxy chú ý phụ.</td></tr>
+      <tr><td>shopid / shop_name</td><td class="col">shop_id</td><td class="nice">NÊN CÓ</td><td>Gộp theo shop, dò shop mạnh.</td></tr>
+      <tr><td>image hash → url</td><td class="col">image_url · url</td><td class="nice">NÊN CÓ</td><td>Dựng URL từ shopid/itemid; ảnh để hiển thị.</td></tr>
+      <tr><td>stock</td><td class="col">—</td><td class="skip">BỎ QUA</td><td>Dao động mạnh, ít giá trị cho tín hiệu. Chỉ cào nếu sau này cần "sắp hết hàng".</td></tr>
+      <tr><td>voucher/flash-sale badge</td><td class="col">—</td><td class="skip">BỎ QUA</td><td>Nhiễu marketing, không phản ánh cầu thật.</td></tr>
+    </tbody>
+  </table>
+
+  <hr class="div">
+
+  <!-- CRAWLER 2 -->
+  <h2>② Cào Google Trends <span class="tag att">→ google_trends</span></h2>
+  <p class="sec-sub">Một nguồn duy nhất. Mỗi bản ghi = 1 keyword × 1 vùng × 1 ngày. Nguồn trả về chuỗi (ngày, giá trị) — cào đúng dạng đó.</p>
+  <div class="minrow"><b>Tối thiểu tuyệt đối:</b> <code>keyword</code> · <code>date</code> · <code>value</code>. Đủ ba trường này là tính được L · M_ngắn · M_bền · YoY.</div>
+  <table class="f">
+    <thead><tr><th>Trường cào</th><th>→ Cột DB</th><th>Mức</th><th>Ghi chú lấy trường</th></tr></thead>
+    <tbody>
+      <tr><td>keyword</td><td class="col">keyword</td><td class="must">BẮT BUỘC</td><td>Term/sản phẩm.</td></tr>
+      <tr><td>date (mỗi điểm)</td><td class="col">date</td><td class="must">BẮT BUỘC</td><td>Ngày dương lịch thật của điểm dữ liệu. Chuỗi phải <b>liên tục, không đứt</b> (cần cho cửa sổ 60 ngày + YoY).</td></tr>
+      <tr><td>value (mỗi điểm)</td><td class="col">value</td><td class="must">BẮT BUỘC</td><td><b>Ghi rõ đơn vị:</b> lượt tuyệt đối/ngày (nếu nguồn cho) hay chỉ số 0–100. Cả hệ giả định <b>tuyệt đối</b> (để MIN_LUOT áp thẳng &amp; so keyword hợp lệ). Nếu chỉ có 0–100, phải khai để lớp tính biết.</td></tr>
+      <tr><td>region_code</td><td class="col">region_code</td><td class="nice">NÊN CÓ</td><td>Nếu tách được theo vùng → mỗi vùng một chuỗi ngày. Không tách → để <code>'ALL'</code> (toàn quốc).</td></tr>
+      <tr><td>region_name</td><td class="col">region_name</td><td class="skip">BỎ QUA</td><td>Dẫn xuất từ region_code lúc hiển thị, không cần cào/lưu.</td></tr>
+      <tr><td>rising / related queries</td><td class="col">(bảng khám phá riêng)</td><td class="nice">NÊN CÓ</td><td>Nếu muốn "gợi ý term mới" → lưu bảng discovered_keywords riêng (keyword, change%, rising). Không nhét vào google_trends.</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn"><b>Chú ý YoY:</b> để tính YoY, phải giữ đủ <b>lát 28 ngày cùng kỳ năm ngoái</b> trong DB. Nghĩa là cào/giữ chuỗi dài ~13 tháng, không chỉ 60 ngày. Thiếu lát năm ngoái → YoY để trống, hạ nhãn về mức thận trọng.</div>
+
+  <hr class="div">
+
+  <!-- CRAWLER 3 -->
+  <h2>③ Cào nguồn hàng <span class="tag sup">→ supply_snapshot</span></h2>
+  <p class="sec-sub">1688 · Taobao (phía sỉ). Với mỗi keyword, tìm trên 1688/Taobao → gộp các offer thành một dòng/ngày (giá nhập, MOQ, số NCC).</p>
+  <div class="minrow"><b>Tối thiểu tuyệt đối:</b> <code>source_platform</code> · <code>keyword</code> · <code>crawled_at</code> · <code>wholesale_median_cny</code> · <code>moq_min</code> · <code>supplier_count</code>.</div>
+  <table class="f">
+    <thead><tr><th>Trường cào</th><th>→ Cột DB</th><th>Mức</th><th>Ghi chú lấy trường</th></tr></thead>
+    <tbody>
+      <tr><td>(cố định theo job)</td><td class="col">source_platform</td><td class="must">BẮT BUỘC</td><td>1688 | taobao.</td></tr>
+      <tr><td>search term</td><td class="col">keyword</td><td class="must">BẮT BUỘC</td><td>Khoá nối với nhóm Chú ý &amp; Thị trường.</td></tr>
+      <tr><td>(crawler đóng dấu)</td><td class="col">crawled_at</td><td class="must">BẮT BUỘC</td><td>Thời điểm cào.</td></tr>
+      <tr><td>đếm số offer</td><td class="col">supplier_count</td><td class="must">BẮT BUỘC</td><td>Bao nhiêu NCC bán mặt hàng này — proxy độ dễ nguồn.</td></tr>
+      <tr><td>giá sỉ các offer</td><td class="col">wholesale_min_cny · wholesale_median_cny</td><td class="must">BẮT BUỘC</td><td>Tiền gốc CNY. <b>Giá bậc thang</b> → chuẩn hoá về <b>một bậc</b> (vd giá ở MOQ thấp nhất) rồi mới lấy min/median, kẻo so lệch bậc.</td></tr>
+      <tr><td>起订量 (MOQ)</td><td class="col">moq_min</td><td class="must">BẮT BUỘC</td><td>Số lượng đặt tối thiểu — ảnh hưởng vốn &amp; khả năng test.</td></tr>
+      <tr><td>link NCC đại diện</td><td class="col">source_url</td><td class="nice">NÊN CÓ</td><td>Để người dùng bấm sang xem.</td></tr>
+      <tr><td>(tuỳ) match sang listing sàn</td><td class="col">market_product_id</td><td class="nice">NÊN CÓ</td><td>Nếu khớp được nguồn với đúng sản phẩm Shopee → tính biên chính xác hơn.</td></tr>
+      <tr><td>ảnh/tiêu đề offer</td><td class="col">—</td><td class="skip">BỎ QUA</td><td>Trừ khi làm image-match; mặc định không cần lưu.</td></tr>
+    </tbody>
+  </table>
+  <div class="callout"><b>Biên tính ở lớp trên, không ở crawler:</b> crawler chỉ lấy giá nhập CNY + MOQ. <code>biên%</code> = (giá bán lẻ Shopee − giá nhập quy đổi − ship ước)/giá bán lẻ, tính ở lớp Signal bằng <code>fx_rate</code>. Đây là chỗ duy nhất đụng quy đổi tiền.</div>
+
+  <hr class="div">
+
+  <div class="callout stop"><b>Ba nhắc chốt:</b> (1) mỗi ngày thêm dòng mới, <b>không sửa dòng cũ</b> — <code>UNIQUE</code> + <code>ON CONFLICT DO NOTHING</code>; (2) crawler <b>chỉ lấy trường thô</b>, không tính chỉ số (mọi % để lớp Signal lo); (3) cả 3 sàn hiện đều lũy kế — vẫn nên ghi cờ <code>sold_type='cumulative'</code> để <b>phòng khi thêm nguồn mới</b>, lớp sau khỏi phải đoán.</div>
+
+  <p class="foot">Trend Signal Hub · Ingestion — các trường cần cào · 3 crawler → 3 bảng · Dùng nội bộ cho dev</p>
+
+</div>
+</body>
+</html>

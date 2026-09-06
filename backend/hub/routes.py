@@ -855,3 +855,130 @@ def filter_options():
         "materials": store.taxonomy["materials"],
         "roles": ["rnd", "seller"],
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TREND SIGNAL HUB — BA PHẦN CHÍNH
+#
+# Mọi thứ dưới đây đi qua tiền tố `/api/hub/signal/*` và đọc `hub/signal/*`. Các route
+# phía trên là phần còn lại của bản Printway (Etsy · Amazon · gallery · catalogue); trang
+# mới không gọi cái nào trong số đó nữa.
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/signal/trends")
+def signal_trends(region: str = "ALL", up_only: bool = True):
+    """① Bảng tín hiệu Google Trends của một vùng, kèm ngưỡng đang áp dụng."""
+    from .signal import store as sig_store, trendsig
+    out = trendsig.build(region, sig_store.get_config("trends"), up_only=up_only)
+    out["regions"] = sig_store.tracked_regions()
+    out["n_tracked"] = len(sig_store.tracked_keywords(region))
+    return out
+
+
+@router.post("/signal/trends/config")
+def signal_trends_config(payload: dict):
+    """Lưu 4 ngưỡng. Chỉ nhận đúng các khoá có trong `DEFAULTS` — xem `merged_config`."""
+    from .signal import store as sig_store, trendsig
+    cfg = trendsig.merged_config(payload or {})
+    sig_store.set_config("trends", cfg)
+    return {"saved": True, "config": cfg}
+
+
+@router.post("/signal/trends/refresh")
+def signal_trends_refresh(payload: dict):
+    """
+    Cào lại chuỗi ngày + tuần cho danh sách từ khoá.
+
+    `anchor` là tuỳ chọn nhưng KHÔNG phải chi tiết nhỏ: không có nó thì `MIN_INDEX` lọc
+    theo một thang mỗi từ khoá một khác. Xem đầu `ingestion/trends_daily.py`.
+    """
+    from .ingestion import trends_daily
+    p = payload or {}
+    kws = [k for k in (p.get("keywords") or []) if isinstance(k, str)]
+    return trends_daily.refresh(kws, geo=p.get("geo") or "VN",
+                                region=p.get("region") or "ALL",
+                                anchor=(p.get("anchor") or None))
+
+
+@router.get("/signal/partitions")
+def signal_partitions():
+    """Các cặp (sàn × thị trường) đã có snapshot, kèm độ dày lịch sử."""
+    from .signal import top10
+    return {"partitions": top10.partitions()}
+
+
+@router.get("/signal/top10")
+def signal_top10(platform: str = "shopee", market: str = "vn"):
+    """② Hai bảng Top 10 của MỘT partition. Không gộp sàn, không quy đổi tiền."""
+    from .signal import store as sig_store, top10
+    return top10.build(platform, market, sig_store.get_config(f"{platform}:{market}"))
+
+
+@router.post("/signal/top10/config")
+def signal_top10_config(payload: dict):
+    """Lưu tham số cho MỘT partition — mỗi thị trường một bộ, đúng spec mục D."""
+    from .signal import store as sig_store, top10
+    p = payload or {}
+    platform, market = p.get("platform") or "shopee", p.get("market") or "vn"
+    cfg = top10.merged_config(p)
+    sig_store.set_config(f"{platform}:{market}", cfg)
+    return {"saved": True, "platform": platform, "market": market, "config": cfg}
+
+
+@router.post("/signal/snapshot")
+async def signal_snapshot(payload: dict):
+    """Chụp một partition ngay bây giờ (bình thường do scheduler chạy mỗi ngày)."""
+    from .ingestion import market_snapshot
+    p = payload or {}
+    kws = [k for k in (p.get("keywords") or []) if isinstance(k, str)]
+    return await market_snapshot.snapshot(p.get("platform") or "shopee",
+                                          p.get("market") or "vn", kws)
+
+
+@router.post("/signal/ask")
+async def signal_ask(payload: dict):
+    """③ One-shot AI — hỏi đáp nhiều lượt, ground trên chính ① và ②."""
+    from .signal import ask as ask_engine
+    p = payload or {}
+    return await ask_engine.ask(
+        turns=[t for t in (p.get("messages") or []) if isinstance(t, dict)],
+        region=p.get("region") or "VN",
+        platform=p.get("platform"), market=p.get("market"))
+
+
+#: DANH SÁCH THEO DÕI — thứ duy nhất người dùng phải khai, và là đầu vào của cả ① lẫn ②.
+#:
+#: Hub không tự đoán nên theo dõi cái gì. Người bán hàng biết mình bán ngành nào; công cụ
+#: chỉ cần biết danh sách ấy rồi mỗi đêm đi đo lại. Lịch chạy đọc đúng bản ghi này —
+#: xem `scheduler.job_sigtrends` / `job_sigsnap`.
+_WATCHLIST_DEFAULT = {
+    "keywords": [], "geo": "VN", "region": "ALL", "anchor": "",
+    "partitions": [{"platform": "shopee", "market": "vn", "keywords": []}],
+}
+
+
+@router.get("/signal/watchlist")
+def signal_watchlist():
+    from .signal import store as sig_store
+    return {**_WATCHLIST_DEFAULT, **(sig_store.get_config("watchlist") or {})}
+
+
+@router.post("/signal/watchlist")
+def signal_watchlist_save(payload: dict):
+    from .signal import store as sig_store
+    p = payload or {}
+    cfg = {
+        "keywords": [k.strip() for k in (p.get("keywords") or []) if isinstance(k, str) and k.strip()],
+        "geo": (p.get("geo") or "VN").upper(),
+        "region": p.get("region") or "ALL",
+        "anchor": (p.get("anchor") or "").strip(),
+        "partitions": [
+            {"platform": q.get("platform") or "shopee",
+             "market": (q.get("market") or "vn").lower(),
+             "keywords": [k.strip() for k in (q.get("keywords") or [])
+                          if isinstance(k, str) and k.strip()]}
+            for q in (p.get("partitions") or []) if isinstance(q, dict)
+        ] or _WATCHLIST_DEFAULT["partitions"],
+    }
+    sig_store.set_config("watchlist", cfg)
+    return {"saved": True, **cfg}

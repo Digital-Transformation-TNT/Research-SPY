@@ -76,6 +76,66 @@ CREATE TABLE IF NOT EXISTS discovered_keywords (
     PRIMARY KEY (day, keyword)
 );
 
+-- ══ TÍN HIỆU GOOGLE TRENDS — 1 bản ghi = 1 keyword × 1 vùng × 1 mốc thời gian ══
+-- Thay cho `trends_cache` (keyword -> 12 điểm đã nén, không ngày tháng): công thức L /
+-- M_ngắn / M_bền cần chuỗi 60 NGÀY LIÊN TỤC, YoY cần lát cùng kỳ năm ngoái. Nén 12 điểm
+-- là làm mất đúng thứ mà cả bốn chỉ số ăn vào.
+--
+-- `grain` tách hai chuỗi ĐỘC LẬP của cùng một keyword, và đây là chỗ dễ hiểu sai nhất:
+-- Google chuẩn hoá 0-100 TRONG NỘI BỘ MỘT TRUY VẤN. Chuỗi ngày (3 tháng) và chuỗi tuần
+-- (12 tháng) là hai truy vấn khác nhau nên KHÔNG so trực tiếp được với nhau. Vì vậy
+-- L/M_ngắn/M_bền đọc grain='day', còn YoY đọc grain='week' — mỗi chỉ số ở nguyên trong
+-- một mốc chuẩn hoá. Trộn hai grain vào một phép trừ là ra số vô nghĩa.
+CREATE TABLE IF NOT EXISTS trends_daily (
+    keyword     TEXT NOT NULL,
+    region_code TEXT NOT NULL DEFAULT 'ALL',   -- 'VN', 'VN-HN'… hoặc 'ALL' = toàn quốc
+    grain       TEXT NOT NULL DEFAULT 'day',   -- day (3 tháng) | week (12 tháng, cho YoY)
+    date        TEXT NOT NULL,                 -- YYYY-MM-DD, ngày THẬT của điểm dữ liệu
+    value       REAL NOT NULL,
+    value_kind  TEXT NOT NULL DEFAULT 'index', -- index = 0-100 | absolute = lượt/ngày thật
+    crawled_at  TEXT,
+    PRIMARY KEY (keyword, region_code, grain, date)
+);
+CREATE INDEX IF NOT EXISTS idx_td_kw ON trends_daily(keyword, region_code, grain);
+
+-- ══ SNAPSHOT LISTING SÀN — 1 dòng = 1 listing × 1 NGÀY (append-only) ══
+-- Khác `raw_listings` ở ba chỗ quyết định: có `product_id` native (bám đúng listing dù
+-- seller đổi tên), có `sold_cumulative` (mọi % tăng đều là HIỆU của cột này giữa hai ngày),
+-- và khoá chính chứa `day` nên cào lại trong ngày không đè mất mốc cũ.
+--
+-- `sold_type` là chốt an toàn, không phải cột thừa: cả Shopee/Taobao/1688 hiện đều trả số
+-- LŨY KẾ. Ngày nào thêm một nguồn chỉ cho bán-theo-tháng, lớp tính nhìn cờ này là biết
+-- ngay, thay vì lặng lẽ trừ hai đại lượng khác loại rồi cho ra một con số trông vẫn hợp lý.
+CREATE TABLE IF NOT EXISTS listings_snapshot (
+    platform        TEXT NOT NULL,             -- shopee | taobao | 1688
+    market          TEXT NOT NULL,             -- vn | ph | th | id | cn…
+    product_id      TEXT NOT NULL,             -- shopid_itemid | item_id | offer_id
+    day             TEXT NOT NULL,             -- YYYY-MM-DD
+    sold_cumulative INTEGER NOT NULL,
+    sold_type       TEXT NOT NULL DEFAULT 'cumulative',
+    keyword         TEXT,
+    title           TEXT,
+    price           REAL,                      -- TIỀN GỐC của thị trường, không quy đổi
+    currency        TEXT,
+    rating          REAL,
+    reviews         INTEGER,
+    favorites       INTEGER,
+    shop_id         TEXT,
+    image_url       TEXT,
+    url             TEXT,
+    crawled_at      TEXT NOT NULL,
+    PRIMARY KEY (platform, market, product_id, day)
+);
+CREATE INDEX IF NOT EXISTS idx_ls_part ON listings_snapshot(platform, market, day);
+
+-- Ngưỡng người dùng chỉnh. `scope` = 'trends' hoặc 'shopee:vn' (mỗi partition một bộ, vì
+-- quy mô mỗi thị trường một khác — xem spec Top 10 mục D).
+CREATE TABLE IF NOT EXISTS signal_config (
+    scope      TEXT PRIMARY KEY,
+    json       TEXT NOT NULL,
+    updated_at TEXT
+);
+
 -- AI học hành vi: log thao tác người dùng để cá nhân hóa đề xuất
 CREATE TABLE IF NOT EXISTS events (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

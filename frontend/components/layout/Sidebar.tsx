@@ -81,12 +81,10 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
         hint: 'Top sản phẩm đa sàn theo từ khoá — kèm Facebook Ads và video theo sản phẩm',
         icon: 'ads',
       },
-      {
-        href: '/opportunity',
-        label: 'Cơ hội',
-        hint: 'Khám phá món nên bán cùng trợ lý AI',
-        icon: 'idea',
-      },
+      // ĐÃ BỎ 'Cơ hội' (`/opportunity`). Chatbot của nó nay là mục ③ One-shot AI trong
+      // Trend Signal Hub — cùng một engine (`lib/opportunity/demand_map.py`), thêm phần
+      // ground trên tín hiệu Trends và Top 10 của Hub. Route và backend vẫn còn nguyên,
+      // chỉ là không còn hai cửa vào cho cùng một việc.
     ],
   },
   // Mục độc lập, có database riêng (`backend/hub_data.db`) và không dùng chung gì với nhóm
@@ -97,7 +95,7 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
       {
         href: '/trend-signal',
         label: 'Trend Signal Hub',
-        hint: 'Tín hiệu hôm nay từ Etsy, Amazon và Google Trends',
+        hint: 'Tín hiệu Google Trends · Top 10 sàn · One-shot AI',
         icon: 'signal',
       },
     ],

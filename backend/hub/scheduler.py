@@ -6,6 +6,8 @@ LỊCH ĐÊM (giờ máy chủ):
   03:30  trends    lấy chuỗi 12 điểm qua Chrome thật  -> trends_cache
   03:50  unify     chuẩn hoá 2 sàn về 1 lược đồ       -> listings_unified
   04:00  report    sinh báo cáo ngày                  -> reports
+  05:00  sigtrends chuỗi Trends ngày+tuần (Hub ①)     -> trends_daily
+  05:40  sigsnap   chụp listing sàn theo ngày (Hub ②)  -> listings_snapshot
 
 Tắt bằng biến môi trường: SCHEDULER_ENABLED=0
 Chạy ngay một lần: POST /api/scheduler/run?job=all
@@ -23,9 +25,11 @@ log = logging.getLogger("scheduler")
 # giờ chạy (0-23) cho từng job
 # `shopnames` chạy trước `unify` để tên shop kịp vào cột chuẩn hoá `shop_name`.
 HOURS = {"discover": 2, "listings": 2, "sales": 3, "shopnames": 3, "trends": 3,
-         "unify": 3, "report": 4}
+         "unify": 3, "report": 4,
+         "sigtrends": 5, "sigsnap": 5}
 MINUTES = {"discover": 0, "listings": 40, "sales": 10, "shopnames": 20,
-           "trends": 30, "unify": 50, "report": 0}
+           "trends": 30, "unify": 50, "report": 0,
+           "sigtrends": 0, "sigsnap": 40}
 
 # giới hạn mỗi đêm — đủ tươi mà không đụng trần quota
 MAX_SEEDS = 96          # hạt giống từ catalog
@@ -176,15 +180,61 @@ def job_shopnames() -> dict:
     return out
 
 
+# ─────────────── Trend Signal Hub (phần ① và ②) ───────────────
+# Hai job này đọc DANH SÁCH THEO DÕI (`signal_config` scope `watchlist`) chứ không tự đoán
+# từ khoá như `_target_keywords` phía trên — cái đó lấy hạt giống từ catalog Printway, một
+# nguồn mà Hub mới không còn dùng.
+#
+# CHẠY MỖI NGÀY LÀ ĐIỀU KIỆN SỐNG CÒN, không phải tuỳ chọn: cả `growth_long%` lẫn `spike%`
+# đều là HIỆU giữa hai lần chụp. Bỏ một đêm là thủng một mốc, và `_upd_series` sẽ chia đều
+# lượng bán của hai ngày ra — làm phẳng đúng cú đột biến mà bảng sinh ra để bắt.
+def job_sigtrends() -> dict:
+    """Chuỗi Google Trends ngày + tuần cho danh sách theo dõi -> trends_daily."""
+    from .ingestion import trends_daily
+    from .signal import store as sig_store
+    wl = sig_store.get_config("watchlist") or {}
+    kws = (wl.get("keywords") or [])[:MAX_TRENDS_KW]
+    if not kws:
+        return {"job": "sigtrends", "skipped": True,
+                "reason": "danh sách theo dõi trống — khai ở mục Tín hiệu Trends"}
+    out = trends_daily.refresh(kws, geo=wl.get("geo") or "VN",
+                               region=wl.get("region") or "ALL",
+                               anchor=(wl.get("anchor") or None))
+    return {"job": "sigtrends", **out}
+
+
+def job_sigsnap() -> dict:
+    """Chụp listing từng partition -> listings_snapshot."""
+    import asyncio
+    from .ingestion import market_snapshot
+    from .signal import store as sig_store
+    wl = sig_store.get_config("watchlist") or {}
+    parts = wl.get("partitions") or []
+    runs = []
+    for q in parts:
+        kws = q.get("keywords") or wl.get("keywords") or []
+        if not kws:
+            continue
+        try:
+            runs.append(asyncio.run(market_snapshot.snapshot(
+                q.get("platform") or "shopee", q.get("market") or "vn", kws)))
+        except Exception as e:  # noqa
+            runs.append({"platform": q.get("platform"), "market": q.get("market"),
+                         "error": str(e)[:200]})
+    return {"job": "sigsnap", "partitions": len(runs), "runs": runs}
+
+
 JOBS = {"discover": job_discover, "listings": job_listings, "sales": job_sales,
         "trends": job_trends, "unify": job_unify, "report": job_report,
-        "shopnames": job_shopnames}
+        "shopnames": job_shopnames,
+        "sigtrends": job_sigtrends, "sigsnap": job_sigsnap}
 
 
 # Khoá mỗi job để hai lượt cùng job không chạy chồng nhau (nhất là `unify`).
 _job_locks: dict[str, threading.Lock] = {n: threading.Lock() for n in
                                          ("discover", "listings", "sales",
-                                          "trends", "unify", "report")}
+                                          "trends", "unify", "report",
+                                          "sigtrends", "sigsnap")}
 
 
 def run_job(name: str) -> dict:
@@ -212,7 +262,8 @@ def run_job(name: str) -> dict:
 def run_all() -> list[dict]:
     """Chạy tuần tự theo đúng thứ tự phụ thuộc."""
     return [run_job(n) for n in ("discover", "listings", "sales", "shopnames",
-                                "trends", "unify", "report")]
+                                "trends", "unify", "report",
+                                "sigtrends", "sigsnap")]
 
 
 # ─────────────────────── vòng lặp lịch ───────────────────────
