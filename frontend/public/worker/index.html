@@ -165,8 +165,39 @@ async function loop() {
       done++; $('done').textContent = done; $('last').textContent = `${job.type} · ${new Date().toLocaleTimeString()}`;
       log(`  ✓ trả kết quả job ${job.id}`, result && !result.__workerError ? 'ok' : 'warn');
     } catch (e) { log('  lỗi trả kết quả: ' + e, 'err'); }
+
+    // CẦU NỐI CHẾT THÌ PHẢI NGỪNG NHẬN JOB. Sau mỗi lần Reload ở chrome://extensions, content
+    // script trong tab NÀY vẫn trỏ vào bản extension đã bị huỷ: `chrome.runtime` ném "Extension
+    // context invalidated", nhưng phần long-poll ở trên chỉ dùng `fetch` nên vẫn khoẻ. Kết quả
+    // là trang hút sạch hàng đợi rồi trả lỗi cho từng job trong chưa tới một giây — và nếu có
+    // một tab máy-thợ khoẻ ở đâu đó, nó không bao giờ giành được job nào.
+    //
+    // Đo thật 06/09/2026: một mẻ 10 từ khoá hỏng trọn hai lần liên tiếp theo đúng cách này.
+    if (deadBridge(result)) {
+      setExt(false);
+      const tries = Number(sessionStorage.getItem('wk_reloads') || 0);
+      if (tries < 2) {
+        sessionStorage.setItem('wk_reloads', String(tries + 1));
+        log('Cầu nối tới extension đã chết (vừa Reload extension?). Tự tải lại trang…', 'warn');
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        // Tải lại hai lần không ăn thì vấn đề không phải ở tab này — dừng hẳn, đừng
+        // reload vô tận, và nói ra việc cần làm.
+        log('Vẫn không nối được extension sau 2 lần tải lại. Kiểm tra extension còn BẬT ở '
+            + 'chrome://extensions không, rồi F5 trang này. Đã NGỪNG nhận job để không '
+            + 'chiếm job của máy-thợ khác.', 'err');
+      }
+      return;
+    }
   }
 }
+
+/** Kết quả này có phải do cầu nối extension đã chết không (khác hẳn job chạy rồi thất bại). */
+function deadBridge(result) {
+  const err = result && result.error;
+  return typeof err === 'string' && /context invalidated|Extension context/i.test(err);
+}
+
 loop();
 </script>
 </body>
