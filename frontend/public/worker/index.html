@@ -66,6 +66,7 @@ const JOB_TIMEOUT_MS = {
   RS_TRENDS_RELATED: 110000, // đi tối đa HAI trang: Khám phá mới (30s cuộn) rồi mới rơi về trang cũ (20s), cộng hai lần tải
   RS_TIKTOK: 140000,        // totalDeadline 120s cho cả loạt cụm, cộng mở tab + focus + gom kết quả
   RS_DOUYIN: 140000,        // như TikTok, và Douyin còn hay chen màn xác minh 滑块 giữa chừng
+  RS_GOOGLE_VIDEOS: 50000,  // một lần tải trang google + một lượt cuộn, không đăng nhập gì cả
 };
 
 function rsCall(msg, timeoutMs = 40000) {

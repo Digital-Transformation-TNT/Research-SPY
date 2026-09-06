@@ -1626,6 +1626,72 @@ async function openVideoModal(p) {
   await loadModalTiktok(region);
 }
 
+/**
+ * Gộp nhiều danh sách thẻ, bỏ trùng theo (nguồn, id) và GIỮ NGUYÊN thứ tự xuất hiện đầu tiên.
+ *
+ * Cần vì một video TikTok có thể tới từ HAI đường: Google (`site:tiktok.com`) và lượt tìm thật
+ * trong tab TikTok. Thẻ của đường sau chở thêm tim/bình luận, nên bản giữ lại là bản ĐẦY hơn —
+ * chứ không phải bản tới trước.
+ */
+function vidMerge(...lists) {
+  const by = new Map();
+  for (const list of lists) {
+    for (const ad of list || []) {
+      const key = `${ad.platform}:${ad.id || ad.permalink}`;
+      const old = by.get(key);
+      if (!old) { by.set(key, ad); continue; }
+      // Giữ thẻ nào có nhiều số đo hơn (tim/xem/ngày đăng).
+      const weight = (x) => (x.likeCount != null) + (x.playCount != null) + (x.startedAt != null);
+      if (weight(ad) > weight(old)) by.set(key, ad);
+    }
+  }
+  return [...by.values()];
+}
+
+//: region → `hl` của Google. `gl` thì dùng thẳng mã nước. Thiếu tên ở đây → tiếng Anh.
+const GOOGLE_HL = {
+  VN: 'vi', TH: 'th', ID: 'id', MY: 'ms', PH: 'tl', SG: 'en', TW: 'zh-TW',
+  US: 'en', GB: 'en', BR: 'pt-BR', MX: 'es', CO: 'es', CL: 'es', CN: 'zh-CN',
+};
+
+/**
+ * VIDEO QUA GOOGLE — `site:tiktok.com` / `site:douyin.com` ở tab Hình ảnh.
+ *
+ * CHẠY TRƯỚC hai nguồn kia, và đó là điểm chính. Lượt tìm thật trong tab TikTok tốn tới hơn hai
+ * phút (mở tab, gõ, cuộn) và cần phiên đăng nhập của máy-thợ; Google chỉ là một lần tải trang.
+ * Đo 2026-09-06 với “tai nghe bluetooth pro 3”: 62 link video ngay trang đầu, kèm caption và ảnh
+ * bìa. Nên người dùng thấy lưới video trong vài giây thay vì nhìn màn hình trống suốt hai phút,
+ * còn nguồn chậm hơn thì gộp thêm vào sau — đúng khuôn mà Facebook đã dùng ở `openVideoModal`.
+ *
+ * Trả về mảng thẻ đã chuẩn hoá (rỗng nếu hỏng) và một ghi chú lý do — không ném lỗi, vì đây là
+ * nguồn phụ trợ: nó hỏng thì hai nguồn kia vẫn phải được chạy.
+ */
+async function fetchGoogleVideos(site, keyword, region) {
+  const platform = site === 'douyin' ? 'douyin' : 'tiktok';
+  try {
+    const g = await new Promise((res) => chrome.runtime.sendMessage({
+      type: 'RS_GOOGLE_VIDEOS', site, keyword,
+      hl: GOOGLE_HL[region] || 'en', gl: region, count: 60,
+    }, (x) => res(x)));
+    const items = (g && g.items) || [];
+    const ads = items.map((it) => ({
+      platform, id: it.id,
+      advertiser: it.author || (platform === 'douyin' ? 'Douyin' : 'TikTok'),
+      title: it.name, body: it.name,
+      permalink: it.videoUrl,
+      langMatch: platform === 'douyin' ? 'match' : 'neutral',
+      regionTag: region,
+      viaGoogle: true,
+      // Douyin không có player nhúng công khai → chỉ ảnh bìa + link, như nhánh Douyin sẵn có.
+      creatives: [{ kind: platform === 'douyin' ? 'image' : 'video', posterUrl: it.image || '' }],
+    }));
+    const note = (g && g.error) ? ' · Google: ' + g.error : '';
+    return { ads, note };
+  } catch (e) {
+    return { ads: [], note: ' · Google: extension chưa sẵn sàng' };
+  }
+}
+
 // Danh sách NƯỚC cho ô chọn TikTok — dịch keyword/hashtag theo ngôn ngữ nước này (backend _REGION_LANG).
 const TIKTOK_REGIONS = ['VN', 'TH', 'ID', 'MY', 'PH', 'SG', 'TW', 'US', 'GB', 'BR', 'MX', 'CO', 'CL'];
 function fillVidRegions(selected) {
@@ -1670,7 +1736,23 @@ async function loadModalTiktok(region) {
   } catch (e) { /* backend lỗi → dùng usedKw */ }
 
   const flag = FLAG[region] || '', country = COUNTRY[region] || region;
-  setVidStatus(`FB ${st.fbAds.length} · Sàn ${st.marketAds.length} · đang tìm TikTok ${flag} ${country} · “${tkTerm}”… (tool tự cuộn)`);
+
+  // BƯỚC 1 — GOOGLE. Vài giây, không đăng nhập, không cá nhân hoá. Vẽ ngay khi có.
+  setVidStatus(`FB ${st.fbAds.length} · Sàn ${st.marketAds.length} · đang hỏi Google “${tkTerm}”…`);
+  const g = await fetchGoogleVideos('tiktok', tkTerm, region);
+  if (!alive()) return;
+  st.gAds = g.ads;
+  if (g.ads.length) {
+    // MỘT danh sách dùng cho cả hai việc: `fillTiktokStats` vẽ lại lưới bằng đúng mảng nó nhận,
+    // nên đưa nó mỗi phần Google là xoá mất Facebook và Sàn đang hiện.
+    const som = vidMerge(st.fbAds, g.ads, st.marketAds);
+    renderVideos(som);
+    void fillTiktokStats(som, my); // tim/xem/ngày đăng lấy từ backend, không cần extension
+  }
+
+  // BƯỚC 2 — lượt tìm THẬT trong tab TikTok. Chậm (tới hơn hai phút) nhưng thấy được cả những
+  // video Google chưa lập chỉ mục, nên vẫn chạy — chỉ là chạy sau, và gộp thêm vào lưới đã có.
+  setVidStatus(`Google ${g.ads.length}${g.note} · đang tìm TikTok ${flag} ${country} · “${tkTerm}”… (tool tự cuộn)`);
   let tkItems = [], tkNote = '', tkCounts = null, tkMode = null;
   try {
     const tk = await new Promise((res) => chrome.runtime.sendMessage({ type: 'RS_TIKTOK', keyword: tkTerm, keywords: [tkTerm], region, mode: 'mixed', count: 100 }, (x) => res(x)));
@@ -1709,13 +1791,14 @@ async function loadModalTiktok(region) {
 
   st.tkAds = tkAds; // lưu để nút 🎥 Douyin có thể gộp thêm mà không xoá TikTok đang có
   st.ccAds = ccAds;
-  // CC lên đầu (country filter thật) → organic TikTok → Douyin → sàn.
-  const all = st.fbAds.concat(ccAds).concat(tkAds).concat(st.dyAds || []).concat(st.marketAds);
+  // CC lên đầu (country filter thật) → TikTok tìm thật → Google → Douyin → sàn. Thẻ của lượt
+  // tìm thật đứng trước thẻ Google vì nó chở sẵn tim/lượt xem; `vidMerge` bỏ phần trùng.
+  const all = vidMerge(st.fbAds, ccAds, tkAds, st.gAds || [], st.dyAds || [], st.marketAds);
   if (!all.length) {
     // Rỗng vì HỎNG và rỗng vì THẬT SỰ KHÔNG CÓ là hai câu trả lời khác nhau. `tkNote`/`fbNote`
     // có chữ nghĩa là đã hỏng ở đâu đó — đừng khuyên "thử nước khác", đổi nước không sửa được
     // một máy-thợ đang offline.
-    const why = `${st.fbNote || ''}${tkNote}`;
+    const why = `${st.fbNote || ''}${g.note}${tkNote}`;
     setVidStatus(
       why
         ? `Không lấy được video cho "${usedKw}" ${flag} ${country}:${why}`
@@ -1729,7 +1812,7 @@ async function loadModalTiktok(region) {
     ? ` (khớp ${flag} ${tkCounts.match} · trung tính ${tkCounts.neutral} · khác ngôn ngữ ${tkCounts.other})`
     : '';
   const ccBreak = ccAds.length ? ` · CC ${flag}${ccAds.length}` : '';
-  setVidStatus(`${all.length} video · "${usedKw}" · TikTok ${flag}${country} ${tkItems.length} · ${tkMode || modeLabel}${langBreak}${ccBreak} · FB ${st.fbAds.length} · Sàn ${st.marketAds.length}${st.fbNote || ''}${tkNote}`, 'ok');
+  setVidStatus(`${all.length} video · "${usedKw}" · Google ${(st.gAds || []).length} · TikTok ${flag}${country} ${tkItems.length} · ${tkMode || modeLabel}${langBreak}${ccBreak} · FB ${st.fbAds.length} · Sàn ${st.marketAds.length}${st.fbNote || ''}${g.note}${tkNote}`, 'ok');
   renderVideos(all);
   // Vẽ xong rồi mới đi lấy tim/bình luận/lượt xem — xem ghi chú ở `fillTiktokStats`. Không
   // `await`: lưới đã dùng được ngay, số điền vào sau.
@@ -2051,7 +2134,15 @@ async function loadModalDouyin() {
     }
   } catch (e) { /* backend lỗi → dùng usedKw (tiếng Việt, Douyin vẫn thử) */ }
 
-  setVidStatus(`Đang lấy Douyin (抖音) cho “${dyTerm}”… (nếu ra 滑块 verify, kéo trong tab)`);
+  // GOOGLE TRƯỚC, y như nhánh TikTok — và ở Douyin thì đáng giá hơn nữa: lượt tìm thật trên
+  // douyin.com hay chen màn xác minh 滑块 phải có người ngồi kéo, còn Google thì không.
+  setVidStatus(`Đang hỏi Google “${dyTerm}” (site:douyin.com)…`);
+  const gd = await fetchGoogleVideos('douyin', dyTerm, 'CN');
+  if (!alive()) return;
+  st.dyAds = vidMerge(st.dyAds || [], gd.ads);
+  if (gd.ads.length) renderVideos(vidMerge(st.fbAds, st.tkAds || [], st.gAds || [], st.dyAds, st.marketAds));
+
+  setVidStatus(`Google ${gd.ads.length}${gd.note} · đang lấy Douyin (抖音) cho “${dyTerm}”… (nếu ra 滑块 verify, kéo trong tab)`);
   let dyItems = [], dyNote = '';
   try {
     const dy = await new Promise((res) => chrome.runtime.sendMessage({ type: 'RS_DOUYIN', keyword: dyTerm, keywords: [dyTerm], anchor: dyTerm, count: 60 }, (x) => res(x)));
@@ -2072,24 +2163,18 @@ async function loadModalDouyin() {
     creatives: [{ kind: 'image', posterUrl: it.image || '' }],
   }));
 
-  // Gộp thêm vào grid, dedup theo (platform,id) để tránh render trùng nếu user bấm 2 lần.
-  const existing = new Set();
-  const merge = (arr) => arr.filter((a) => {
-    const k = `${a.platform}:${a.id || a.permalink}`;
-    if (existing.has(k)) return false; existing.add(k); return true;
-  });
-  // Lấy lại list hiện đang render bằng cách rebuild từ state (không có "current ads" store — dựng lại).
-  // Đơn giản: gọi lại loadModalTiktok chưa xong sẽ đá kết quả cũ; giải pháp: render trực tiếp bằng gộp
-  // vào vidState.dyAds và trigger re-render qua nút.
-  st.dyAds = merge((st.dyAds || []).concat(dyAds));
-  const all = st.fbAds.concat(st.tkAds || []).concat(st.dyAds).concat(st.marketAds);
+  // Gộp thêm vào grid: thẻ của lượt tìm thật đứng TRƯỚC thẻ Google vì nó chở sẵn tim/ngày đăng,
+  // và `vidMerge` giữ bản đầy hơn khi hai đường cùng trả về một video.
+  st.dyAds = vidMerge(dyAds, st.dyAds || []);
+  const all = vidMerge(st.fbAds, st.tkAds || [], st.gAds || [], st.dyAds, st.marketAds);
   // "Douyin 0" trần trụi trông giống một lượt còn đang chạy. Có `dyNote` thì đó là lý do hỏng;
   // không có mà vẫn rỗng thì nói thẳng là tìm không ra, kèm cụm đã tìm để người dùng tự đánh giá.
+  const dyTotal = st.dyAds.length;
   setVidStatus(
-    dyItems.length
-      ? `${all.length} video · Douyin ${dyItems.length}`
-      : `${all.length} video · Douyin${dyNote || ` không tìm thấy video nào cho “${dyTerm}”.`}`,
-    dyItems.length ? 'ok' : 'err',
+    dyTotal
+      ? `${all.length} video · Douyin ${dyTotal} (Google ${gd.ads.length} · tìm thật ${dyItems.length})${gd.note}${dyNote}`
+      : `${all.length} video · Douyin${gd.note}${dyNote || ` không tìm thấy video nào cho “${dyTerm}”.`}`,
+    dyTotal ? 'ok' : 'err',
   );
   renderVideos(all);
 }

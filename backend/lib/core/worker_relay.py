@@ -91,6 +91,9 @@ VIDEO_TIMEOUT_S = 155.0
 #: `RS_TIMEOUT_MS` (240s) của `research.js`. Thứ tự ấy giữ cho bên bỏ cuộc trước luôn là bên
 #: biết vì sao mình bỏ cuộc.
 SUBMIT_TIMEOUTS: dict[str, float] = {
+    # Google chỉ là MỘT lần tải trang cộng một lượt cuộn — rẻ hơn hẳn hai nguồn video kia,
+    # nên không cần tới ngân sách của chúng.
+    "RS_GOOGLE_VIDEOS": 60.0,
     "RS_TIKTOK": VIDEO_TIMEOUT_S,
     "RS_DOUYIN": VIDEO_TIMEOUT_S,
     "RS_TRENDS_RELATED": TRENDS_TIMEOUT_S,
@@ -128,6 +131,10 @@ ALLOWED_TYPES = {
     # Crawl sàn
     "RS_SHOPEE", "RS_TIKTOK", "RS_TIKTOK_CC", "RS_TAOBAO",
     "RS_1688", "RS_TEMU", "RS_AMAZON", "RS_DOUYIN",
+    # Video qua Google (`site:tiktok.com` / `site:douyin.com` ở tab Hình ảnh). Cũng phải mượn
+    # trình duyệt thật: đo 2026-09-06 từ VPS, Google trả HTTP 200 kèm một trang chuyển hướng
+    # bằng JS ~93KB, không một thẻ `<h3>` nào — cho MỌI truy vấn. Xem `searchGoogleVideos`.
+    "RS_GOOGLE_VIDEOS",
     # Gợi ý từ khoá (tab Keyword) — hiện chỉ Temu, vì các sàn khác gọi HTTP thẳng được.
     "RS_TEMU_SUGGEST",
     # Tìm bằng ảnh (tab Ảnh). Hai nguồn này KHÔNG chạy được trên VPS — xem

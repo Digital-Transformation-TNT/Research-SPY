@@ -45,6 +45,11 @@ ALLOWED: list[_Allowed] = [
 # platform nên không tự có trong danh sách trên. CDN công khai, referer 1688 cho chắc.
 ALLOWED += [
     _Allowed(suffix="alicdn.com", referer="https://www.1688.com"),
+    # Ảnh bìa video lấy qua nguồn Google (`site:tiktok.com` ở tab Hình ảnh) là bản thu nhỏ do
+    # chính Google phục vụ, trên `encrypted-tbnN.gstatic.com` — KHÔNG phải CDN của TikTok. Thiếu
+    # dòng này thì proxy trả 403 và cả lưới video Google hiện ra toàn ảnh vỡ, trong khi link
+    # video vẫn đúng: một kiểu hỏng trông như "nguồn không có ảnh" chứ không như một lỗi chặn.
+    _Allowed(suffix="gstatic.com", referer="https://www.google.com/"),
 ]
 
 #: Header cần giữ nguyên để trình phát biết cách đọc dòng byte. `content-encoding` không có

@@ -203,6 +203,136 @@ async function fbAdLibrary(payload) {
   }
 }
 
+/**
+ * VIDEO QUA GOOGLE — `site:tiktok.com <cụm>` ở tab HÌNH ẢNH.
+ *
+ * VÌ SAO CÓ ĐƯỜNG NÀY, bên cạnh `searchTiktok` đã có: đường TikTok trực tiếp phải mở tab, gõ
+ * chữ, cuộn, và nó cần phiên đăng nhập TikTok của máy-thợ — nên nó chậm (ngân sách 120 giây),
+ * hay dính màn xác minh, và kết quả bị cá nhân hoá theo account/IP của chính máy-thợ. Google
+ * thì chỉ là MỘT lần tải trang, không đăng nhập gì cả.
+ *
+ * Đo 2026-09-06, `site:tiktok.com tai nghe bluetooth pro 3` ở tab Hình ảnh: 62 link video khác
+ * nhau ngay trang đầu, kèm caption đầy đủ trong `img[alt]` và ảnh bìa. Độ khớp 9/12 dòng đầu
+ * đúng sản phẩm; 3 dòng lệch là "AirPods Pro 3" — cùng cụm "Pro 3", đúng loại nhầm lẫn mà
+ * `relevance.py` sinh ra để xếp xuống chứ không xoá.
+ *
+ * PHẢI ĐI QUA ĐÂY, KHÔNG FETCH THẲNG TỪ SERVER ĐƯỢC. Đo cùng ngày từ VPS: mọi truy vấn đều trả
+ * HTTP 200 kèm đúng ~93KB một trang chuyển hướng bằng JS, không có lấy một thẻ `<h3>` — Google
+ * chỉ phục vụ kết quả cho trình duyệt chạy JS. Cùng họ với Trends và Lens.
+ *
+ * ĐỌC BẰNG DOM, không cần `page-hook.js`: kết quả nằm sẵn trong trang, khác Taobao/Temu/FB nơi
+ * phải chộp response đã ký.
+ */
+const GOOGLE_VIDEO_SITES = {
+  // Chuỗi này đi qua `new RegExp` trong trang, nên dấu gạch chéo phải nhân đôi ở đây.
+  // Nhóm 1 = tác giả (Douyin không có trong link nên để nhóm rỗng), nhóm 2 = id video.
+  tiktok: { host: 'tiktok.com', re: 'tiktok\\.com/@([\\w.\\-]+)/video/(\\d+)' },
+  douyin: { host: 'douyin.com', re: 'douyin\\.com/(?:video|note)/()(\\d+)' },
+};
+
+function googleVideoUrl(site, keyword, hl, gl) {
+  const p = new URLSearchParams({
+    q: `site:${site} ${keyword || ''}`.trim(),
+    udm: '2', // tab Hình ảnh — ảnh bìa video được lập chỉ mục ở đây, và mỗi ảnh trỏ về trang video
+    hl: hl || 'vi',
+    gl: gl || 'VN',
+  });
+  return 'https://www.google.com/search?' + p.toString();
+}
+
+async function searchGoogleVideos(payload) {
+  const which = GOOGLE_VIDEO_SITES[String(payload.site || 'tiktok')];
+  if (!which) return { items: [], blocked: false, error: `Google: không hỗ trợ site ${payload.site}` };
+  const keyword = String(payload.keyword || '').trim();
+  if (!keyword) return { items: [], blocked: false, error: 'Google: thiếu từ khoá.' };
+  const target = Math.min(120, Math.max(12, Number(payload.count) || 40));
+
+  const tab = await keptTab('googlevid');
+  try {
+    await chrome.tabs.update(tab.id, { url: googleVideoUrl(which.host, keyword, payload.hl, payload.gl) });
+    await waitForComplete(tab.id, 25000);
+    // `complete` của Chrome nói tài liệu đã tải xong, KHÔNG nói lưới ảnh đã dựng — Google dựng
+    // nó bằng JS sau đó. Đọc ngay lúc ấy hay ra tay không, mà lượt đọc thứ hai thì phải chờ
+    // thêm một vòng cuộn. Một nhịp ngắn ở đây rẻ hơn nhiều.
+    await sleep(1500);
+
+    // Hai lượt đọc, có cuộn ở giữa: lưới ảnh của Google tải thêm khi cuộn, và một lượt cuộn là
+    // đủ để gấp đôi số dòng mà không kéo dài job.
+    const items = {};
+    let notice = '';
+    for (let pass = 0; pass < 2; pass++) {
+      if (pass) {
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => window.scrollTo(0, document.body ? document.body.scrollHeight : 20000),
+          });
+        } catch (e) {}
+        await sleep(1800);
+      }
+      let out = null;
+      try {
+        out = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          args: [which.re],
+          func: (reSrc) => {
+            const re = new RegExp(reSrc);
+            const rows = [];
+            document.querySelectorAll('a[href]').forEach((a) => {
+              const m = a.href.match(re);
+              if (!m) return;
+              // Ảnh và caption nằm trong cùng ô kết quả với thẻ <a>; leo lên vài bậc là đủ,
+              // không cần biết tên class của Google (chúng đổi liên tục).
+              let box = a, img = null;
+              for (let i = 0; i < 4 && box; i++) {
+                img = box.querySelector && box.querySelector('img');
+                if (img) break;
+                box = box.parentElement;
+              }
+              rows.push({
+                id: m[2],
+                author: m[1] || '',
+                videoUrl: a.href.split('?')[0],
+                name: (img && img.alt) || (a.textContent || '').trim(),
+                image: (img && img.src && img.src.indexOf('data:') !== 0) ? img.src : '',
+              });
+            });
+            // Chỉ nhận đúng câu chặn của Google. "bất thường" trần trụi thì quá rộng — nó nằm
+            // được trong chính caption của một video bất kỳ, và khi đó ta báo nhầm là bị chặn.
+            const body = document.body ? document.body.innerText : '';
+            return {
+              rows,
+              blocked: /unusual traffic|lưu lượng truy cập bất thường|recaptcha/i.test(body),
+            };
+          },
+        });
+      } catch (e) { /* trang chưa sẵn sàng — thử lại ở lượt sau */ }
+      const res = (out && out[0] && out[0].result) || null;
+      if (!res) continue;
+      if (res.blocked) {
+        // Google đòi xác minh: nói thẳng, và ĐƯA TAB RA TRƯỚC để người vận hành giải được.
+        await focusTab(tab.id);
+        notice = 'Google đòi xác minh (unusual traffic) — giải captcha trong tab rồi bấm lại.';
+        break;
+      }
+      for (const r of res.rows) if (r.id && !items[r.id]) items[r.id] = r;
+      if (Object.keys(items).length >= target) break;
+    }
+
+    const list = Object.values(items).slice(0, target);
+    if (!list.length) {
+      return {
+        items: [],
+        blocked: !!notice,
+        error: notice || `Google không trả link ${which.host} nào cho “${keyword}”.`,
+      };
+    }
+    return { items: list, blocked: false, error: notice || undefined };
+  } catch (e) {
+    return { items: [], blocked: false, error: String(e) };
+  }
+}
+
 // GOOGLE TRENDS qua máy-thợ. Cùng một nguyên nhân với Ad Library, nhưng triệu chứng tinh vi hơn
 // nên khó thấy hơn nhiều: Chromium do Playwright dựng KHÔNG bị chặn — nó vẫn trả HTTP 200 kèm dữ
 // liệu thật — mà bị phục vụ một bản NGHÈO HƠN. Đo 2026-09-05 trên "sạc điện thoại", cùng máy cùng
@@ -2491,6 +2621,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   // `withHeartbeat`: ngân sách 120 giây, và có quãng chỉ ngồi chờ trang tải — không giữ nhịp thì
   // MV3 giết service worker giữa job và `sendResponse` mất theo.
+  // Nguồn video qua Google: một lần tải trang, không đăng nhập, không cá nhân hoá. Slot tab
+  // riêng ('googlevid') để không giành tab với Lens hay Trends — cả ba đều ở trên google.com.
+  if (msg.type === 'RS_GOOGLE_VIDEOS') {
+    withCooldown('googlevid', withHeartbeat(searchGoogleVideos(msg)).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: false, error: String(e) })));
+    return true;
+  }
+
   if (msg.type === 'RS_TIKTOK') {
     withCooldown('tiktok', withHeartbeat(searchTiktok(msg.keyword, msg.count, msg.keywords, msg.region, msg.mode, msg.anchor)).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, items: [], blocked: false, error: String(e) })));
     return true;
