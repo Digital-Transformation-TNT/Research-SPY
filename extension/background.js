@@ -2108,11 +2108,9 @@ async function searchShopee(keyword, domain) {
     const tab = await ensureTab(domain);
     await chrome.tabs.update(tab.id, { url: `https://${domain}/search?keyword=${encodeURIComponent(keyword)}`, active: false });
 
-    // 22s: Shopee render kết quả chậm hơn hẳn con số 15s cũ. Đo 06/09/2026, một mẻ 10 từ
-    // khoá — quá nửa số lần chộp được chỉ xảy ra ở LƯỢT THỬ THỨ HAI, tức là 15s đang cắt
-    // ngay trước lúc trang kịp bắn `search_items`. Chuỗi hạn giờ phải giữ đúng thứ tự
-    // 22s (đây) < 28s (trang máy-thợ) < 30s (backend) để bên bỏ cuộc trước luôn là bên
-    // biết vì sao mình bỏ cuộc.
+    // 22s, không phải 15s: quá nửa số lần chộp được chỉ xảy ra ở lượt thử thứ hai, tức 15s
+    // cắt ngay trước lúc trang kịp bắn `search_items`. Thứ tự bắt buộc của chuỗi hạn giờ:
+    // 22s (đây) < 40s (trang máy-thợ) < 45s (backend).
     const deadline = Date.now() + 22000;
     let texts = [], videoItems = {}, textsIter = -1, iter = 0, seen = null;
     while (Date.now() < deadline) {
@@ -2123,15 +2121,11 @@ async function searchShopee(keyword, domain) {
         const out = await chrome.scripting.executeScript({
           target: { tabId: tab.id }, world: 'MAIN', args: [keyword],
           func: (kw) => {
-            // CHỈ NHẬN JSON CỦA ĐÚNG TỪ KHOÁ ĐANG HỎI. `executeScript` có thể chạy trúng
-            // TÀI LIỆU CŨ khi `tabs.update` chưa commit xong, và lúc đó `__rsCap` vẫn còn
-            // nguyên `search_items` của lần tìm trước — có `texts` nên vòng lặp thoát ngay
-            // và trả về kết quả của từ khoá TRƯỚC, kèm cờ thành công.
-            //
-            // Đã xảy ra thật (06/09/2026, mẻ chụp 10 từ khoá): "nồi chiên không dầu" nhận
-            // trọn 60 tai nghe Bluetooth, "quạt tích điện" nhận máy hút bụi, "giá đỡ điện
-            // thoại" nhận đúng từng byte của "balo laptop". Không có gì báo sai cả — đây là
-            // kiểu hỏng đắt nhất, vì dữ liệu bẩn vẫn trông hoàn toàn hợp lệ ở mọi lớp sau.
+            // CHỈ NHẬN JSON CỦA ĐÚNG TỪ KHOÁ ĐANG HỎI. `executeScript` có thể chạy trúng tài
+            // liệu CŨ khi `tabs.update` chưa commit xong; lúc đó `__rsCap` còn nguyên
+            // `search_items` của lần trước, vòng lặp thấy có `texts` nên thoát ngay và trả
+            // kết quả của từ khoá TRƯỚC kèm cờ thành công. Đã xảy ra thật: một mẻ 10 từ khoá
+            // bị tráo chéo mà không lớp nào phía sau nghi ngờ gì.
             const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
             const want = norm(kw);
             const sameKw = (u) => {
@@ -2143,11 +2137,9 @@ async function searchShopee(keyword, domain) {
             };
             const onRightPage = sameKw(location.href);
             const all = (window.__rsCap || []).filter((c) => /\/api\/v4\/search\/search_items/.test(c.url));
-            // Lọc theo `keyword=` TRONG CHÍNH URL CỦA JSON — đó mới là bằng chứng cứng.
-            // KHÔNG chặn thêm bằng `onRightPage`: Shopee đá một số truy vấn phổ biến sang
-            // trang danh mục (URL không còn `keyword=`), lúc đó `onRightPage` mãi mãi sai
-            // và cả từ khoá trượt dù JSON đúng vẫn nằm sẵn trong `__rsCap`. Đo thật
-            // 06/09/2026: bản chặn hai lớp làm 6/10 từ khoá hết giờ chờ.
+            // Lọc theo `keyword=` trong chính URL của JSON — bằng chứng cứng, và tự nó đủ.
+            // KHÔNG chặn thêm bằng `onRightPage`: Shopee đá một số truy vấn sang trang danh
+            // mục (URL không còn `keyword=`), chặn hai lớp làm hụt 6/10 từ khoá.
             const cap = all.filter((c) => sameKw(c.url)).map((c) => c.text);
             // Có JSON của từ khoá KHÁC mà không có của mình = đúng tình huống nhiễm chéo,
             // báo ra để lần sau khỏi phải đoán.
@@ -2181,9 +2173,7 @@ async function searchShopee(keyword, domain) {
         if (texts.length > 0 && (Object.keys(videoItems).length > 0 || iter - textsIter >= 4)) break;
       }
     }
-    // Hết giờ mà tay không thì NÓI RA đã thấy những gì. "Chưa chộp được" là ba tình huống
-    // khác hẳn nhau — trang chưa bắn XHR lần nào, bắn rồi nhưng của từ khoá khác, hay bắn
-    // rồi mà URL không mang `keyword=` — và mỗi cái sửa một kiểu.
+    // Hết giờ tay không thì nói ra đã thấy gì: ba tình huống dưới đây sửa ba kiểu khác nhau.
     let why;
     if (!texts.length) {
       why = 'Shopee: chưa chộp được search_items trong 22s';

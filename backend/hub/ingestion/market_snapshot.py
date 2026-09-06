@@ -4,20 +4,16 @@ Chụp listing sàn mỗi ngày → `listings_snapshot`. Nuôi phần ② (Top 1
 MỘT DÒNG = MỘT LISTING × MỘT NGÀY, append-only. Chạy lại trong ngày không đè mốc cũ (xem
 `signal/store.save_snapshot`). Crawler ở đây chỉ lấy trường thô — mọi % để lớp `signal` lo.
 
-CHỖ NGUY HIỂM NHẤT CỦA CẢ FILE: "ĐÃ BÁN" CỦA MỖI SÀN KHÔNG CÙNG MỘT LOẠI.
+CHỖ NGUY HIỂM NHẤT: "ĐÃ BÁN" CỦA MỖI SÀN KHÔNG CÙNG MỘT LOẠI.
 
-    shopee   `historical_sold_count`  → LŨY KẾ    dùng thẳng
-    1688     "已售…件" của chính shop  → LŨY KẾ    dùng thẳng
-    taobao   `realSales`/`view_sales` → BÁN ~30 NGÀY, không phải lũy kế
+    shopee   `historical_sold_count`  → LŨY KẾ
+    1688     "已售…件" của chính shop  → LŨY KẾ
+    taobao   `realSales`/`view_sales` → BÁN ~30 NGÀY
 
-Spec (`One-shot-ai.html`) ghi cả ba sàn đều lũy kế. Với Shopee và 1688 thì đúng; với
-Taobao thì crawler hiện có đọc đúng cái ô mà sàn hiển thị, và ô đó là doanh số 30 ngày —
-`parseTaobaoTexts` trong `extension/background.js` chỉ trả `monthly`, không có `sold`.
-
-Nên Taobao vẫn được ghi, nhưng ghi kèm `sold_type='monthly'`, và `signal/top10.py` từ
-chối tính %-tăng trên những dòng đó. Đây chính là tình huống mà spec dựng cờ `sold_type`
-để phòng: lấy hiệu của hai con số "bán 30 ngày" rồi gọi nó là tăng trưởng sẽ ra một số
-trông hoàn toàn hợp lý — và đó là kiểu sai không ai bắt được bằng mắt.
+Spec ghi cả ba sàn đều lũy kế; với Taobao thì không — `parseTaobaoTexts` bên extension chỉ
+trả `monthly`. Nên Taobao vẫn ghi nhưng kèm `sold_type='monthly'`, và `signal/top10.py` từ
+chối xếp hạng những dòng đó: lấy hiệu của hai con số "bán 30 ngày" rồi gọi là tăng trưởng
+sẽ ra một số trông hoàn toàn hợp lý, và đó là kiểu sai không ai bắt được bằng mắt.
 """
 
 from __future__ import annotations
@@ -50,10 +46,8 @@ async def _shopee(keyword: str, market: str, trace: dict) -> list[dict]:
     domain = DOMAIN.get(country)
     if not domain:
         raise RuntimeError(f"Shopee không hoạt động ở {country}")
-    # THỬ LẠI MỘT LƯỢT. Shopee bắn `search_items` ngay khi tải trang, và extension chỉ có
-    # 15 giây để chộp — đo thật ngày 06/09/2026: 6/10 từ khoá trong một mẻ trượt vì trang
-    # chưa render kịp, lượt sau thì được. Một mẻ mất 60% từ khoá là một ngày thủng mốc, mà
-    # cả hai chỉ số của mục ② đều là hiệu giữa hai lần chụp.
+    # THỬ LẠI MỘT LƯỢT: Shopee thường chưa render kịp ở lượt đầu, lượt sau thì được. Một mẻ
+    # hụt là một ngày thủng mốc, mà cả hai chỉ số của mục ② đều là hiệu giữa hai lần chụp.
     result = None
     for attempt in (0, 1):
         result = await run_on_worker("RS_SHOPEE", {"keyword": keyword, "domain": domain})
@@ -69,10 +63,8 @@ async def _shopee(keyword: str, market: str, trace: dict) -> list[dict]:
     if (result or {}).get("blocked"):
         trace["blocked"] = True
     if not texts:
-        # Dùng NGUYÊN lý do của máy-thợ khi nó có nói. Bản trước ghi đè bằng phỏng đoán
-        # "thường là chưa đăng nhập" — trong khi máy-thợ đang nói chính xác hơn hẳn
-        # ("chưa chộp được search_items, thử lại"), và phỏng đoán ấy đẩy người dùng đi
-        # kiểm phiên đăng nhập vốn không có vấn đề gì.
+        # Dùng NGUYÊN lý do của máy-thợ: nó biết rõ hơn phía này, và một phỏng đoán ghi đè
+        # lên nó sẽ đẩy người dùng đi sửa nhầm chỗ.
         raise RuntimeError(str((result or {}).get("error")
                                or "máy-thợ trả 0 mảnh JSON và không nói lý do"))
 
@@ -167,8 +159,7 @@ async def snapshot(platform: str, market: str, keywords: list[str]) -> dict:
                 failures[kw] = f"chưa có adapter cho sàn {platform!r}"
                 continue
         except (WorkerOffline, WorkerTimeout, RuntimeError) as e:
-            # KHÔNG nuốt lý do. Một mẻ trả 0 dòng mà không nói vì sao là thứ khiến người
-            # dùng đi sửa nhầm chỗ — `rows: 0, failures: {}` đọc thành "sàn không có hàng".
+            # `rows: 0, failures: {}` đọc thành "sàn không có hàng" — nên lý do phải đi ra.
             failures[kw] = str(e)
             continue
 

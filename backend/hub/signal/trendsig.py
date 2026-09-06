@@ -1,35 +1,25 @@
 """
 ① TÍN HIỆU GOOGLE TRENDS — bốn chỉ số, bốn ngưỡng, một nhãn.
 
-Nguồn: bảng `trends_daily`. Mọi chỉ số dựng từ chuỗi `value` sắp theo `date`, cũ trước
-mới sau. Ký hiệu `d[-k]` trong công thức là vị trí đếm ngược từ điểm mới nhất (`d[-0]` =
-hôm nay) — nó suy ra từ `date` lúc tính chứ không phải một cột trong DB.
+Nguồn: bảng `trends_daily`, chuỗi `value` sắp theo `date`, cũ trước mới sau. `d[-k]` là vị
+trí đếm ngược từ điểm mới nhất, suy ra lúc tính chứ không lưu trong DB.
 
     L        = round( mean(d[-6..-0]) )                                     quy mô hiện tại
     M_ngắn   = ( d[-0] − mean(d[-13..-7]) ) / mean(d[-13..-7])              cú vọt ngắn
     M_bền    = ( mean(d[-27..-0]) − mean(d[-55..-28]) ) / mean(d[-55..-28]) xu hướng bền
     YoY      = ( mean(4 tuần cuối) − mean(4 tuần cùng kỳ năm ngoái) ) / …   mùa hay sóng thật
 
-HAI CHỖ CỐ Ý LỆCH KHỎI SPEC GỐC, cả hai đều vì dữ liệu thật không như spec giả định:
+BA CHỖ LỆCH KHỎI SPEC GỐC, đều vì dữ liệu thật không như spec giả định:
 
-1. YoY ĐỌC CHUỖI TUẦN, không đọc chuỗi ngày. Spec lấy lát 28 ngày cùng kỳ năm ngoái từ
-   cùng một chuỗi daily. Nhưng Google chuẩn hoá 0–100 trong nội bộ MỖI truy vấn, mà một
-   truy vấn 13 tháng thì Google trả theo TUẦN chứ không theo ngày. Ghép "chuỗi ngày 3
-   tháng" với "chuỗi ngày cùng kỳ năm ngoái lấy riêng" là trừ hai đại lượng ở hai mốc
-   chuẩn hoá khác nhau — ra một con số trông vẫn hợp lý, và đó mới là chỗ nguy hiểm.
-   Nên: L/M_ngắn/M_bền đọc grain='day', YoY đọc grain='week'. Mỗi chỉ số ở nguyên trong
-   một mốc chuẩn hoá.
+1. YoY đọc grain='week', các chỉ số còn lại đọc grain='day'. Google chuẩn hoá 0–100 trong
+   nội bộ MỖI truy vấn, mà truy vấn 13 tháng thì trả theo tuần. Trừ hai đại lượng ở hai mốc
+   chuẩn hoá khác nhau sẽ ra một con số trông vẫn hợp lý — đó mới là chỗ nguy hiểm.
 
-2. "MỚI NỔI" YÊU CẦU GIỮ ≥ 2 NGÀY. Spec ghi rõ là cần, và cũng ghi rõ rằng sheet Excel
-   gốc chưa cài — nên phần này implement theo mô tả, không theo sheet: cả d[-0] lẫn d[-1]
-   đều phải vượt ngưỡng vọt. Một ngày nhiễu không được phép thành một tín hiệu.
+2. "Mới nổi" buộc cú vọt giữ ≥ 2 ngày (spec yêu cầu, sheet Excel gốc chưa cài).
 
-CÒN MỘT ĐIỀU PHẢI ĐỌC TRƯỚC KHI TIN VÀO `L`. Khi `value_kind='index'`, Google chuẩn hoá
-chuỗi theo ĐỈNH CỦA CHÍNH TỪ KHOÁ ĐÓ — nghĩa là L = 60 chỉ có nghĩa "đang ở 60% đỉnh 12
-tháng của nó", KHÔNG có nghĩa thị trường to hơn một từ khoá có L = 30. So L giữa các từ
-khoá chỉ hợp lệ khi `value_kind='anchored'` (đã quy về một từ khoá neo chung — xem
-`ingestion/trends_daily.py`). Vì vậy ngưỡng quy mô tên là MIN_INDEX chứ không phải
-MIN_LUOT, và giao diện phải nói đúng thang đang dùng.
+3. `MIN_LUOT` thành `MIN_INDEX`: Google không cho lượt tìm tuyệt đối. Với
+   `value_kind='index'`, L đo theo đỉnh của CHÍNH từ khoá đó nên không so được giữa các
+   dòng; chỉ `anchored:<từ khoá neo>` mới so được. Xem `ingestion/trends_daily.py`.
 """
 
 from __future__ import annotations

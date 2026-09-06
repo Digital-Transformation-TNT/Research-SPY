@@ -5,27 +5,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Trend Signal Hub</title>
 <!--
-  ════════════════════════════════════════════════════════════════════════════════
-  TREND SIGNAL HUB — BA MỤC, KHÔNG HƠN
-  ════════════════════════════════════════════════════════════════════════════════
+  Trend Signal Hub — ba mục:
+    ① Tín hiệu Google Trends  → /api/hub/signal/trends
+    ② Top 10 chính & nổi bật  → /api/hub/signal/top10
+    ③ One-shot AI             → /api/hub/signal/ask
 
-    ① Tín hiệu Google Trends   nhu cầu đang lên hay không   → /api/hub/signal/trends
-    ② Top 10 chính & nổi bật   sản phẩm nào đang bán chạy   → /api/hub/signal/top10
-    ③ One-shot AI              hỏi bằng câu nói bình thường → /api/hub/signal/ask
-
-  Bản trước là 4.797 dòng của dự án Printway: Etsy · Amazon · product type · gallery ·
-  catalogue · duyệt theo góc nhìn. Nguồn đó không còn là nguồn của Hub, và một mục đọc
-  dữ liệu không còn được cào là mục hiện số cũ mà không ai biết là cũ. Nên bỏ hẳn, không
-  ẩn đi.
-
-  MỤC ③ GỘP TỪ CHATBOT "CƠ HỘI". Cùng một việc — hỏi AI nên bán gì — thì chỉ nên có một
-  cửa vào. Khác bản Cơ hội cũ ở chỗ nó đọc được ① và ②, nên đề xuất bám vào số Hub vừa
-  đo chứ không chỉ vào trí nhớ của mô hình.
-
-  MỘT LUẬT XUYÊN SUỐT TRANG: KHÔNG BAO GIỜ HIỆN SỐ MÀ KHÔNG NÓI SỐ ĐÓ TỪ ĐÂU. Bản cũ khi
-  backend chết thì lặng lẽ rơi về bộ dữ liệu mẫu nhúng cứng và hiện đầy số trông như thật
-  — đó là kiểu hỏng tệ nhất của một công cụ nghiên cứu. Trang này không có dữ liệu mẫu.
-  Backend im thì mục đó nói ra là nó đang im.
+  Trang KHÔNG có dữ liệu mẫu. Bản Printway cũ khi backend chết thì lặng lẽ rơi về dữ liệu
+  nhúng cứng và hiện đầy số trông như thật; ở đây mục nào không đọc được thì nói ra.
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -259,11 +245,9 @@ td.num,th.num{text-align:right;font-family:"JetBrains Mono",monospace;font-varia
             <div class="box"><input id="wlGeo" value="VN"></div></div>
           <div class="knob"><label>Từ khoá neo
             <span class="tipwrap" tabindex="0"><span class="tip">i</span><span class="bub">
-              <b>Thứ làm cho ngưỡng quy mô có nghĩa.</b> Google chuẩn hoá chỉ số 0–100 theo đỉnh của
-              <i>chính từ khoá đó</i>, nên "chỉ số 60" của từ này và "30" của từ kia không so được với nhau.
-              Gửi kèm một từ khoá <b>ổn định, lượng tìm đều quanh năm</b> (vd <code>điện thoại</code>) thì
-              mọi chuỗi quy về cùng một thước — lúc đó ngưỡng mới lọc đúng cái nó hứa. Để trống cũng chạy,
-              chỉ là ngưỡng quy mô sẽ mỗi từ khoá một kiểu.</span></span></label>
+              Google chấm điểm mỗi từ khoá theo đỉnh của <i>chính nó</i>, nên "chỉ số 60" của từ này và
+              "30" của từ kia không so được. Khai một từ khoá <b>ổn định quanh năm và cùng tầm với danh
+              sách</b> (vd <code>nồi cơm điện</code>) thì mọi chuỗi về chung một thước.</span></span></label>
             <div class="box"><input id="wlAnchor" placeholder="(tuỳ chọn)"></div></div>
         </div>
         <label style="font-size:12px;font-weight:700;color:var(--ink2)">Từ khoá cào sàn cho Top 10 (để trống = dùng danh sách bên trái)</label>
@@ -404,20 +388,14 @@ async function ping(){
    giải thích phải nói bằng nghĩa kinh doanh trước rồi mới tới tên chỉ số. */
 const TR_KNOBS = [
   {k:'NGUONG_HOT', label:'Gọi là HOT khi tăng đều từ', unit:'%', scale:100,
-   tip:'Đo <b>xu hướng bền</b>: trung bình 4 tuần gần nhất so với 4 tuần liền trước (chỉ số M_bền). '
-     +'Vượt mức này = nhu cầu tăng ổn định, không phải nhảy nhất thời. Đặt cao hơn nếu chỉ muốn bắt thứ '
-     +'tăng mạnh và chắc; thấp hơn nếu muốn phát hiện sớm cả thứ mới nhúc nhích.'},
+   tip:'Trung bình 4 tuần gần nhất so với 4 tuần liền trước. Cao hơn = ít tín hiệu nhưng chắc hơn.'},
   {k:'NGUONG_SPIKE', label:'Gọi là MỚI NỔI khi bỗng vọt từ', unit:'%', scale:100,
-   tip:'Đo <b>cú vọt ngắn</b>: mức hôm nay so với trung bình tuần trước đó (chỉ số M_ngắn). 100% = gấp đôi. '
-     +'Vọt một ngày rất dễ là nhiễu, nên ở đây còn buộc cú vọt phải <b>giữ sang ngày thứ hai</b> mới được gắn nhãn.'},
+   tip:'Hôm nay so với trung bình tuần trước. 100% = gấp đôi. Cú vọt phải <b>giữ sang ngày thứ hai</b> mới được gắn nhãn.'},
   {k:'MIN_INDEX', label:'Bỏ qua từ khoá có chỉ số 7 ngày dưới', unit:'/100', scale:1,
-   tip:'Sàn quy mô: trung bình chỉ số 7 ngày gần nhất (chỉ số L). <b>Đây là thang 0–100 của Google, '
-     +'không phải lượt tìm/ngày</b> — Google không cho lượt tuyệt đối. Khi chưa khai từ khoá neo, chỉ số này '
-     +'so theo <i>đỉnh của chính từ khoá đó</i>, nên nó lọc được thứ đang xa đỉnh chứ chưa lọc được thị trường nhỏ. '
-     +'Khai từ khoá neo trong Danh sách theo dõi là ngưỡng này trở về đúng nghĩa.'},
+   tip:'Trung bình chỉ số 7 ngày. <b>Thang 0–100 của Google, không phải lượt tìm/ngày.</b> '
+     +'Chưa khai từ khoá neo thì mỗi từ một thang riêng, ngưỡng chỉ đúng tương đối.'},
   {k:'NGUONG_HUONG', label:'Coi là LÊN / XUỐNG khi đổi quá ±', unit:'%', scale:100,
-   tip:'Chỉ để dán nhãn hướng dựa trên M_bền. Trong khoảng ±mức này coi như đi ngang — và đi ngang thì '
-     +'bị loại khỏi bảng. Ít khi cần chỉnh.'}
+   tip:'Trong khoảng ±mức này coi là đi ngang, và đi ngang thì bị loại. Ít khi cần chỉnh.'}
 ];
 const ANCHORED = (k)=>/^anchored:/.test(k||'');
 let TR = null, SHOW_ALL = false;
@@ -447,31 +425,23 @@ function trRender(d){
 
   const notes=[], all=d.all_rows||[], rg=d.level_range;
   if(d.mixed_scale)
-    notes.push('<div class="note e"><b>Bảng đang trộn hai thang đo.</b> Một phần từ khoá được cào có '
-      +'<b>từ khoá neo</b>, phần còn lại thì không — hai nhóm ấy nằm trên hai thước khác nhau, nên cột '
-      +'<b>Chỉ số</b> không so được giữa các dòng và một ngưỡng quy mô chung sẽ cắt nhầm. '
-      +'Cào lại <b>toàn bộ</b> danh sách với cùng một từ khoá neo là hết.</div>');
-  /* `value_kind` mang luôn TÊN từ khoá neo ('anchored:nồi cơm điện'), vì hai đợt neo vào
-     hai từ khác nhau là hai thước đo khác nhau. So bằng `=== 'anchored'` là bỏ lọt đúng
-     trường hợp đó. */
+    notes.push('<div class="note e"><b>Bảng đang trộn hai thang đo.</b> Cột <b>Chỉ số</b> không so được '
+      +'giữa các dòng. Cào lại toàn bộ danh sách với cùng một từ khoá neo.</div>');
+  // `value_kind` mang luôn tên từ khoá neo ('anchored:nồi cơm điện') — hai đợt neo vào hai
+  // từ khác nhau cũng là hai thước khác nhau, nên so bằng `=== 'anchored'` sẽ bỏ lọt.
   else if(!ANCHORED(d.value_kind) && all.length)
-    notes.push('<div class="note w"><b>Thang đo chưa neo.</b> Chỉ số của mỗi từ khoá đang được Google '
-      +'chuẩn hoá theo đỉnh của chính nó, nên cột <b>Chỉ số</b> không so được giữa các dòng và ngưỡng quy mô '
-      +'chỉ đúng tương đối. Khai <b>từ khoá neo</b> trong Danh sách theo dõi rồi cào lại là hết.</div>');
+    notes.push('<div class="note w"><b>Thang đo chưa neo.</b> Mỗi từ khoá đang được Google chấm theo đỉnh '
+      +'của chính nó, nên cột <b>Chỉ số</b> chưa so được giữa các dòng. Khai <b>từ khoá neo</b> rồi cào lại.</div>');
 
-  /* Ngưỡng quy mô mà cắt sạch cả bảng thì phải nói ra, kèm dải thật để chỉnh cho đúng thang.
-     Neo vào một từ khoá khổng lồ (vd "điện thoại") là mọi ngách đều rơi xuống dưới 5, và
-     mặc định 15 sẽ giấu hết — trông y hệt "không có tín hiệu nào". */
+  // Ngưỡng cắt sạch bảng thì phải nói ra kèm dải thật — neo vào một từ khoá quá lớn là mọi
+  // ngách rơi xuống dưới 5, và mặc định 15 giấu hết, trông y hệt "không có tín hiệu nào".
   const tooSmall = (d.dropped||{})['quá nhỏ']||0;
   if(tooSmall && !d.rows.length && rg)
     notes.push('<div class="note w"><b>Ngưỡng quy mô đang cắt sạch bảng.</b> '
       +tooSmall+' từ khoá bị loại vì chỉ số dưới '+d.config.MIN_INDEX+', trong khi cả danh sách chỉ nằm trong '
       +'khoảng <b>'+rg[0]+'–'+rg[1]+'</b>. '
-      +(ANCHORED(d.value_kind)
-        ? 'Đây là hệ quả bình thường của việc neo: mọi chỉ số tính theo thước của từ khoá neo, nên neo vào một '
-          +'từ khoá càng lớn thì các ngách càng nhỏ. Hạ ngưỡng xuống quanh <b>'+Math.max(1,Math.floor(rg[0]))+'</b>, '
-          +'hoặc chọn một từ khoá neo vừa tầm hơn.'
-        : 'Hạ ngưỡng xuống quanh <b>'+Math.max(1,Math.floor(rg[0]))+'</b> rồi áp dụng lại.')
+      +'Hạ ngưỡng xuống quanh <b>'+Math.max(1,Math.floor(rg[0]))+'</b>'
+      +(ANCHORED(d.value_kind) ? ', hoặc chọn từ khoá neo vừa tầm hơn.' : ' rồi áp dụng lại.')
       +'</div>');
 
   /* "Chưa cào bao giờ" khác hẳn "đã cào nhưng bị loại" — gộp hai thứ là người dùng đi
@@ -485,7 +455,7 @@ function trRender(d){
   const dr=d.dropped||{}; const nd=Object.keys(dr).reduce(function(s,k){return s+(dr[k]||0)},0);
   if(nd) notes.push('<div class="note i"><b>Đã loại '+nd+' từ khoá.</b> '
     +'quá nhỏ '+(dr['quá nhỏ']||0)+' · đứng im '+(dr['đứng im']||0)+' · đi xuống '+(dr['đi xuống']||0)
-    +' · chưa đủ dữ liệu '+(dr['chưa đủ dữ liệu']||0)+'. Bảng chỉ giữ tín hiệu đi lên — đó là điều đã chốt. '
+    +' · chưa đủ dữ liệu '+(dr['chưa đủ dữ liệu']||0)+'. Bảng chỉ giữ tín hiệu đi lên. '
     +'<button class="btn ghost sm" id="trShowAll" style="margin-left:6px">'
     +(SHOW_ALL?'Ẩn dòng bị loại':'Xem cả dòng bị loại')+'</button></div>');
   $('trNotes').innerHTML = notes.join('');
@@ -544,24 +514,21 @@ async function loadTrends(){
 const TK_KNOBS = {
   main: [
     {k:'W_main', label:'Cửa sổ đo tăng trưởng', unit:'ngày',
-     tip:'Nhánh chính đo % tăng của <b>số đã bán lũy kế</b> trên cửa sổ này. Dài hơn → "bán đều, ổn định lâu ngày" '
-       +'rõ hơn nhưng phản ứng chậm với thứ mới nổi.'},
+     tip:'% tăng của <b>số đã bán lũy kế</b> trên cửa sổ này. Dài hơn = ổn định hơn nhưng phản ứng chậm.'},
     {k:'min_base_main', label:'Bỏ listing có lũy kế dưới', unit:'lượt',
-     tip:'Guard tuỳ chọn (0 = tắt). Chặn listing quá non bị đội lên chỉ vì mốc gốc nhỏ: từ 2 lên 6 lượt là +200%.'}
+     tip:'0 = tắt. Chặn listing quá non bị đội hạng vì mốc gốc nhỏ: từ 2 lên 6 lượt là +200%.'}
   ],
   hot: [
     {k:'X_spike', label:'Ngưỡng đột biến', unit:'%',
-     tip:'Bán/ngày của mấy ngày cuối (cửa sổ bắt đột biến) phải vượt nền liền trước ngần này thì mới lọt bảng. '
-       +'Đặt sao cho ít dòng vượt được — bảng nổi bật mà dài thì nó không còn nổi bật.'},
+     tip:'Bán/ngày mấy ngày cuối phải vượt nền liền trước ngần này. Đặt cao để ít dòng lọt.'},
     {k:'M_breakout', label:'Bán lũy kế tối thiểu', unit:'lượt',
-     tip:'<b>Đây là thứ loại tăng ảo.</b> Một listing đi từ 1 lên 5 lượt là +400%, cao hơn phần lớn sóng thật. '
-       +'Cổng này chặn đúng nhóm đó: chưa bán đủ ngần này thì %-tăng bao nhiêu cũng không được xét.'},
+     tip:'<b>Thứ loại tăng ảo.</b> Từ 1 lên 5 lượt là +400% — chưa bán đủ ngần này thì %-tăng bao nhiêu cũng không xét.'},
     {k:'T_fast', label:'Cửa sổ bắt đột biến', unit:'ngày',
-     tip:'Ngắn = bắt sóng sớm hơn nhưng nhiễu hơn. 1–2 ngày là mức spec đề nghị.'},
+     tip:'Ngắn = bắt sóng sớm hơn nhưng nhiễu hơn.'},
     {k:'base_win', label:'Độ dài cửa sổ nền', unit:'ngày',
-     tip:'Nền là quãng ngay TRƯỚC cửa sổ đột biến — dùng làm mẫu số. Dài hơn thì nền ổn định hơn.'},
+     tip:'Quãng ngay trước cửa sổ đột biến, dùng làm mẫu số. Dài hơn = nền ổn định hơn.'},
     {k:'floor', label:'Nền tối thiểu', unit:'/ngày',
-     tip:'Chống chia cho gần 0: nền dưới mức này thì không tính %-vọt, vì mẫu số bé làm con số phóng lên vô hạn.'}
+     tip:'Nền dưới mức này thì không tính %-vọt — mẫu số bé làm con số phóng lên vô hạn.'}
   ]
 };
 let TK = null, TAB = localStorage.getItem('tsh_tab') || 'main';
@@ -612,21 +579,21 @@ function tkRender(d){
   const miss  = TAB==='main' ? rd.main_missing : rd.hot_missing;
   if(!rd.n_days){
     notes.push('<div class="note w"><b>Chưa có snapshot nào cho '+esc(PF)+'·'+esc(MK.toUpperCase())+'.</b> '
-      +'Cả hai bảng đều là <b>hiệu</b> giữa hai lần chụp, nên phải chụp ít nhất hai ngày mới có số. '
-      +'Mở <b>Danh sách theo dõi</b> ở mục ① để khai từ khoá rồi bấm <b>Chụp sàn ngay</b>.</div>');
+      +'Cả hai bảng là <b>hiệu</b> giữa hai lần chụp, nên cần ít nhất hai ngày. '
+      +'Mở <b>Danh sách theo dõi</b> ở mục ① rồi bấm <b>Chụp sàn ngay</b>.</div>');
   }else if(!ready){
     notes.push('<div class="note w"><b>Còn thiếu '+miss+' ngày dữ liệu.</b> '
       +'Đã chụp '+rd.n_days+' ngày (trải '+rd.span+' ngày) trên '+num(rd.n_products)+' sản phẩm. '
       +(TAB==='main'
-        ? 'Bảng chính cần đủ cửa sổ '+d.config.W_main+' ngày — trước đó mọi % đều là so với một mốc quá gần.'
+        ? 'Bảng chính cần đủ cửa sổ '+d.config.W_main+' ngày.'
         : 'Bảng nổi bật cần cửa sổ nhanh cộng nền ('+d.config.T_fast+' + '+d.config.base_win+' ngày).')
       +'</div>');
   }
   const g = d.gates||{};
   if(g['bán không lũy kế'])
-    notes.push('<div class="note e"><b>'+g['bán không lũy kế']+' sản phẩm bị bỏ vì bộ đếm bán không phải lũy kế.</b> '
-      +'Taobao chỉ hiển thị doanh số ~30 ngày, không phải tổng đã bán. Lấy hiệu của hai con số 30-ngày rồi gọi đó là '
-      +'tăng trưởng sẽ ra một số trông hợp lý nhưng sai — nên những dòng đó bị loại thay vì xếp hạng.</div>');
+    notes.push('<div class="note e"><b>'+g['bán không lũy kế']+' sản phẩm bị bỏ: bộ đếm bán không phải lũy kế.</b> '
+      +'Taobao chỉ cho doanh số ~30 ngày. Lấy hiệu của hai con số 30-ngày rồi gọi là tăng trưởng thì ra một số '
+      +'trông hợp lý nhưng sai.</div>');
   if(TAB==='hot' && rd.n_days>1)
     notes.push('<div class="note i"><b>Cổng đã chặn:</b> dưới bán tối thiểu '+num(g['dưới M_breakout']||0)
       +' · nền quá mỏng '+num(g['nền dưới floor']||0)+' · chưa tới ngưỡng đột biến '+num(g['dưới X%']||0)

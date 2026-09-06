@@ -3,25 +3,21 @@
 
     partition = (platform, market)      shopee·vn · shopee·ph · taobao·cn · 1688·cn
 
-MỌI PHÉP TÍNH CHẠY TRONG NỘI BỘ MỘT PARTITION, và đây không phải chuyện gọn gàng kiến
-trúc — nó là điều kiện để các con số có nghĩa. Mỗi sàn đặt tên sản phẩm một kiểu nên
-không khớp được listing across sàn; mỗi nước một đơn vị tiền và một quy mô lượng bán nên
-cộng chung là so hai thứ khác đơn vị. Hệ quả dễ chịu: không cần quy đổi tiền ở đâu cả.
-
     Nhánh 1 — TOP 10 CHÍNH    growth_long% = % tăng của BÁN LŨY KẾ trên cửa sổ W_main
     Nhánh 2 — TOP 10 NỔI BẬT  spike%       = % vọt của BÁN/NGÀY (T_fast so nền liền trước)
 
-Hai nhánh xếp theo hai chỉ số %, mỗi bảng một chỉ số duy nhất — không có điểm tổng hợp,
-nên không cần chuẩn hoá 0–100 và không có trọng số nào để ai đó chỉnh lén.
+Mọi phép tính chạy trong nội bộ MỘT partition, và đó là điều kiện để các con số có nghĩa:
+mỗi sàn đặt tên sản phẩm một kiểu nên không khớp được listing across sàn, mỗi nước một
+đơn vị tiền và một quy mô bán. Hệ quả dễ chịu: không phải quy đổi tiền ở đâu cả.
 
-CỔNG `M_breakout` LÀ THỨ GIỮ NHÁNH 2 KHỎI VÔ DỤNG. Một listing đi từ 1 lên 5 lượt bán là
-+400%, cao hơn phần lớn sóng thật, và nếu chỉ xếp theo % thì cả bảng sẽ toàn những dòng
-như thế. Cổng bán lũy kế tối thiểu loại đúng nhóm đó. `floor` làm nốt phần còn lại: nền
-gần 0 thì mẫu số gần 0, %-tăng phóng lên vô hạn.
+Mỗi bảng xếp theo đúng MỘT chỉ số %, không có điểm tổng hợp — nên không cần chuẩn hoá
+0–100 và không có trọng số nào để ai đó chỉnh lén.
 
-BẢNG TRỐNG KHÔNG PHẢI LÀ LỖI. Cả hai chỉ số đều là HIỆU giữa hai lần chụp, nên ngày đầu
-chạy không thể có số. `readiness` trong kết quả nói thẳng còn thiếu bao nhiêu ngày, thay
-vì trả một bảng rỗng để giao diện tự đoán.
+`M_breakout` là thứ giữ nhánh 2 khỏi vô dụng: một listing đi từ 1 lên 5 lượt là +400%, và
+xếp thuần theo % thì cả bảng toàn những dòng như thế. `floor` lo nốt phần mẫu số gần 0.
+
+Bảng trống không phải lỗi — cả hai chỉ số đều là HIỆU giữa hai lần chụp. `readiness` nói
+còn thiếu bao nhiêu ngày, thay vì trả bảng rỗng để giao diện tự đoán.
 """
 
 from __future__ import annotations
@@ -202,10 +198,9 @@ def build(platform: str, market: str, saved_cfg: dict | None = None) -> dict:
 
     for _pid, raw in _group(rows).items():
         points = _clean(raw)
-        # CỜ `sold_type` LÀ CỬA ĐẦU TIÊN, trước cả kiểm số mốc. Cả hai chỉ số đều là HIỆU
-        # của bộ đếm bán; lấy hiệu của hai con số "bán 30 ngày" (Taobao) rồi gọi nó là
-        # tăng trưởng thì ra một số trông hợp lý và không ai bắt được bằng mắt. Thà bỏ
-        # dòng và nói ra, còn hơn xếp hạng bằng một đại lượng khác loại.
+        # Cờ `sold_type` là cửa đầu tiên, trước cả kiểm số mốc: cả hai chỉ số đều là hiệu
+        # của bộ đếm bán, nên một bộ đếm khác loại là vô nghĩa ở đây. Vì sao Taobao rơi vào
+        # nhóm đó: xem đầu `ingestion/market_snapshot.py`.
         if points and (points[-1].get("sold_type") or "cumulative") != "cumulative":
             gates["bán không lũy kế"] += 1
             continue

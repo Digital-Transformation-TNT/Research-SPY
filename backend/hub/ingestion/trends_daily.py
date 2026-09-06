@@ -1,24 +1,16 @@
 """
 Chuỗi Google Trends theo NGÀY và theo TUẦN → `trends_daily`. Nuôi phần ① của Hub.
 
-HAI CHUỖI CHO MỖI TỪ KHOÁ, và đây là quyết định gốc của cả phần ①:
-
     grain='day'   `today 3-m`   ~90 điểm ngày   → L · M_ngắn · M_bền
     grain='week'  ~400 ngày     ~57 điểm tuần   → YoY
 
-Vì sao không một chuỗi duy nhất: Google trả theo NGÀY khi khoảng thời gian đủ ngắn (≲ 9
-tháng) và theo TUẦN khi dài hơn. Muốn có lát cùng kỳ năm ngoái thì khoảng phải > 12 tháng,
-mà như thế thì mất độ phân giải ngày — không tính nổi M_ngắn (hôm nay so tuần trước).
-Cắt hai truy vấn là cách duy nhất có cả hai.
+Hai truy vấn chứ không một: Google trả theo ngày khi khoảng đủ ngắn (≲ 9 tháng) và theo
+tuần khi dài hơn, mà lát cùng kỳ năm ngoái thì cần > 12 tháng. Và vì mỗi truy vấn có mốc
+chuẩn hoá 0–100 riêng, KHÔNG được trộn hai grain trong một phép trừ.
 
-VÀ VÌ THẾ TUYỆT ĐỐI KHÔNG TRỘN HAI GRAIN TRONG MỘT PHÉP TRỪ. Google chuẩn hoá 0–100 trong
-nội bộ MỖI truy vấn, nên điểm ngày và điểm tuần của cùng một từ khoá nằm trên hai thước
-khác nhau. `signal/trendsig.py` đọc mỗi chỉ số từ đúng một grain, không bắc cầu.
-
-TUỲ CHỌN `anchor` — thứ làm cho `MIN_INDEX` có nghĩa. Không neo thì mỗi chuỗi được chuẩn
-hoá theo đỉnh của CHÍNH nó: "chỉ số 60" của từ khoá A và "chỉ số 30" của B không so được,
-nên một ngưỡng quy mô chung là vô nghĩa. Gửi kèm một từ khoá neo ổn định trong cùng truy
-vấn thì mọi chuỗi quy về một thước, và lúc đó ngưỡng mới lọc đúng cái nó hứa.
+`anchor` là thứ làm cho `MIN_INDEX` có nghĩa: không neo thì mỗi chuỗi chuẩn hoá theo đỉnh
+của chính nó và một ngưỡng chung là vô nghĩa. Gửi kèm từ khoá neo trong cùng truy vấn thì
+mọi chuỗi về chung một thước.
 """
 
 from __future__ import annotations
@@ -87,11 +79,8 @@ def refresh(keywords: list[str], geo: str = "VN", region: str = "ALL",
     if not keywords:
         return {"keywords": 0, "day_points": 0, "week_points": 0, "missing": []}
 
-    # Ghi kèm TÊN từ khoá neo, không chỉ ghi "anchored". Hai đợt cào neo vào hai từ khác
-    # nhau là hai thước đo khác nhau y như neo-với-không-neo, nhưng nếu cả hai cùng mang
-    # nhãn "anchored" thì bộ dò trộn thang không thấy gì — và cột `Chỉ số` lại trông như
-    # so được với nhau. Đã suýt dính: 8 từ khoá neo vào "nồi cơm điện" nằm chung bảng với
-    # một từ còn neo vào "điện thoại" từ đợt trước.
+    # Ghi kèm TÊN từ khoá neo: hai đợt neo vào hai từ khác nhau là hai thước khác nhau, và
+    # nếu cùng mang nhãn "anchored" thì bộ dò trộn thang không thấy gì.
     kind = f"anchored:{anchor}" if anchor else "index"
     day_pts = _fetch(keywords, DAY_RANGE, geo, anchor)
     week_pts = _fetch(keywords, week_range(), geo, anchor)
