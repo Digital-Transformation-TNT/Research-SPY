@@ -41,7 +41,15 @@
    *  "thợ nhận job nhưng không chạy được" với `null` (không có ai trả lời gì cả). */
   function callFailure(type, error) {
     let why = `Extension không chạy được ${type}: ${error}`;
-    if (/establish connection|Receiving end does not exist/i.test(error)) {
+    if (/context invalidated/i.test(error)) {
+      // Sau mỗi lần bấm Reload ở chrome://extensions, content script trong các TAB ĐANG MỞ
+      // vẫn trỏ vào bản extension vừa bị huỷ. Không có lỗi nào khác xuất hiện, và cả mẻ job
+      // rơi sạch trong một giây — trông y như extension hỏng, trong khi việc phải làm chỉ là
+      // F5. Đặt nhánh này TRƯỚC nhánh "establish connection" vì Chrome thỉnh thoảng gói cùng
+      // một sự cố thành hai thông điệp khác nhau, và lời khuyên của nhánh kia (bấm Reload)
+      // sẽ đẩy người dùng lặp lại đúng thao tác vừa gây ra lỗi.
+      why += ' — vừa Reload extension nhưng TAB MÁY THỢ còn giữ bản cũ. Bấm F5 ở tab /worker là xong (không cần Reload lại).';
+    } else if (/establish connection|Receiving end does not exist/i.test(error)) {
       why += ' — nhiều khả năng extension chưa nạp loại job này. Vào chrome://extensions bấm Reload rồi F5 tab Máy thợ.';
     } else if (/message port closed/i.test(error)) {
       why += ' — service worker bị Chrome kết liễu giữa job (MV3). Bấm lại; nếu lặp lại thì job này cần giữ nhịp bằng `withHeartbeat`.';
