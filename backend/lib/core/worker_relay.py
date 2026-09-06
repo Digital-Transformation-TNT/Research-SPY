@@ -91,6 +91,10 @@ VIDEO_TIMEOUT_S = 155.0
 #: `RS_TIMEOUT_MS` (240s) của `research.js`. Thứ tự ấy giữ cho bên bỏ cuộc trước luôn là bên
 #: biết vì sao mình bỏ cuộc.
 SUBMIT_TIMEOUTS: dict[str, float] = {
+    # Shopee render kết quả chậm hơn hạn chung: extension chờ tới 22s mới bỏ cuộc, nên hạn
+    # ở đây phải rộng hơn — nếu không backend cắt trước và nuốt mất lý do mà extension vừa
+    # soạn ra. Thứ tự bắt buộc: 22s (extension) < 28s (trang máy-thợ) < 30s (đây).
+    "RS_SHOPEE": 30.0,
     # Google chỉ là MỘT lần tải trang cộng một lượt cuộn — rẻ hơn hẳn hai nguồn video kia,
     # nên không cần tới ngân sách của chúng.
     "RS_GOOGLE_VIDEOS": 60.0,

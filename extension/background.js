@@ -2108,8 +2108,13 @@ async function searchShopee(keyword, domain) {
     const tab = await ensureTab(domain);
     await chrome.tabs.update(tab.id, { url: `https://${domain}/search?keyword=${encodeURIComponent(keyword)}`, active: false });
 
-    const deadline = Date.now() + 15000;
-    let texts = [], videoItems = {}, textsIter = -1, iter = 0;
+    // 22s: Shopee render kết quả chậm hơn hẳn con số 15s cũ. Đo 06/09/2026, một mẻ 10 từ
+    // khoá — quá nửa số lần chộp được chỉ xảy ra ở LƯỢT THỬ THỨ HAI, tức là 15s đang cắt
+    // ngay trước lúc trang kịp bắn `search_items`. Chuỗi hạn giờ phải giữ đúng thứ tự
+    // 22s (đây) < 28s (trang máy-thợ) < 30s (backend) để bên bỏ cuộc trước luôn là bên
+    // biết vì sao mình bỏ cuộc.
+    const deadline = Date.now() + 22000;
+    let texts = [], videoItems = {}, textsIter = -1, iter = 0, seen = null;
     while (Date.now() < deadline) {
       await sleep(500);
       iter++;
@@ -2137,9 +2142,20 @@ async function searchShopee(keyword, domain) {
               return norm(got) === want;
             };
             const onRightPage = sameKw(location.href);
-            const cap = (window.__rsCap || [])
-              .filter((c) => /\/api\/v4\/search\/search_items/.test(c.url) && sameKw(c.url))
-              .map((c) => c.text);
+            const all = (window.__rsCap || []).filter((c) => /\/api\/v4\/search\/search_items/.test(c.url));
+            // Lọc theo `keyword=` TRONG CHÍNH URL CỦA JSON — đó mới là bằng chứng cứng.
+            // KHÔNG chặn thêm bằng `onRightPage`: Shopee đá một số truy vấn phổ biến sang
+            // trang danh mục (URL không còn `keyword=`), lúc đó `onRightPage` mãi mãi sai
+            // và cả từ khoá trượt dù JSON đúng vẫn nằm sẵn trong `__rsCap`. Đo thật
+            // 06/09/2026: bản chặn hai lớp làm 6/10 từ khoá hết giờ chờ.
+            const cap = all.filter((c) => sameKw(c.url)).map((c) => c.text);
+            // Có JSON của từ khoá KHÁC mà không có của mình = đúng tình huống nhiễm chéo,
+            // báo ra để lần sau khỏi phải đoán.
+            const nOther = all.length - cap.length;
+            const capKw = all.slice(-4).map((c) => {
+              const m = /[?&]keyword=([^&]*)/.exec(c.url || '');
+              return m ? m[1].slice(0, 40) : '(không có keyword= trong URL)';
+            });
             // search_items KHÔNG có URL video, chỉ DOM có badge `data-testid="badge-video"`. Bóc LINK
             // sản phẩm có badge đó (shopid.itemid trong href) — sau này backend trỏ vào link lấy video.
             const vids = [];
@@ -2149,23 +2165,34 @@ async function searchShopee(keyword, domain) {
               const m = (a.getAttribute('href') || '').match(/-i\.(\d+)\.(\d+)/);
               if (m) vids.push({ shopid: m[1], itemid: m[2], url: a.href.split('?')[0] });
             });
-            return { cap, vids, onRightPage, href: location.href, body: document.body ? document.body.innerText.slice(0, 300) : '' };
+            return { cap, vids, onRightPage, nOther, capKw, href: location.href, body: document.body ? document.body.innerText.slice(0, 300) : '' };
           },
         });
         r = out && out[0] && out[0].result;
       } catch (e) { /* trang chưa sẵn sàng */ }
       if (r) {
         if (/\/(buyer\/)?login|\/verify/i.test(r.href) || /verify|captcha|robot|xác minh/i.test(r.body || '')) { return { texts: [], blocked: true, error: 'Shopee đòi đăng nhập/xác minh — mở shopee.vn đăng nhập rồi bấm lại.' }; }
-        // Còn đang ở trang của từ khoá cũ thì bỏ QUA CẢ LƯỢT, kể cả phần badge video ở dưới:
-        // `vids` cũng bóc từ DOM cũ nên nó bẩn y hệt `cap`.
-        if (!r.onRightPage) continue;
+        seen = r;
         if (r.cap && r.cap.length) { texts = r.cap; if (textsIter < 0) textsIter = iter; }
-        for (const v of (r.vids || [])) videoItems[v.itemid] = v;
+        // `vids` bóc từ DOM và KHÔNG mang theo từ khoá nào để đối chiếu — chỉ nhận khi
+        // chắc chắn đang đứng đúng trang, còn `cap` thì tự nó đã có bằng chứng rồi.
+        if (r.onRightPage) for (const v of (r.vids || [])) videoItems[v.itemid] = v;
         // Có JSON + đã bắt badge (hoặc chờ thêm ~2s cho DOM render badge) → thoát.
         if (texts.length > 0 && (Object.keys(videoItems).length > 0 || iter - textsIter >= 4)) break;
       }
     }
-    return { texts, videoItems: Object.values(videoItems), blocked: !texts.length, error: texts.length ? undefined : 'Shopee: chưa chộp được search_items — thử lại (trang có thể chưa render kết quả kịp).' };
+    // Hết giờ mà tay không thì NÓI RA đã thấy những gì. "Chưa chộp được" là ba tình huống
+    // khác hẳn nhau — trang chưa bắn XHR lần nào, bắn rồi nhưng của từ khoá khác, hay bắn
+    // rồi mà URL không mang `keyword=` — và mỗi cái sửa một kiểu.
+    let why;
+    if (!texts.length) {
+      why = 'Shopee: chưa chộp được search_items trong 22s';
+      if (seen && seen.nOther) why += ` — chỉ thấy JSON của từ khoá khác (${seen.capKw.join(' · ')})`;
+      else if (seen && !seen.onRightPage) why += ` — trang đã rời khỏi URL có keyword= (${String(seen.href).slice(0, 90)})`;
+      else why += ' — trang chưa bắn XHR tìm kiếm lần nào';
+      why += '. Thử lại.';
+    }
+    return { texts, videoItems: Object.values(videoItems), blocked: !texts.length, error: why };
   } catch (e) { return { texts: [], videoItems: [], blocked: false, error: String(e) }; }
 }
 
