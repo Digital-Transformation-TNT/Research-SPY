@@ -5,19 +5,18 @@ export const metadata: Metadata = {
 }
 
 /**
- * Trang Trend Signal Hub.
+ * Trang Trend Signal Hub — ba mục: ① Tín hiệu Google Trends · ② Top 10 chính & nổi bật ·
+ * ③ One-shot AI (đã gộp chatbot của mục "Cơ hội" cũ).
  *
- * Mang nguyên từ dự án Product Opportunity Hub. Nhúng bằng iframe đúng như trang Research
- * (`app/ads/page.tsx`) và vì đúng những lý do đó: file gốc là một trang HTML gần 12.000 dòng
- * tự chứa cả CSS lẫn JS, khai `body`, `table`, `.card`… trùng tên với `styles/` của webtool.
- * Viết lại thành React thì vừa chắc chắn lệch giao diện, vừa phải đổi tên hàng trăm lớp CSS.
+ * Vẫn nhúng bằng iframe đúng như trang Sản phẩm (`app/ads/page.tsx`) và vì đúng lý do đó:
+ * file HTML tự chứa cả CSS lẫn JS, khai `body`, `table`, `.card`… trùng tên với `styles/`
+ * của webtool. Viết lại thành React thì phải đổi tên hàng trăm lớp CSS mà không được gì.
  *
- * Dữ liệu đi qua `/api/hub/*` (xem `backend/hub/routes.py`). Trang tự chèn `/hub` vào giữa
- * đường dẫn, xem khối `hubUrl()` trong file HTML.
+ * Dữ liệu đi qua `/api/hub/signal/*` (xem `backend/hub/routes.py` và `backend/hub/signal/`).
  *
- * CẦN BIẾT: khi backend không trả lời, trang này KHÔNG báo lỗi — nó rơi về bộ dữ liệu mẫu
- * nhúng cứng và hiện đầy số liệu trông như thật. Nên nếu số liệu trông lạ, việc đầu tiên
- * phải làm là mở `/api/hub/health` xem backend có sống không, đừng đoán qua giao diện.
+ * ĐÃ SỬA MỘT ĐIỀU TỪNG PHẢI CẢNH BÁO Ở ĐÂY: bản cũ khi backend không trả lời thì KHÔNG báo
+ * lỗi — nó rơi về bộ dữ liệu mẫu nhúng cứng và hiện đầy số trông như thật. Trang mới không
+ * có dữ liệu mẫu; mục nào không đọc được thì nói ra là nó không đọc được.
  */
 export default function TrendSignalPage() {
   return <iframe src="/hub/trend-signal-hub.html" className="research-frame" title="Trend Signal Hub" />

@@ -11,6 +11,12 @@ import type { Answer, AskTurn, Turn } from '@/lib/opportunity/types'
 /**
  * Màn hình MỤC CƠ HỘI — một cuộc trò chuyện về việc nên bán gì.
  *
+ * ĐÃ GỠ KHỎI SIDEBAR. Cuộc trò chuyện này nay là mục ③ One-shot AI trong Trend Signal Hub,
+ * nơi nó còn đọc thêm bảng tín hiệu Trends và Top 10 của Hub trước khi đề xuất (xem
+ * `backend/hub/signal/ask.py`). Route `/opportunity` và toàn bộ engine bên dưới GIỮ NGUYÊN
+ * — cả hai cửa gọi cùng `lib/opportunity/demand_map.py` — chỉ là không còn hai đường vào
+ * cho cùng một việc. Đường link cũ ai đã lưu vẫn mở được.
+ *
  * Trước đây là hai tab: một ô "bối cảnh" và một bảng thương hiệu đang tăng. Bảng thương hiệu
  * đã gỡ (nó đứng trên Google Trends, thứ bị chặn quá thường xuyên để làm một tính năng), và
  * ô "bối cảnh" thành ô nhập tự do: người bán không nghĩ bằng cụm hai chữ, họ nghĩ bằng câu —

@@ -419,7 +419,7 @@ const TR_KNOBS = [
    tip:'Chỉ để dán nhãn hướng dựa trên M_bền. Trong khoảng ±mức này coi như đi ngang — và đi ngang thì '
      +'bị loại khỏi bảng. Ít khi cần chỉnh.'}
 ];
-let TR = null;
+let TR = null, SHOW_ALL = false;
 
 function trKnobsHtml(cfg){
   return TR_KNOBS.map(function(k){
@@ -444,18 +444,43 @@ function trRead(){
 function trRender(d){
   $('trKnobs').innerHTML = trKnobsHtml(d.config);
 
-  const notes=[];
-  if(d.value_kind !== 'anchored' && d.rows.length)
+  const notes=[], all=d.all_rows||[], rg=d.level_range;
+  if(d.mixed_scale)
+    notes.push('<div class="note e"><b>Bảng đang trộn hai thang đo.</b> Một phần từ khoá được cào có '
+      +'<b>từ khoá neo</b>, phần còn lại thì không — hai nhóm ấy nằm trên hai thước khác nhau, nên cột '
+      +'<b>Chỉ số</b> không so được giữa các dòng và một ngưỡng quy mô chung sẽ cắt nhầm. '
+      +'Cào lại <b>toàn bộ</b> danh sách với cùng một từ khoá neo là hết.</div>');
+  else if(d.value_kind !== 'anchored' && all.length)
     notes.push('<div class="note w"><b>Thang đo chưa neo.</b> Chỉ số của mỗi từ khoá đang được Google '
       +'chuẩn hoá theo đỉnh của chính nó, nên cột <b>Chỉ số</b> không so được giữa các dòng và ngưỡng quy mô '
       +'chỉ đúng tương đối. Khai <b>từ khoá neo</b> trong Danh sách theo dõi rồi cào lại là hết.</div>');
+
+  /* Ngưỡng quy mô mà cắt sạch cả bảng thì phải nói ra, kèm dải thật để chỉnh cho đúng thang.
+     Neo vào một từ khoá khổng lồ (vd "điện thoại") là mọi ngách đều rơi xuống dưới 5, và
+     mặc định 15 sẽ giấu hết — trông y hệt "không có tín hiệu nào". */
+  const tooSmall = (d.dropped||{})['quá nhỏ']||0;
+  if(tooSmall && !d.rows.length && rg)
+    notes.push('<div class="note w"><b>Ngưỡng quy mô đang cắt sạch bảng.</b> '
+      +tooSmall+' từ khoá bị loại vì chỉ số dưới '+d.config.MIN_INDEX+', trong khi cả danh sách chỉ nằm trong '
+      +'khoảng <b>'+rg[0]+'–'+rg[1]+'</b>. '
+      +(d.value_kind==='anchored'
+        ? 'Đây là hệ quả bình thường của việc neo: mọi chỉ số tính theo thước của từ khoá neo, nên neo vào một '
+          +'từ khoá càng lớn thì các ngách càng nhỏ. Hạ ngưỡng xuống quanh <b>'+Math.max(1,Math.floor(rg[0]))+'</b>, '
+          +'hoặc chọn một từ khoá neo vừa tầm hơn.'
+        : 'Hạ ngưỡng xuống quanh <b>'+Math.max(1,Math.floor(rg[0]))+'</b> rồi áp dụng lại.')
+      +'</div>');
+
   const dr=d.dropped||{}; const nd=Object.keys(dr).reduce(function(s,k){return s+(dr[k]||0)},0);
   if(nd) notes.push('<div class="note i"><b>Đã loại '+nd+' từ khoá.</b> '
     +'quá nhỏ '+(dr['quá nhỏ']||0)+' · đứng im '+(dr['đứng im']||0)+' · đi xuống '+(dr['đi xuống']||0)
-    +' · chưa đủ dữ liệu '+(dr['chưa đủ dữ liệu']||0)+'. Bảng chỉ giữ tín hiệu đi lên — đó là điều đã chốt.</div>');
+    +' · chưa đủ dữ liệu '+(dr['chưa đủ dữ liệu']||0)+'. Bảng chỉ giữ tín hiệu đi lên — đó là điều đã chốt. '
+    +'<button class="btn ghost sm" id="trShowAll" style="margin-left:6px">'
+    +(SHOW_ALL?'Ẩn dòng bị loại':'Xem cả dòng bị loại')+'</button></div>');
   $('trNotes').innerHTML = notes.join('');
+  if($('trShowAll')) $('trShowAll').onclick = function(){ SHOW_ALL = !SHOW_ALL; trRender(d); };
 
-  if(!d.rows.length){
+  const shown = SHOW_ALL ? all : d.rows;
+  if(!shown.length){
     $('trBody').innerHTML = '<div class="card"><div class="empty"><b>Chưa có tín hiệu đi lên nào</b>'
       + (d.n_tracked ? ('Đang theo dõi '+d.n_tracked+' từ khoá — chưa từ nào vượt ngưỡng, hoặc chuỗi còn ngắn hơn '
           + d.min_days + ' ngày.') : 'Chưa có từ khoá nào trong danh sách theo dõi.')
@@ -467,8 +492,8 @@ function trRender(d){
   const head = '<tr><th>Từ khoá</th><th>30 ngày</th><th class="num">Chỉ số<br>7 ngày</th>'
     +'<th class="num">Vọt ngắn</th><th class="num">Tăng bền</th><th class="num">Cùng kỳ<br>năm ngoái</th>'
     +'<th>Nhãn</th><th>Độ nóng</th><th>Vì sao</th></tr>';
-  const body = d.rows.map(function(r){
-    return '<tr><td class="kw">'+esc(r.keyword)+'</td>'
+  const body = shown.map(function(r){
+    return '<tr'+(PILL[r.kind]?'':' style="opacity:.62"')+'><td class="kw">'+esc(r.keyword)+'</td>'
       +'<td>'+spark(r.spark)+'</td>'
       +'<td class="num">'+(r.L==null?'—':r.L)+'</td>'
       +'<td class="num">'+pct(r.m_short)+'</td>'
@@ -482,11 +507,11 @@ function trRender(d){
   $('trBody').innerHTML = '<div class="tw"><table><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>'
     +'<div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
     +'<button class="btn ghost sm" id="trCsv">Tải CSV</button>'
-    +'<span style="font-size:12.5px;color:var(--ink3)">'+d.rows.length+' tín hiệu đi lên'
-    +(d.rows[0].last_date?(' · mốc mới nhất '+esc(d.rows[0].last_date)):'')+'</span></div>';
+    +'<span style="font-size:12.5px;color:var(--ink3)">'+(SHOW_ALL ? (shown.length+' từ khoá (mờ = đã bị loại)') : (d.rows.length+' tín hiệu đi lên'))
+    +(shown[0].last_date?(' · mốc mới nhất '+esc(shown[0].last_date)):'')+'</span></div>';
   $('trCsv').onclick = function(){
     csv([['tu khoa','chi so 7 ngay','vot ngan','tang ben','YoY','nhan','do nong','vi sao']].concat(
-      d.rows.map(function(r){return [r.keyword,r.L,r.m_short,r.m_sustain,r.yoy,r.kind,r.heat,r.why]})),
+      shown.map(function(r){return [r.keyword,r.L,r.m_short,r.m_sustain,r.yoy,r.kind,r.heat,r.why]})),
       'tin-hieu-trends.csv');
   };
 }
@@ -528,6 +553,9 @@ const TK_KNOBS = {
 };
 let TK = null, TAB = localStorage.getItem('tsh_tab') || 'main';
 let PF = localStorage.getItem('tsh_pf') || 'shopee', MK = localStorage.getItem('tsh_mk') || 'vn';
+/* Mảng chứ không phải Object.keys: JavaScript xếp khoá trông-như-số lên đầu, nên
+   `{shopee, taobao, '1688'}` liệt kê ra thành 1688 trước — sai thứ tự mà không báo gì. */
+const PLATFORMS = ['shopee','taobao','1688'];
 const MARKETS = {shopee:['vn','ph','th','id','my','sg','tw','br','mx'], taobao:['cn'], '1688':['cn']};
 
 function tkKnobsHtml(cfg){
@@ -548,8 +576,7 @@ function tkRead(){
 }
 
 function partSelects(parts){
-  const known = Object.keys(MARKETS);
-  $('pfSel').innerHTML = known.map(function(p){
+  $('pfSel').innerHTML = PLATFORMS.map(function(p){
     return '<option value="'+p+'"'+(p===PF?' selected':'')+'>'+p+'</option>'}).join('');
   const ms = MARKETS[PF] || ['vn'];
   if(ms.indexOf(MK)<0) MK = ms[0];

@@ -163,19 +163,31 @@ async def _fetch_points(keywords: list[str], geo: str, date_range: str,
             page.on("response", on_resp)
 
             for kw in keywords:
-                cur["rows"] = None
                 terms = f"{anchor},{kw}" if anchor else kw
                 url = (f"{EXPLORE}?q={urllib.parse.quote(terms)}"
                        f"&geo={geo}&date={urllib.parse.quote(date_range)}")
-                try:
-                    await page.goto(url, timeout=45000)
-                    for _ in range(16):
-                        if cur["rows"]:
-                            break
-                        await page.wait_for_timeout(500)
-                except Exception:
-                    pass
-                rows = cur["rows"]
+                # THỬ HAI LƯỢT, và cửa sổ chờ rộng hơn hẳn `_fetch_many` ở trên (8s).
+                # Truy vấn hai từ khoá (chế độ neo) làm /explore phát thêm widget và RPC
+                # multiline về chậm hơn — đo thật: một từ khoá trượt hẳn ở cửa sổ 8s rồi
+                # về bình thường ở lượt sau. Trượt ở đây không chỉ mất một dòng: nó để lại
+                # chuỗi CHƯA NEO của lần cào trước nằm chung bảng với các chuỗi đã neo,
+                # tức là trộn hai thang đo — thứ đắt hơn nhiều so với 15 giây chờ thêm.
+                rows = None
+                for attempt in (0, 1):
+                    cur["rows"] = None
+                    try:
+                        await page.goto(url, timeout=45000)
+                        for _ in range(30):
+                            if cur["rows"]:
+                                break
+                            await page.wait_for_timeout(500)
+                    except Exception:
+                        pass
+                    rows = cur["rows"]
+                    if rows:
+                        break
+                    if attempt == 0:
+                        await page.wait_for_timeout(2000)
                 if not rows:
                     continue
                 if anchor:

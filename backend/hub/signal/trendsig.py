@@ -206,7 +206,12 @@ def build(region: str = "ALL", saved_cfg: dict | None = None,
     """
     cfg = merged_config(saved_cfg)
     rows: list[dict] = []
+    all_rows: list[dict] = []
     dropped = {"quá nhỏ": 0, "đứng im": 0, "đi xuống": 0, "chưa đủ dữ liệu": 0}
+    #: Thang đo của TOÀN BỘ từ khoá đang theo dõi, không phải của riêng những dòng lọt bảng.
+    #: Đọc từ `rows[0]` là sai theo đúng kiểu khó thấy nhất: bảng trộn hai thang vẫn hiện ra
+    #: một nhãn thang duy nhất, và cột `Chỉ số` trông như so được với nhau trong khi không.
+    kinds: set[str] = set()
 
     for kw in store.tracked_keywords(region):
         d_rows = store.series(kw, region, "day")
@@ -224,6 +229,11 @@ def build(region: str = "ALL", saved_cfg: dict | None = None,
             **ind, **lab,
         }
         row["why"] = _why(row, cfg)
+        kinds.add(row["value_kind"])
+        # Bản rút gọn, KHÔNG kèm `spark`: danh sách này chứa cả những dòng bị loại, và với
+        # vài trăm từ khoá thì 30 điểm biểu đồ mỗi dòng làm payload phình lên vô ích — chỗ
+        # xem "vì sao bị loại" chỉ cần con số và lý do.
+        all_rows.append({k: v for k, v in row.items() if k != "spark"})
 
         if row["kind"] == "— chưa đủ dữ liệu":
             dropped["chưa đủ dữ liệu"] += 1
@@ -243,15 +253,22 @@ def build(region: str = "ALL", saved_cfg: dict | None = None,
     order = {"Mới nổi": 0, "Hot": 1, "Đang lên": 2}
     rows.sort(key=lambda r: (order.get(r["kind"], 9), -(r.get("m_sustain") or -9)))
 
-    kinds = [r["value_kind"] for r in rows]
+    all_rows.sort(key=lambda r: (order.get(r["kind"], 9), -(r.get("m_sustain") or -9)))
+    # Dải chỉ số của những dòng CÓ chỉ số — để giao diện gợi ý được một ngưỡng hợp thang
+    # thay vì để người dùng dò mù. Neo vào một từ khoá khổng lồ thì cả bảng nằm dưới 5, và
+    # `MIN_INDEX = 15` mặc định sẽ giấu sạch mọi tín hiệu mà không nói vì sao.
+    levels = sorted(r["L"] for r in all_rows if r.get("L") is not None)
     return {
         "region": region,
         "config": cfg,
         "defaults": DEFAULTS,
         "rows": rows,
+        "all_rows": all_rows,
         "dropped": dropped,
-        "value_kind": (kinds[0] if kinds else "index"),
-        "comparable": bool(kinds) and all(k == "anchored" for k in kinds),
+        "value_kind": (sorted(kinds)[0] if len(kinds) == 1 else "mixed"),
+        "mixed_scale": len(kinds) > 1,
+        "comparable": kinds == {"anchored"},
+        "level_range": ([levels[0], levels[-1]] if levels else None),
         "min_days": MIN_DAYS,
         "min_weeks": MIN_WEEKS,
     }
