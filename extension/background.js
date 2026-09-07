@@ -1553,13 +1553,13 @@ async function temuSuggestBatch(terms, region) {
     .filter(Boolean).slice(0, TEMU_SUGGEST_MAX_TERMS);
   if (!list.length) return { groups: [], blocked: false, error: 'không có cụm từ nào' };
 
-  const JOB_BUDGET_MS = 70000;
+  const JOB_BUDGET_MS = 150000;  // thêm vòng mở trang kết quả cho mỗi cụm
   const PER_TERM_MS = 4000;
   const jobDeadline = Date.now() + JOB_BUDGET_MS;
 
   // `stage` là thứ trả lời được câu "nó kẹt ở đâu" — cập nhật trước MỖI bước có thể treo.
   // Không có nó thì một lần quá hạn chỉ nói được "quá hạn", và đó là chỗ đã tốn hai vòng đoán.
-  const debug = { stage: 'bắt đầu', inputFound: null, pickedInput: '', listbox: null, capUrls: [], sample: '', terms: list.length, ranTerms: 0 };
+  const debug = { stage: 'bắt đầu', inputFound: null, pickedInput: '', listbox: null, relatedTried: '', capUrls: [], sample: '', terms: list.length, ranTerms: 0 };
   const groups = [];
 
   try {
@@ -1723,6 +1723,50 @@ async function temuSuggestBatch(terms, region) {
         }
         if (suggestions.length) break;
       }
+      // ĐƯỜNG HAI: TRANG KẾT QUẢ, KHÔNG GÕ GÌ CẢ.
+      //
+      // Lớp gợi ý không chịu dựng dù mọi điều kiện đã đúng — đo được: gõ đúng ô search, trang
+      // `hasFocus=true` và `visible`, gõ từng ký tự bằng `InputEvent` chuẩn, mà số phần tử
+      // option vẫn là 1. Nguyên nhân còn lại duy nhất là Temu bỏ qua sự kiện bàn phím GIẢ
+      // (`isTrusted: false`), và content script thì không tạo được sự kiện thật.
+      //
+      // Trang kết quả không cần gõ: điều hướng thẳng tới URL tìm kiếm rồi đọc khối "related
+      // searches" mà Temu tự dựng. Cùng loại dữ liệu — những cụm người ta thật sự tìm — và
+      // lấy được bằng đúng thứ ta điều khiển được là thanh địa chỉ.
+      if (!suggestions.length) {
+        await chrome.tabs.update(tab.id, {
+          url: 'https://www.temu.com/search_result.html?search_key=' + encodeURIComponent(term),
+        });
+        await waitForComplete(tab.id, 12000);
+        await sleep(2500);
+        const rel = await evalInTab(tab.id, (kw) => {
+          const norm = (x) => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim();
+          const want = norm(kw);
+          const out = [];
+          const seen = {};
+          const all = document.querySelectorAll('a, li, span, div');
+          for (let i = 0; i < all.length && out.length < 30; i++) {
+            const el = all[i];
+            if (el.children && el.children.length) continue;
+            const t = (el.textContent || '').trim();
+            if (t.length < 2 || t.length > 60) continue;
+            const n = norm(t);
+            // Cùng phép lọc của lớp gợi ý: cụm liên quan là phần NỐI DÀI của từ đang tìm.
+            if (n === want || n.indexOf(want) !== 0) continue;
+            if (seen[n]) continue;
+            seen[n] = 1;
+            out.push(t);
+          }
+          return { out, href: location.href };
+        }, [term], 6000);
+        for (const x of ((rel && rel.out) || [])) if (!suggestions.includes(x)) suggestions.push(x);
+        if (!debug.relatedTried) debug.relatedTried = (rel && rel.href) ? String(rel.href).slice(0, 80) : 'không mở được';
+        // Về lại trang chủ cho cụm kế tiếp.
+        await chrome.tabs.update(tab.id, { url: 'https://www.temu.com/' });
+        await waitForComplete(tab.id, 10000);
+        await sleep(1200);
+      }
+
       groups.push({ term, suggestions });
       if (sawLogin) break;
       await sleep(300); // giãn nhịp giữa hai lượt gõ, cho giống người thật

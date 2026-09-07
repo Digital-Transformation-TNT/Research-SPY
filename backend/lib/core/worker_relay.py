@@ -103,7 +103,9 @@ SUBMIT_TIMEOUTS: dict[str, float] = {
     "RS_TRENDS_RELATED": TRENDS_TIMEOUT_S,
     "RS_LENS_IMAGE": IMAGE_TIMEOUT_S,
     "RS_TAOBAO_IMAGE": IMAGE_TIMEOUT_S,
-    "RS_TEMU_SUGGEST": BATCH_TIMEOUT_S,
+    # 4 cụm, mỗi cụm còn mở thêm trang kết quả rồi quay về — xem `searchTemu` phần
+    # "ĐƯỜNG HAI". Thứ tự bắt buộc: 150s (extension) < 165s (trang máy-thợ) < 180s (đây).
+    "RS_TEMU_SUGGEST": 180.0,
     "RS_FB_ADLIB": BATCH_TIMEOUT_S,
 }
 
