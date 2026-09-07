@@ -33,6 +33,8 @@ HAI HỆ QUẢ, cả hai đều phải nói ra chứ không được giấu:
 
 from __future__ import annotations
 
+import logging
+
 from lib.core.worker_relay import (
     BATCH_TIMEOUT_S,
     WorkerOffline,
@@ -46,6 +48,8 @@ from ..types import SearchContext
 
 #: Trần số cụm cho một lượt. Trùng với `TEMU_SUGGEST_MAX_TERMS` ở `extension/background.js` —
 #: chốt ở cả hai đầu, để một payload méo không biến thành một lượt chiếm máy-thợ mười phút.
+_LOG = logging.getLogger("keywords.temu")
+
 MAX_TERMS = 12
 
 #: Temu bán xuyên biên giới bằng MỘT tên miền `temu.com`, khác Shopee (mỗi nước một tên miền).
@@ -145,6 +149,14 @@ class Temu(KeywordProvider):
                 for w in words
                 if isinstance(w, str) and w.strip() and _norm(w) != echo
             ]
+
+        # NÓI RA CẢ KHI "THÀNH CÔNG". Mười hai cụm mà về một gợi ý thì về mặt kỹ thuật là
+        # thành công, nên không nhánh nào ném lỗi và phần chẩn đoán của extension chết trong
+        # im lặng — trong khi đó đúng là lúc cần đọc nó nhất. Ghi log thay vì ném: một gợi ý
+        # thật vẫn là kết quả, không được vứt.
+        total = sum(len(v) for v in by_term.values())
+        if total < len(terms):
+            _LOG.warning("Temu: %d cụm → %d gợi ý · %s", len(terms), total, _with_debug(result))
 
         if not any(by_term.values()):
             # Kèm chẩn đoán của extension vào câu lỗi. Không kèm thì thứ duy nhất hiện lên là

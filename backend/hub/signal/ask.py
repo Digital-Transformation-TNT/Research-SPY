@@ -67,16 +67,31 @@ def digest(trends_region: str, platform: str | None, market: str | None) -> dict
     top_lines: list[str] = []
     if platform and market:
         tk = top10.build(platform, market, store.get_config(f"{platform}:{market}"))
+        # ĐỌC BẰNG `.get`, KHÔNG BẰNG `[...]`. Hai bảng đổi chỉ số theo chế độ: nhánh 2 mang
+        # `spike_pct` khi đo thật và `recent_share_pct` khi ước lượng, nhánh 1 nay mang
+        # `rank_score` chứ không còn `growth_long_pct`. Bám tên cứng ở đây làm cả mục ③ trả
+        # HTTP 500 — một KeyError trong phần DỰNG NGỮ CẢNH, tức chết trước cả khi kịp hỏi AI.
         for row in tk["hot"][:MAX_TOP_HINTS]:
+            spike, share = row.get("spike_pct"), row.get("recent_share_pct")
+            if spike is not None:
+                what = f"đột biến {spike:+.0f}%"
+            elif share is not None:
+                what = f"{share:.0f}% doanh số cả đời rơi vào 30 ngày qua"
+            else:
+                what = "đang nổi"
             top_lines.append(f"- [nổi bật] {row.get('title') or row['product_id']} "
-                             f"· đột biến {row['spike_pct']:+.0f}% · đã bán {row['sold_cumulative']:,}")
-            if row.get("keyword"):
-                index.setdefault(_fold(row["keyword"]), {})[
-                    "source"] = "top10"
+                             f"· {what} · đã bán {row['sold_cumulative']:,}")
+            # KHÔNG nhét một mục chỉ có `source` vào sổ đối chiếu. `_attach` sẽ gắn nó vào
+            # món đề xuất, và giao diện vẽ ra một dòng tín hiệu toàn dấu gạch — trông như đã
+            # đo mà rỗng, tệ hơn hẳn so với ghi thẳng "chưa đo". Sổ này chỉ chứa những mục
+            # có số thật của mục ①.
         for row in tk["main"][:MAX_TOP_HINTS]:
+            score, rank = row.get("rank_score"), row.get("last_rank")
+            what = f"điểm hạng {score:.0f}" if score is not None else "trong top bán chạy"
+            if rank:
+                what += f", hạng #{rank} ngành của nó"
             top_lines.append(f"- [chính] {row.get('title') or row['product_id']} "
-                             f"· tăng lũy kế {row['growth_long_pct']:+.1f}% "
-                             f"· đã bán {row['sold_cumulative']:,}")
+                             f"· {what} · đã bán {row['sold_cumulative']:,}")
 
     parts = []
     if lines:
