@@ -1723,6 +1723,19 @@ async function temuSuggestBatch(terms, region) {
         }
         if (suggestions.length) break;
       }
+      // LỌC TRƯỚC KHI ĐẾM. Đường JSON (`parseTemuSuggest`) vẫn nhặt được các MẢNH của truy
+      // vấn từ `slice_words` — "jean", "petite", "best". Chúng làm `suggestions.length` khác 0
+      // nên nhánh trang-kết-quả bên dưới không bao giờ chạy: một đường dự phòng bị chính rác
+      // của đường chính khoá lại. Chỉ giữ thứ BẮT ĐẦU bằng cụm vừa gõ — đúng phép lọc đã
+      // dùng cho DOM, và đúng hình dạng của một gợi ý thật.
+      {
+        const w = String(term || '').toLowerCase().replace(/\s+/g, ' ').trim();
+        for (let i = suggestions.length - 1; i >= 0; i--) {
+          const n = String(suggestions[i]).toLowerCase().replace(/\s+/g, ' ').trim();
+          if (n === w || n.indexOf(w) !== 0) suggestions.splice(i, 1);
+        }
+      }
+
       // ĐƯỜNG HAI: TRANG KẾT QUẢ, KHÔNG GÕ GÌ CẢ.
       //
       // Lớp gợi ý không chịu dựng dù mọi điều kiện đã đúng — đo được: gõ đúng ô search, trang
