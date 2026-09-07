@@ -2100,13 +2100,47 @@ async function searchDouyin(keyword, count, keywords, anchor) {
 // login. CHƯA CÓ NƠI GỌI: `searchShopee` hiện đi qua `ensureTab(domain)`; giữ lại để nếu dùng
 // tới thì cũng nằm trong kho tab chung, không đẻ ra một cái tab id mồ côi nữa.
 const shopeeSearchTab = () => keptTab('shopeeSearch');
-async function searchShopee(keyword, domain) {
-  domain = domain || 'shopee.vn';
+/**
+ * Cào Shopee: theo TỪ KHOÁ hoặc theo DANH MỤC, cùng một cơ chế.
+ *
+ * Cả hai đều để CHÍNH TRANG bắn `search_items` (endpoint ký anti-bot, ta không tự dựng được)
+ * rồi chộp response. Khác nhau đúng hai chỗ: URL đi tới, và THAM SỐ dùng để nhận ra response
+ * nào là của mình — `keyword=` khi tìm theo từ, `match_id=` khi duyệt danh mục.
+ *
+ * Danh mục lấy 2 trang vì Shopee trả 60 mục/trang mà ta cần top 100.
+ */
+async function searchShopee(msg) {
+  const domain = msg.domain || 'shopee.vn';
+  const catId = msg.catId ? String(msg.catId) : '';
+  if (catId) {
+    // ĐƯỜNG `-cat.<id>` chứ không phải `/search?catId=`. `/search` là trang TÌM KIẾM: không có
+    // từ khoá thì SPA không chạy lượt tìm nào, nên không có `search_items` để chộp. `-cat.<id>`
+    // mới là đường Shopee tự dùng khi người ta bấm vào một danh mục. Phần chữ trước `-cat.`
+    // chỉ để cho đẹp URL — sàn định tuyến bằng số id.
+    const slug = String(msg.catName || 'c').replace(/[^\w]+/g, '-').replace(/^-+|-+$/g, '') || 'c';
+    const texts = [];
+    let last = null;
+    for (const page of [0, 1]) {
+      const url = `https://${domain}/${slug}-cat.${catId}?sortBy=sales&page=${page}`;
+      // Nhận diện response theo GIÁ TRỊ id, chấp nhận vài tên tham số: Shopee gọi nó là
+      // `match_id` ở endpoint search, nhưng tên ấy không phải thứ ta kiểm soát được.
+      last = await shopeeCapture(domain, url, 'match_id|catid|category', catId);
+      if (last.blocked && last.reason) return last;      // login / xác minh: dừng hẳn
+      for (const t of (last.texts || [])) texts.push(t);
+      if (!last.texts || !last.texts.length) break;      // trang rỗng thì trang sau cũng rỗng
+    }
+    return { texts, videoItems: [], blocked: !texts.length, error: texts.length ? undefined : (last && last.error) };
+  }
+  const url = `https://${domain}/search?keyword=${encodeURIComponent(msg.keyword || '')}`;
+  return shopeeCapture(domain, url, 'keyword', msg.keyword || '');
+}
+
+async function shopeeCapture(domain, pageUrl, param, want) {
   try {
     // Dùng lại tab shopee CÓ SẴN (không đẻ tab thừa), navigate ngầm (active:false → không cướp focus).
     // search_items bắn NGAY khi load → thoát ngay khi chộp được (nhanh ~2-3s), không chờ/không cuộn.
     const tab = await ensureTab(domain);
-    await chrome.tabs.update(tab.id, { url: `https://${domain}/search?keyword=${encodeURIComponent(keyword)}`, active: false });
+    await chrome.tabs.update(tab.id, { url: pageUrl, active: false });
 
     // 22s, không phải 15s: quá nửa số lần chộp được chỉ xảy ra ở lượt thử thứ hai, tức 15s
     // cắt ngay trước lúc trang kịp bắn `search_items`. Thứ tự bắt buộc của chuỗi hạn giờ:
@@ -2119,21 +2153,25 @@ async function searchShopee(keyword, domain) {
       let r = null;
       try {
         const out = await chrome.scripting.executeScript({
-          target: { tabId: tab.id }, world: 'MAIN', args: [keyword],
-          func: (kw) => {
+          target: { tabId: tab.id }, world: 'MAIN', args: [param, String(want)],
+          func: (pname, pwant) => {
             // CHỈ NHẬN JSON CỦA ĐÚNG TỪ KHOÁ ĐANG HỎI. `executeScript` có thể chạy trúng tài
             // liệu CŨ khi `tabs.update` chưa commit xong; lúc đó `__rsCap` còn nguyên
             // `search_items` của lần trước, vòng lặp thấy có `texts` nên thoát ngay và trả
             // kết quả của từ khoá TRƯỚC kèm cờ thành công. Đã xảy ra thật: một mẻ 10 từ khoá
             // bị tráo chéo mà không lớp nào phía sau nghi ngờ gì.
             const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
-            const want = norm(kw);
+            const want = norm(pwant);
+            const names = String(pname).split('|');
             const sameKw = (u) => {
-              const m = /[?&]keyword=([^&]*)/.exec(u || '');
-              if (!m) return false;
-              let got = m[1];
-              try { got = decodeURIComponent(got.replace(/\+/g, ' ')); } catch (e) {}
-              return norm(got) === want;
+              for (let i = 0; i < names.length; i++) {
+                const m = new RegExp('[?&]' + names[i] + '=([^&]*)', 'i').exec(u || '');
+                if (!m) continue;
+                let got = m[1];
+                try { got = decodeURIComponent(got.replace(/\+/g, ' ')); } catch (e) {}
+                if (norm(got) === want) return true;
+              }
+              return false;
             };
             const onRightPage = sameKw(location.href);
             const all = (window.__rsCap || []).filter((c) => /\/api\/v4\/search\/search_items/.test(c.url));
@@ -2163,7 +2201,7 @@ async function searchShopee(keyword, domain) {
         r = out && out[0] && out[0].result;
       } catch (e) { /* trang chưa sẵn sàng */ }
       if (r) {
-        if (/\/(buyer\/)?login|\/verify/i.test(r.href) || /verify|captcha|robot|xác minh/i.test(r.body || '')) { return { texts: [], blocked: true, error: 'Shopee đòi đăng nhập/xác minh — mở shopee.vn đăng nhập rồi bấm lại.' }; }
+        if (/\/(buyer\/)?login|\/verify/i.test(r.href) || /verify|captcha|robot|xác minh/i.test(r.body || '')) { return { texts: [], blocked: true, reason: 'login', error: 'Shopee đòi đăng nhập/xác minh — mở shopee.vn đăng nhập rồi bấm lại.' }; }
         seen = r;
         if (r.cap && r.cap.length) { texts = r.cap; if (textsIter < 0) textsIter = iter; }
         // `vids` bóc từ DOM và KHÔNG mang theo từ khoá nào để đối chiếu — chỉ nhận khi
@@ -2789,7 +2827,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   if (msg.type === 'RS_SHOPEE') {
     const shopeeHost = msg.domain || 'shopee.vn';
-    withCooldown(`site:${shopeeHost}`, searchShopee(msg.keyword, msg.domain).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, texts: [], blocked: false, error: String(e) })), `https://${shopeeHost}/`);
+    withCooldown(`site:${shopeeHost}`, searchShopee(msg).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, texts: [], blocked: false, error: String(e) })), `https://${shopeeHost}/`);
     return true;
   }
 });

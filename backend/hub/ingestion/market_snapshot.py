@@ -140,6 +140,109 @@ async def _items_job(job: str, keyword: str, trace: dict) -> list[dict]:
     return rows
 
 
+#: Bao nhiêu sản phẩm giữ lại mỗi danh mục. Shopee trả 60 mục/trang nên con số này quyết
+#: định số trang phải mở — 100 là hai trang, và đó cũng là mẫu số của điểm hạng ở `top10`.
+PER_CATEGORY = 100
+
+
+async def _shopee_category(cat_id: int, cat_name: str, market: str, trace: dict) -> list[dict]:
+    """Top bán chạy của MỘT danh mục cấp 1. Hạng = vị trí trong danh sách đã sắp theo bán chạy."""
+    from lib.ads.platform import PlatformSearchInput
+    from lib.ads.platforms.shopee import DOMAIN, shopee
+    from lib.ads.types import ClientResponse
+
+    country = market.upper()
+    domain = DOMAIN.get(country)
+    if not domain:
+        raise RuntimeError(f"Shopee không hoạt động ở {country}")
+
+    result = None
+    for attempt in (0, 1):
+        result = await run_on_worker(
+            "RS_SHOPEE", {"catId": cat_id, "catName": cat_name, "domain": domain})
+        if (why := worker_error(result)):
+            raise RuntimeError(why)
+        if (result or {}).get("texts"):
+            break
+        trace[f"try{attempt + 1}"] = str((result or {}).get("error") or "rỗng")[:120]
+
+    texts = (result or {}).get("texts") or []
+    trace["texts"] = len(texts)
+    if not texts:
+        raise RuntimeError(str((result or {}).get("error") or "máy-thợ trả 0 mảnh JSON"))
+
+    # `keyword` để rỗng: đây là lượt duyệt danh mục, không có từ khoá nào cả. Nhét tên danh
+    # mục vào đó thì cột "Từ khoá" trên bảng nói dối là đã tìm bằng cụm ấy.
+    req = PlatformSearchInput(keyword="", country=country, limit=PER_CATEGORY,
+                              options=shopee.parse_options({}))
+    outcome = shopee.parse_response(
+        req, [ClientResponse(status=200, text=t) for t in texts if t])
+    trace["ads"] = len(outcome.ads)
+
+    rows, position = [], 0
+    for ad in outcome.ads:
+        if ad.sold_count is None:
+            continue
+        position += 1
+        if position > PER_CATEGORY:
+            break
+        parts = (ad.permalink or "").rstrip("/").split("/")
+        shop_id = parts[-2] if len(parts) >= 2 else ""
+        rows.append({
+            "product_id": f"{shop_id}_{ad.id}" if shop_id else ad.id,
+            "sold_cumulative": ad.sold_count,
+            "sold_monthly": ad.monthly_sold,
+            "rank": position,
+            "title": ad.title or ad.body, "price": ad.price, "currency": ad.currency,
+            "rating": ad.rating, "reviews": ad.rating_count, "shop_id": shop_id,
+            "url": ad.permalink,
+            "image_url": next((c.url for c in ad.creatives if c.url), None),
+        })
+    trace["rows"] = len(rows)
+    return rows
+
+
+async def snapshot_categories(market: str = "ph", only: list[int] | None = None) -> dict:
+    """
+    Chụp TOP BÁN CHẠY theo từng danh mục cấp 1 — nguồn chính của bảng Top 10.
+
+    Đây là điều đã chốt: chỉ cào sản phẩm lọt top bán của từng danh mục, không cào tràn lan.
+    Sản phẩm rơi khỏi top thì đơn giản là NGÀY ĐÓ KHÔNG CÓ DÒNG — lịch sử cũ vẫn nguyên trong
+    kho, và `top10._rank_score` đọc ngày thiếu thành 0 điểm. Quay lại top thì lại có dòng.
+    Không cần cột "out" nào: sự vắng mặt đã là dữ liệu.
+    """
+    from . import categories
+
+    tree = categories.level1(market)
+    cats = tree["categories"]
+    if only:
+        keep = {int(c) for c in only}
+        cats = [c for c in cats if c["cat_id"] in keep]
+    if not cats:
+        return {"platform": "shopee", "market": market, "categories": 0, "rows": 0,
+                "failures": {"cây danh mục": tree.get("error") or "rỗng"}, "trace": {}}
+
+    day = _today()
+    total, failures, trace = 0, {}, {}
+    for cat in cats:
+        tr: dict = {}
+        trace[cat["name"]] = tr
+        try:
+            rows = await _shopee_category(cat["cat_id"], cat["name"], market, tr)
+        except (WorkerOffline, WorkerTimeout, RuntimeError) as e:
+            failures[cat["name"]] = str(e)
+            continue
+        for r in rows:
+            r.update(platform="shopee", market=market, day=day,
+                     keyword=None, sold_type="cumulative")
+        total += store.save_snapshot(rows)
+
+    return {"platform": "shopee", "market": market, "day": day,
+            "categories": len(cats), "rows": total,
+            "tree_cached": tree.get("cached"), "tree_error": tree.get("error"),
+            "failures": failures, "trace": trace}
+
+
 async def snapshot(platform: str, market: str, keywords: list[str]) -> dict:
     """
     Chụp một partition. Trả số dòng ghi được và lý do của những từ khoá hỏng.

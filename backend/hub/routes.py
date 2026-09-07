@@ -991,3 +991,23 @@ def signal_watchlist_save(payload: dict):
     }
     sig_store.set_config("watchlist", cfg)
     return {"saved": True, **cfg}
+
+
+@router.get("/signal/categories")
+def signal_categories(market: str = "ph", fresh: bool = False):
+    """Danh mục cấp 1 của sàn — nguồn của vòng cào top bán chạy."""
+    from .ingestion import categories
+    return categories.level1(market, fresh=fresh)
+
+
+@router.post("/signal/snapshot-categories")
+async def signal_snapshot_categories(payload: dict):
+    """
+    Chụp top bán chạy của TỪNG danh mục cấp 1 (bình thường do lịch chạy mỗi đêm).
+
+    `only` giới hạn vài `cat_id` — để thử một danh mục mà không phải chờ hết cả 25.
+    """
+    from .ingestion import market_snapshot
+    p = payload or {}
+    only = [c for c in (p.get("only") or []) if isinstance(c, (int, str))]
+    return await market_snapshot.snapshot_categories(p.get("market") or "ph", only or None)

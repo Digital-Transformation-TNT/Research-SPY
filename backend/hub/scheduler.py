@@ -7,7 +7,8 @@ LỊCH ĐÊM (giờ máy chủ):
   03:50  unify     chuẩn hoá 2 sàn về 1 lược đồ       -> listings_unified
   04:00  report    sinh báo cáo ngày                  -> reports
   05:00  sigtrends chuỗi Trends ngày+tuần (Hub ①)     -> trends_daily
-  05:40  sigsnap   chụp listing sàn theo ngày (Hub ②)  -> listings_snapshot
+  05:40  sigsnap   chụp listing theo từ khoá (Hub ②)    -> listings_snapshot
+  06:00  sigcat    top 100 mỗi danh mục cấp 1 (Hub ②)   -> listings_snapshot
 
 Tắt bằng biến môi trường: SCHEDULER_ENABLED=0
 Chạy ngay một lần: POST /api/scheduler/run?job=all
@@ -26,10 +27,10 @@ log = logging.getLogger("scheduler")
 # `shopnames` chạy trước `unify` để tên shop kịp vào cột chuẩn hoá `shop_name`.
 HOURS = {"discover": 2, "listings": 2, "sales": 3, "shopnames": 3, "trends": 3,
          "unify": 3, "report": 4,
-         "sigtrends": 5, "sigsnap": 5}
+         "sigtrends": 5, "sigsnap": 5, "sigcat": 6}
 MINUTES = {"discover": 0, "listings": 40, "sales": 10, "shopnames": 20,
            "trends": 30, "unify": 50, "report": 0,
-           "sigtrends": 0, "sigsnap": 40}
+           "sigtrends": 0, "sigsnap": 40, "sigcat": 0}
 
 # giới hạn mỗi đêm — đủ tươi mà không đụng trần quota
 MAX_SEEDS = 96          # hạt giống từ catalog
@@ -203,8 +204,26 @@ def job_sigtrends() -> dict:
     return {"job": "sigtrends", **out}
 
 
+def job_sigcat() -> dict:
+    """Chụp top bán chạy TỪNG DANH MỤC cấp 1 -> listings_snapshot. Nguồn của bảng Top 10."""
+    import asyncio
+    from .ingestion import market_snapshot
+    from .signal import store as sig_store
+    wl = sig_store.get_config("watchlist") or {}
+    markets = sorted({(q.get("market") or "ph").lower()
+                      for q in (wl.get("partitions") or [])
+                      if (q.get("platform") or "shopee") == "shopee"}) or ["ph"]
+    runs = []
+    for mk in markets:
+        try:
+            runs.append(asyncio.run(market_snapshot.snapshot_categories(mk)))
+        except Exception as e:  # noqa
+            runs.append({"market": mk, "error": str(e)[:200]})
+    return {"job": "sigcat", "markets": len(runs), "runs": runs}
+
+
 def job_sigsnap() -> dict:
-    """Chụp listing từng partition -> listings_snapshot."""
+    """Chụp listing theo TỪ KHOÁ theo dõi -> listings_snapshot. Bổ sung cho `sigcat`."""
     import asyncio
     from .ingestion import market_snapshot
     from .signal import store as sig_store
@@ -227,14 +246,15 @@ def job_sigsnap() -> dict:
 JOBS = {"discover": job_discover, "listings": job_listings, "sales": job_sales,
         "trends": job_trends, "unify": job_unify, "report": job_report,
         "shopnames": job_shopnames,
-        "sigtrends": job_sigtrends, "sigsnap": job_sigsnap}
+        "sigtrends": job_sigtrends, "sigsnap": job_sigsnap,
+        "sigcat": job_sigcat}
 
 
 # Khoá mỗi job để hai lượt cùng job không chạy chồng nhau (nhất là `unify`).
 _job_locks: dict[str, threading.Lock] = {n: threading.Lock() for n in
                                          ("discover", "listings", "sales",
                                           "trends", "unify", "report",
-                                          "sigtrends", "sigsnap")}
+                                          "sigtrends", "sigsnap", "sigcat")}
 
 
 def run_job(name: str) -> dict:
@@ -263,7 +283,7 @@ def run_all() -> list[dict]:
     """Chạy tuần tự theo đúng thứ tự phụ thuộc."""
     return [run_job(n) for n in ("discover", "listings", "sales", "shopnames",
                                 "trends", "unify", "report",
-                                "sigtrends", "sigsnap")]
+                                "sigtrends", "sigsnap", "sigcat")]
 
 
 # ─────────────────────── vòng lặp lịch ───────────────────────
