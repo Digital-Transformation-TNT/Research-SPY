@@ -40,6 +40,9 @@ DEFAULTS: dict[str, float] = {
 
 TOP_N = 10
 
+#: Mốc gốc tối thiểu cho nhánh 1 Ở CHẾ ĐỘ ƯỚC LƯỢNG. Xem lý do trong `_estimate`.
+EST_MIN_BASE = 100
+
 
 #: Khoảng hợp lệ của từng tham số. Không có bảng này thì một lần gõ nhầm sẽ được lưu im
 #: lặng và bảng vẫn hiện ra — `W_main = 1` biến "tăng trưởng 30 ngày" thành "chênh lệch một
@@ -97,7 +100,20 @@ def _clean(points: list[dict]) -> list[dict]:
 
 
 def _upd_series(points: list[dict]) -> list[tuple[date, float]]:
-    """Chuỗi (ngày cuối, bán/ngày) giữa các mốc liền nhau. Ngày trống chia đúng số ngày thật."""
+    """
+    Chuỗi (ngày cuối, bán/ngày) giữa các mốc liền nhau. Ngày trống chia đúng số ngày thật.
+
+    BỎ CẢ NHỮNG BƯỚC NHẢY TỰ MÂU THUẪN, không chỉ bước âm. Bộ đếm lũy kế của Shopee không
+    tăng mượt: đo giữa hai ngày 06 và 07/09/2026 trên 173 sản phẩm có mặt cả hai ngày, một
+    máy hút bụi "bán" 24.024 chiếc trong một ngày trong khi chính Shopee ghi nó bán 9.690
+    chiếc suốt 30 ngày. Con số đó không thể là doanh số thật — nó là bộ đếm được tính lại.
+    Để nguyên thì nhánh 2 sẽ báo đột biến vài nghìn phần trăm cho một sản phẩm không hề
+    đột biến, và đó là loại sai không nhìn ra được từ bảng.
+
+    Ngưỡng lấy từ CHÍNH hai con số của sàn chứ không phải một hằng số tôi tự đặt: lượng bán
+    của một bước không được vượt lượng bán 30 ngày mà sàn tự khai. Không có `sold_monthly`
+    thì không chặn — thà để lọt còn hơn cắt bằng một con số nghĩ ra.
+    """
     out: list[tuple[date, float]] = []
     for prev, cur in zip(points, points[1:]):
         gap = (_d(cur["day"]) - _d(prev["day"])).days
@@ -105,6 +121,9 @@ def _upd_series(points: list[dict]) -> list[tuple[date, float]]:
             continue
         delta = cur["sold_cumulative"] - prev["sold_cumulative"]
         if delta < 0:
+            continue
+        monthly = cur.get("sold_monthly")
+        if monthly and gap <= 30 and delta > monthly:
             continue
         out.append((_d(cur["day"]), delta / gap))
     return out
@@ -203,6 +222,63 @@ def readiness(rows: list[dict], cfg: dict) -> dict:
     }
 
 
+def _estimate(rows: list[dict], cfg: dict) -> dict:
+    """
+    Hai bảng dựng từ MỘT lần chụp, dùng bộ đếm "đã bán 30 ngày" mà sàn hiển thị sẵn.
+
+    VÌ SAO CÓ CHẾ ĐỘ NÀY. Cách đo thật cần ≥ 30 ngày lịch sử, và trong lúc chờ thì hai bảng
+    trống trơn — không dùng được để xem công cụ chạy ra cái gì. Nhưng Shopee trả CẢ HAI con
+    số cạnh nhau: tổng đã bán và đã bán 30 ngày. Từ đó suy ra chính xác mốc gốc của cửa sổ
+    30 ngày mà không cần chụp lần nào:
+
+        lũy kế 30 ngày trước = tổng − (đã bán 30 ngày)
+        growth_30d%          = (đã bán 30 ngày) / (lũy kế 30 ngày trước) × 100
+
+    Đây là ĐÚNG công thức của nhánh 1, chỉ khác chỗ lấy mốc gốc — suy ra thay vì đo được.
+
+    NHÁNH 2 THÌ KHÔNG DỰNG LẠI ĐƯỢC, và đây là chỗ phải nói thẳng. `spike%` so bán/ngày của
+    2 ngày cuối với nền tuần trước; một lần chụp không có độ phân giải ngày nào cả. Thay vào
+    đó là một đại lượng KHÁC hẳn: tỉ trọng 30 ngày gần nhất trên tổng đời sản phẩm. Bán 80%
+    cả đời trong 30 ngày qua là dấu hiệu bùng nổ thật, nhưng nó không phải `spike%` và không
+    so được với `spike%` — nên cột mang tên khác và kết quả gắn cờ `estimated`.
+
+    Cả hai bảng chỉ sống tới khi có đủ lịch sử thật; lúc đó `build` tự chuyển sang cách đo.
+    """
+    main: list[dict] = []
+    hot: list[dict] = []
+    for _pid, raw in _group(rows).items():
+        points = _clean(raw)
+        if not points:
+            continue
+        last = points[-1]
+        if (last.get("sold_type") or "cumulative") != "cumulative":
+            continue
+        total, monthly = last["sold_cumulative"], last.get("sold_monthly")
+        if monthly is None or monthly <= 0 or total <= 0:
+            continue
+        monthly = min(int(monthly), int(total))          # sàn làm tròn, tháng > tổng là được
+        card = _card(points)
+        base = total - monthly
+        # SÀN MỐC GỐC, và ở chế độ ước lượng nó bắt buộc chứ không tuỳ chọn như `min_base_main`
+        # của cách đo thật. Mốc gốc ở đây là hiệu của hai con số sàn tự làm tròn, nên với hàng
+        # mới ra nó thường rơi về 1–10 và %-tăng phóng lên hàng trăm nghìn phần trăm: đo thật
+        # trên dữ liệu ngày 07/09 cho +1.003.600% từ mốc gốc bằng 1.
+        #
+        # Loại chúng khỏi nhánh 1 KHÔNG phải để bảng đẹp — nhánh 1 trả lời "bán đều, ổn định
+        # lâu ngày", mà một listing có toàn bộ lịch sử nằm trong 30 ngày thì đúng nghĩa là
+        # chưa có "lâu ngày" nào cả. Chỗ của nó là nhánh 2, và nhánh 2 vẫn giữ nó.
+        if base >= max(int(cfg["min_base_main"]), EST_MIN_BASE):
+            main.append({**card, "growth_long_pct": round(monthly / base * 100.0, 1),
+                         "base_sold": base, "sold_monthly": monthly})
+        if total >= int(cfg["M_breakout"]):
+            hot.append({**card, "recent_share_pct": round(monthly / total * 100.0, 1),
+                        "sold_monthly": monthly})
+
+    main.sort(key=lambda r: -r["growth_long_pct"])
+    hot.sort(key=lambda r: -r["recent_share_pct"])
+    return {"main": main[:TOP_N], "hot": hot[:TOP_N]}
+
+
 def build(platform: str, market: str, saved_cfg: dict | None = None) -> dict:
     """Hai bảng Top 10 của một partition, kèm lý do cho từng dòng bị loại."""
     cfg = merged_config(saved_cfg)
@@ -253,7 +329,7 @@ def build(platform: str, market: str, saved_cfg: dict | None = None) -> dict:
 
     main.sort(key=lambda r: -r["growth_long_pct"])
     hot.sort(key=lambda r: -r["spike_pct"])
-    return {
+    out = {
         "platform": platform,
         "market": market,
         "config": cfg,
@@ -262,7 +338,20 @@ def build(platform: str, market: str, saved_cfg: dict | None = None) -> dict:
         "main": main[:TOP_N],
         "hot": hot[:TOP_N],
         "gates": gates,
+        "estimated": {},
     }
+    # Nhánh nào chưa đủ lịch sử thì thay bằng bản ước lượng từ bộ đếm 30 ngày của sàn — xem
+    # `_estimate`. Chỉ THAY khi bảng đo thật còn rỗng: có số đo được rồi thì số đo thắng.
+    est = None
+    for branch, is_ready in (("main", ready["main_ready"]), ("hot", ready["hot_ready"])):
+        if is_ready or out[branch]:
+            continue
+        if est is None:
+            est = _estimate(rows, cfg)
+        if est[branch]:
+            out[branch] = est[branch]
+            out["estimated"][branch] = True
+    return out
 
 
 def partitions() -> list[dict]:

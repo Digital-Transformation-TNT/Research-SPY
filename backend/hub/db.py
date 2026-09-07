@@ -113,6 +113,10 @@ CREATE TABLE IF NOT EXISTS listings_snapshot (
     day             TEXT NOT NULL,             -- YYYY-MM-DD
     sold_cumulative INTEGER NOT NULL,
     sold_type       TEXT NOT NULL DEFAULT 'cumulative',
+    -- Bộ đếm "đã bán 30 ngày" mà Shopee hiển thị SẴN cạnh tổng đã bán. Có nó thì ngày đầu
+    -- chạy đã dựng được cửa sổ 30 ngày: bán lũy kế 30 ngày trước = tổng − 30-ngày-gần-nhất.
+    -- Xem `signal/top10.py`, chế độ ước lượng.
+    sold_monthly    INTEGER,
     keyword         TEXT,
     title           TEXT,
     price           REAL,                      -- TIỀN GỐC của thị trường, không quy đổi
@@ -170,9 +174,10 @@ def init_db() -> None:
             c.execute("ALTER TABLE raw_listings ADD COLUMN seller TEXT")
         except Exception:
             pass
-        # migration: mốc thời gian của chuỗi Trends (labels + timeframe)
+        # migration: mốc thời gian của chuỗi Trends (labels + timeframe), và bộ đếm 30 ngày
         for _sql in ("ALTER TABLE trends_cache ADD COLUMN labels_json TEXT",
-                     "ALTER TABLE trends_cache ADD COLUMN timeframe TEXT"):
+                     "ALTER TABLE trends_cache ADD COLUMN timeframe TEXT",
+                     "ALTER TABLE listings_snapshot ADD COLUMN sold_monthly INTEGER"):
             try:
                 c.execute(_sql)
             except Exception:

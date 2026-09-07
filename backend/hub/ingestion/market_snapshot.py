@@ -90,6 +90,7 @@ async def _shopee(keyword: str, market: str, trace: dict) -> list[dict]:
         rows.append({
             "product_id": f"{shop_id}_{ad.id}" if shop_id else ad.id,
             "sold_cumulative": ad.sold_count,
+            "sold_monthly": ad.monthly_sold,
             "title": ad.title or ad.body, "price": ad.price, "currency": ad.currency,
             "rating": ad.rating, "reviews": ad.rating_count, "shop_id": shop_id,
             "url": ad.permalink,
@@ -126,6 +127,7 @@ async def _items_job(job: str, keyword: str, trace: dict) -> list[dict]:
             continue
         rows.append({
             "product_id": str(it["id"]), "sold_cumulative": int(sold),
+            "sold_monthly": it.get("monthly"),
             "title": it.get("name"), "price": it.get("price"), "currency": "CNY",
             "rating": it.get("rating"), "reviews": None,
             "shop_id": it.get("shop"), "url": it.get("url") or it.get("similar"),

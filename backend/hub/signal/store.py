@@ -83,7 +83,7 @@ def save_snapshot(rows: list[dict]) -> int:
             continue                      # thiếu hai trường này thì dòng vô dụng, bỏ sớm
         vals.append((
             r.get("platform"), r.get("market"), str(r["product_id"]), r.get("day"),
-            int(sold), r.get("sold_type") or "cumulative", r.get("keyword"),
+            int(sold), r.get("sold_type") or "cumulative", r.get("sold_monthly"), r.get("keyword"),
             r.get("title"), r.get("price"), r.get("currency"), r.get("rating"),
             r.get("reviews"), r.get("favorites"), r.get("shop_id"),
             r.get("image_url"), r.get("url"), now))
@@ -92,9 +92,9 @@ def save_snapshot(rows: list[dict]) -> int:
     with db.connect() as c:
         c.executemany(
             "INSERT OR IGNORE INTO listings_snapshot"
-            " (platform, market, product_id, day, sold_cumulative, sold_type, keyword,"
-            "  title, price, currency, rating, reviews, favorites, shop_id, image_url,"
-            "  url, crawled_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", vals)
+            " (platform, market, product_id, day, sold_cumulative, sold_type, sold_monthly,"
+            "  keyword, title, price, currency, rating, reviews, favorites, shop_id,"
+            "  image_url, url, crawled_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", vals)
     return len(vals)
 
 
@@ -113,7 +113,7 @@ def snapshot_rows(platform: str, market: str) -> list[dict]:
     """Mọi mốc của một partition, gom sẵn theo product rồi theo ngày."""
     with db.connect() as c:
         rows = c.execute(
-            "SELECT product_id, day, sold_cumulative, sold_type, title, price, currency,"
+            "SELECT product_id, day, sold_cumulative, sold_type, sold_monthly, title, price, currency,"
             "       url, image_url, shop_id, keyword, rating, reviews"
             " FROM listings_snapshot WHERE platform=? AND market=?"
             " ORDER BY product_id ASC, day ASC", (platform, market)).fetchall()

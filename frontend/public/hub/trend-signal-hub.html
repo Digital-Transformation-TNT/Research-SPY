@@ -575,10 +575,22 @@ function tkRender(d){
   const rd = d.readiness || {}, notes=[];
   const ready = TAB==='main' ? rd.main_ready : rd.hot_ready;
   const miss  = TAB==='main' ? rd.main_missing : rd.hot_missing;
+  const est   = (d.estimated||{})[TAB];
   if(!rd.n_days){
     notes.push('<div class="note w"><b>Chưa có snapshot nào cho '+esc(PF)+'·'+esc(MK.toUpperCase())+'.</b> '
       +'Cả hai bảng là <b>hiệu</b> giữa hai lần chụp, nên cần ít nhất hai ngày. '
       +'Mở <b>Danh sách theo dõi</b> ở mục ① rồi bấm <b>Chụp sàn ngay</b>.</div>');
+  }else if(est){
+    // Chưa đủ lịch sử nhưng vẫn có bảng: nói rõ số ở đâu ra, và nó khác cách đo thật thế nào.
+    notes.push('<div class="note i"><b>Bảng ước lượng từ một lần chụp.</b> '
+      +(TAB==='main'
+        ? 'Shopee hiển thị sẵn cả tổng đã bán lẫn <b>đã bán 30 ngày</b>, nên mốc gốc của cửa sổ '
+          +'30 ngày suy ra được ngay: <code>% tăng = bán 30 ngày ÷ (tổng − bán 30 ngày)</code>. '
+          +'Cùng công thức với cách đo thật, chỉ khác chỗ mốc gốc là suy ra.'
+        : '<b>Không phải % đột biến.</b> Một lần chụp không có độ phân giải ngày để so 2 ngày cuối '
+          +'với nền tuần trước. Cột dưới là <b>tỉ trọng 30 ngày trên tổng đời sản phẩm</b> — bán 80% '
+          +'cả đời trong 30 ngày qua là dấu hiệu bùng nổ thật, nhưng là một thước đo khác.')
+      +' Còn '+miss+' ngày nữa là chuyển sang số đo thật.</div>');
   }else if(!ready){
     notes.push('<div class="note w"><b>Còn thiếu '+miss+' ngày</b> để đủ '
       +(TAB==='main'
@@ -591,7 +603,7 @@ function tkRender(d){
     notes.push('<div class="note e"><b>'+g['bán không lũy kế']+' sản phẩm bị bỏ: bộ đếm bán không phải lũy kế.</b> '
       +'Taobao chỉ cho doanh số ~30 ngày. Lấy hiệu của hai con số 30-ngày rồi gọi là tăng trưởng thì ra một số '
       +'trông hợp lý nhưng sai.</div>');
-  if(TAB==='hot' && rd.n_days>1)
+  if(TAB==='hot' && rd.n_days>1 && !est)
     notes.push('<div class="note i"><b>Cổng đã chặn:</b> dưới bán tối thiểu '+num(g['dưới M_breakout']||0)
       +' · nền quá mỏng '+num(g['nền dưới floor']||0)+' · chưa tới ngưỡng đột biến '+num(g['dưới X%']||0)
       +' · thiếu mốc '+num(g['thiếu mốc']||0)+'.</div>');
@@ -608,11 +620,16 @@ function tkRender(d){
     return;
   }
   const metric = TAB==='main'
-    ? {th:'% tăng lũy kế<br>('+d.config.W_main+' ngày)', get:function(r){return pctRaw(r.growth_long_pct)}}
-    : {th:'% đột biến', get:function(r){return pctRaw(r.spike_pct)}};
+    ? {th:'% tăng lũy kế<br>('+d.config.W_main+' ngày)'+(est?' · ước lượng':''),
+       get:function(r){return pctRaw(r.growth_long_pct)}}
+    : (est
+       ? {th:'Tỉ trọng 30 ngày<br>trên tổng đời',
+          // Tỉ lệ chứ không phải mức thay đổi — dấu "+" ở đây đọc thành "tăng 100%".
+          get:function(r){return '<b>'+r.recent_share_pct.toFixed(1)+'%</b>'}}
+       : {th:'% đột biến', get:function(r){return pctRaw(r.spike_pct)}});
   const head = '<tr><th class="num">#</th><th>Sản phẩm</th><th class="num">Đã bán<br>lũy kế</th>'
     +'<th class="num">'+metric.th+'</th>'
-    +(TAB==='hot' ? '<th class="num">Nền<br>bán/ngày</th>' : '')
+    +(TAB==='hot' ? (est ? '<th class="num">Đã bán<br>30 ngày</th>' : '<th class="num">Nền<br>bán/ngày</th>') : '')
     +'<th class="num">Giá</th><th>Từ khoá</th></tr>';
   const body = rows.map(function(r,i){
     const title = esc(r.title || r.product_id);
@@ -621,7 +638,8 @@ function tkRender(d){
       +'<td><span class="tt">'+link+'</span></td>'
       +'<td class="num">'+num(r.sold_cumulative)+'</td>'
       +'<td class="num">'+metric.get(r)+'</td>'
-      +(TAB==='hot' ? '<td class="num">'+(r.baseline_per_day==null?'—':r.baseline_per_day)+'</td>' : '')
+      +(TAB==='hot' ? '<td class="num">'+(est ? num(r.sold_monthly)
+                        : (r.baseline_per_day==null?'—':r.baseline_per_day))+'</td>' : '')
       +'<td class="num">'+(r.price==null?'—':num(Math.round(r.price))+' '+esc(r.currency||''))+'</td>'
       +'<td>'+esc(r.keyword||'')+'</td></tr>';
   }).join('');
@@ -630,9 +648,11 @@ function tkRender(d){
     +'<button class="btn ghost sm" id="tkCsv">Tải CSV</button>'
     +'<span style="font-size:12.5px;color:var(--ink3)">Giá để nguyên tiền tệ gốc của thị trường — hệ này không quy đổi tiền.</span></div>';
   $('tkCsv').onclick = function(){
-    csv([['hang','san pham','da ban luy ke','chi so %','gia','tien te','tu khoa','link']].concat(
-      rows.map(function(r,i){return [i+1, r.title, r.sold_cumulative,
-        (TAB==='main'?r.growth_long_pct:r.spike_pct), r.price, r.currency, r.keyword, r.url]})),
+    const col = TAB==='main' ? 'tang luy ke %' : (est ? 'ti trong 30 ngay %' : 'dot bien %');
+    csv([['hang','san pham','da ban luy ke','da ban 30 ngay',col,'gia','tien te','tu khoa','link']].concat(
+      rows.map(function(r,i){return [i+1, r.title, r.sold_cumulative, r.sold_monthly,
+        (TAB==='main'?r.growth_long_pct:(est?r.recent_share_pct:r.spike_pct)),
+        r.price, r.currency, r.keyword, r.url]})),
       'top10-'+PF+'-'+MK+'-'+TAB+'.csv');
   };
 }
