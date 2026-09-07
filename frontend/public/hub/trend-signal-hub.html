@@ -526,6 +526,9 @@ const W_CHOICES = [7, 14, 30, 60];
 //: lại của sản phẩm), còn đo thật trên cửa sổ 30 ngày cho vài chục phần trăm — một thang
 //: 50–500 vô dụng ở chế độ này thì cắt sạch ở chế độ kia.
 const G_CHOICES = [0, 25, 100, 500, 1000];
+//: Nhánh 1 chấm bằng ĐIỂM HẠNG 0–100, không phải %. Dùng chung thang với nhánh 2 thì mọi
+//: mức ≥ 100 cắt sạch bảng, vì điểm không bao giờ vượt 100.
+const S_CHOICES = [0, 50, 80, 90, 95];
 let GMIN = Number(localStorage.getItem('tsh_gmin') || 0);
 const TK_KNOBS = {
   main: [],
@@ -537,18 +540,20 @@ const TK_KNOBS = {
   ]
 };
 let TK = null, TAB = localStorage.getItem('tsh_tab') || 'main';
-let PF = localStorage.getItem('tsh_pf') || 'shopee', MK = localStorage.getItem('tsh_mk') || 'vn';
+// Mặc định Shopee · Philippines theo chốt của spec (mục G).
+let PF = localStorage.getItem('tsh_pf') || 'shopee', MK = localStorage.getItem('tsh_mk') || 'ph';
 /* Mảng chứ không phải Object.keys: JavaScript xếp khoá trông-như-số lên đầu, nên
    `{shopee, taobao, '1688'}` liệt kê ra thành 1688 trước — sai thứ tự mà không báo gì. */
 const PLATFORMS = ['shopee','taobao','1688'];
-const MARKETS = {shopee:['vn','ph','th','id','my','sg','tw','br','mx'], taobao:['cn'], '1688':['cn']};
+const MARKETS = {shopee:['ph','vn','th','id','my','sg','tw','br','mx'], taobao:['cn'], '1688':['cn']};
 
 function tkKnobsHtml(cfg, est){
+  const scale = TAB==='main' ? S_CHOICES : G_CHOICES;
   const gpick = '<div class="knob" style="flex:1 1 100%"><label>'
-    + (TAB==='main' ? 'Lọc theo % tăng trưởng' : (est ? 'Lọc theo tỉ trọng 30 ngày' : 'Lọc theo % đột biến'))
-    + '</label><div class="wpick">' + G_CHOICES.map(function(g){
+    + (TAB==='main' ? 'Lọc theo điểm hạng' : (est ? 'Lọc theo tỉ trọng 30 ngày' : 'Lọc theo % đột biến'))
+    + '</label><div class="wpick">' + scale.map(function(g){
         return '<button class="wbtn" data-g="'+g+'"'+(GMIN===g?' aria-pressed="true"':'')+'>'
-          + (g ? '≥ '+g+'%' : 'Tất cả') + '</button>';
+          + (g ? '≥ '+g+(TAB==='main'?'':'%') : 'Tất cả') + '</button>';
       }).join('') + '</div></div>';
   if(TAB==='main'){
     // Ở chế độ ước lượng, con số đến từ bộ đếm 30 ngày của Shopee nên cửa sổ khác 30 là vô
@@ -625,6 +630,14 @@ function tkRender(d){
         : 'cửa sổ nhanh cộng nền ('+d.config.T_fast+' + '+d.config.base_win+' ngày).')
       +'</div>');
   }
+  // Dữ liệu chụp TRƯỚC khi có cột `rank` không mang hạng nào, nên nhánh 1 loại sạch — và
+  // "chưa đủ ngày có mặt" đọc thành lỗi cấu hình chứ không thành "cần chụp lại".
+  if(TAB==='main' && !d.main.length && rd.n_products
+     && (d.gates||{})['chưa đủ ngày có mặt'] === rd.n_products)
+    notes.push('<div class="note w"><b>Chưa có thứ hạng trong dữ liệu.</b> '
+      +num(rd.n_products)+' sản phẩm đã chụp nhưng từ trước khi hệ ghi hạng. '
+      +'Bấm <b>Chụp sàn ngay</b> một lượt là bảng chạy.</div>');
+
   const g = d.gates||{};
   if(g['bán không lũy kế'])
     notes.push('<div class="note e"><b>'+g['bán không lũy kế']+' sản phẩm bị bỏ: bộ đếm bán không phải lũy kế.</b> '
@@ -637,13 +650,14 @@ function tkRender(d){
   $('tkNotes').innerHTML = notes.join('');
 
   const val = function(r){
-    return TAB==='main' ? r.growth_long_pct : (est ? r.recent_share_pct : r.spike_pct);
+    return TAB==='main' ? r.rank_score : (est ? r.recent_share_pct : r.spike_pct);
   };
   const all = TAB==='main' ? d.main : d.hot;
   const rows = GMIN ? all.filter(function(r){ return (val(r)||0) >= GMIN }) : all;
   if(!rows.length && all.length){
-    $('tkBody').innerHTML = '<div class="card"><div class="empty"><b>Không dòng nào đạt ≥ '+GMIN+'%</b>'
-      + all.length+' dòng có sẵn, cao nhất '+(val(all[0])||0).toFixed(1)+'%. Chọn mức thấp hơn.</div></div>';
+    const u = TAB==='main' ? ' điểm' : '%';
+    $('tkBody').innerHTML = '<div class="card"><div class="empty"><b>Không dòng nào đạt ≥ '+GMIN+u+'</b>'
+      + all.length+' dòng có sẵn, cao nhất '+(val(all[0])||0).toFixed(1)+u+'. Chọn mức thấp hơn.</div></div>';
     return;
   }
   if(!rows.length){
@@ -656,8 +670,8 @@ function tkRender(d){
     return;
   }
   const metric = TAB==='main'
-    ? {th:'% tăng lũy kế<br>('+d.config.W_main+' ngày)'+(est?' · ước lượng':''),
-       get:function(r){return pctRaw(r.growth_long_pct)}}
+    ? {th:'Điểm hạng<br>('+d.config.W_main+' ngày)',
+       get:function(r){return '<b>'+r.rank_score.toFixed(1)+'</b>'}}
     : (est
        ? {th:'Tỉ trọng 30 ngày<br>trên tổng đời',
           // Tỉ lệ chứ không phải mức thay đổi — dấu "+" ở đây đọc thành "tăng 100%".
@@ -665,6 +679,7 @@ function tkRender(d){
        : {th:'% đột biến', get:function(r){return pctRaw(r.spike_pct)}});
   const head = '<tr><th class="num">#</th><th>Sản phẩm</th><th class="num">Đã bán<br>lũy kế</th>'
     +'<th class="num">'+metric.th+'</th>'
+    +(TAB==='main' ? '<th class="num">Hạng<br>hôm nay</th><th class="num">Ngày<br>có mặt</th>' : '')
     +(TAB==='hot' ? (est ? '<th class="num">Đã bán<br>30 ngày</th>' : '<th class="num">Nền<br>bán/ngày</th>') : '')
     +'<th class="num">Giá</th><th>Từ khoá</th></tr>';
   const body = rows.map(function(r,i){
@@ -674,6 +689,8 @@ function tkRender(d){
       +'<td><span class="tt">'+link+'</span></td>'
       +'<td class="num">'+num(r.sold_cumulative)+'</td>'
       +'<td class="num">'+metric.get(r)+'</td>'
+      +(TAB==='main' ? '<td class="num">'+(r.last_rank ? '#'+r.last_rank : '<span class="nil">ngoài top</span>')+'</td>'
+                       +'<td class="num">'+r.present_days+'/'+r.window_days+'</td>' : '')
       +(TAB==='hot' ? '<td class="num">'+(est ? num(r.sold_monthly)
                         : (r.baseline_per_day==null?'—':r.baseline_per_day))+'</td>' : '')
       +'<td class="num">'+(r.price==null?'—':num(Math.round(r.price))+' '+esc(r.currency||''))+'</td>'
@@ -684,10 +701,11 @@ function tkRender(d){
     +'<button class="btn ghost sm" id="tkCsv">Tải CSV</button>'
     +'<span style="font-size:12.5px;color:var(--ink3)">Giá để nguyên tiền tệ gốc của thị trường — hệ này không quy đổi tiền.</span></div>';
   $('tkCsv').onclick = function(){
-    const col = TAB==='main' ? 'tang luy ke %' : (est ? 'ti trong 30 ngay %' : 'dot bien %');
-    csv([['hang','san pham','da ban luy ke','da ban 30 ngay',col,'gia','tien te','tu khoa','link']].concat(
+    const col = TAB==='main' ? 'diem hang' : (est ? 'ti trong 30 ngay %' : 'dot bien %');
+    csv([['#','san pham','da ban luy ke','da ban 30 ngay',col,'hang hom nay','ngay co mat','gia','tien te','tu khoa','link']].concat(
       rows.map(function(r,i){return [i+1, r.title, r.sold_cumulative, r.sold_monthly,
-        (TAB==='main'?r.growth_long_pct:(est?r.recent_share_pct:r.spike_pct)),
+        (TAB==='main'?r.rank_score:(est?r.recent_share_pct:r.spike_pct)),
+        r.last_rank, (r.present_days!=null?r.present_days+'/'+r.window_days:''),
         r.price, r.currency, r.keyword, r.url]})),
       'top10-'+PF+'-'+MK+'-'+TAB+'.csv');
   };

@@ -917,7 +917,7 @@ def signal_partitions():
 
 
 @router.get("/signal/top10")
-def signal_top10(platform: str = "shopee", market: str = "vn"):
+def signal_top10(platform: str = "shopee", market: str = "ph"):
     """② Hai bảng Top 10 của MỘT partition. Không gộp sàn, không quy đổi tiền."""
     from .signal import store as sig_store, top10
     return top10.build(platform, market, sig_store.get_config(f"{platform}:{market}"))
@@ -928,7 +928,7 @@ def signal_top10_config(payload: dict):
     """Lưu tham số cho MỘT partition — mỗi thị trường một bộ, đúng spec mục D."""
     from .signal import store as sig_store, top10
     p = payload or {}
-    platform, market = p.get("platform") or "shopee", p.get("market") or "vn"
+    platform, market = p.get("platform") or "shopee", p.get("market") or "ph"
     cfg = top10.merged_config(p)
     sig_store.set_config(f"{platform}:{market}", cfg)
     return {"saved": True, "platform": platform, "market": market, "config": cfg}
@@ -941,7 +941,7 @@ async def signal_snapshot(payload: dict):
     p = payload or {}
     kws = [k for k in (p.get("keywords") or []) if isinstance(k, str)]
     return await market_snapshot.snapshot(p.get("platform") or "shopee",
-                                          p.get("market") or "vn", kws)
+                                          p.get("market") or "ph", kws)
 
 
 @router.post("/signal/ask")
@@ -962,7 +962,7 @@ async def signal_ask(payload: dict):
 #: xem `scheduler.job_sigtrends` / `job_sigsnap`.
 _WATCHLIST_DEFAULT = {
     "keywords": [], "geo": "VN", "region": "ALL", "anchor": "",
-    "partitions": [{"platform": "shopee", "market": "vn", "keywords": []}],
+    "partitions": [{"platform": "shopee", "market": "ph", "keywords": []}],
 }
 
 
@@ -983,7 +983,7 @@ def signal_watchlist_save(payload: dict):
         "anchor": (p.get("anchor") or "").strip(),
         "partitions": [
             {"platform": q.get("platform") or "shopee",
-             "market": (q.get("market") or "vn").lower(),
+             "market": (q.get("market") or "ph").lower(),
              "keywords": [k.strip() for k in (q.get("keywords") or [])
                           if isinstance(k, str) and k.strip()]}
             for q in (p.get("partitions") or []) if isinstance(q, dict)

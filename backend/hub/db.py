@@ -117,6 +117,11 @@ CREATE TABLE IF NOT EXISTS listings_snapshot (
     -- chạy đã dựng được cửa sổ 30 ngày: bán lũy kế 30 ngày trước = tổng − 30-ngày-gần-nhất.
     -- Xem `signal/top10.py`, chế độ ước lượng.
     sold_monthly    INTEGER,
+    -- Thứ hạng trong danh sách bán chạy của NGÀY ĐÓ (1 = cao nhất). Nhánh 1 xếp bằng hạng
+    -- chứ không bằng %-tăng: sản phẩm giữ hạng cao ổn định có mức tăng ~0 nhưng lại là sản
+    -- phẩm mạnh nhất. Ngày không có mặt trong bảng = không có dòng, và lớp tính đọc đó
+    -- thành 0 điểm. Xem `signal/top10.py`.
+    rank            INTEGER,
     keyword         TEXT,
     title           TEXT,
     price           REAL,                      -- TIỀN GỐC của thị trường, không quy đổi
@@ -177,7 +182,8 @@ def init_db() -> None:
         # migration: mốc thời gian của chuỗi Trends (labels + timeframe), và bộ đếm 30 ngày
         for _sql in ("ALTER TABLE trends_cache ADD COLUMN labels_json TEXT",
                      "ALTER TABLE trends_cache ADD COLUMN timeframe TEXT",
-                     "ALTER TABLE listings_snapshot ADD COLUMN sold_monthly INTEGER"):
+                     "ALTER TABLE listings_snapshot ADD COLUMN sold_monthly INTEGER",
+                     "ALTER TABLE listings_snapshot ADD COLUMN rank INTEGER"):
             try:
                 c.execute(_sql)
             except Exception:

@@ -3,7 +3,7 @@
 
     partition = (platform, market)      shopee·vn · shopee·ph · taobao·cn · 1688·cn
 
-    Nhánh 1 — TOP 10 CHÍNH    growth_long% = % tăng của BÁN LŨY KẾ trên cửa sổ W_main
+    Nhánh 1 — TOP 10 CHÍNH    rank_score  = điểm hạng bình quân (nghiêng về ngày gần)
     Nhánh 2 — TOP 10 NỔI BẬT  spike%       = % vọt của BÁN/NGÀY (T_fast so nền liền trước)
 
 Mọi phép tính chạy trong nội bộ MỘT partition, và đó là điều kiện để các con số có nghĩa:
@@ -29,8 +29,9 @@ from . import store
 #: Tham số của một partition. Mỗi partition giữ được một bộ riêng vì quy mô mỗi thị
 #: trường một khác — spec mục D. Hai cái có nhãn NGƯỜI DÙNG nằm ngay trên bảng nổi bật.
 DEFAULTS: dict[str, float] = {
-    "W_main": 30,          # Nhánh 1: cửa sổ đo % tăng lũy kế (ngày)
+    "W_main": 30,          # Nhánh 1: cửa sổ tính điểm hạng (ngày)
     "min_base_main": 0,    # Nhánh 1: guard tuỳ chọn, 0 = tắt
+    "presence": 60,        # Nhánh 1: phải có mặt ≥ ngần này % số ngày đã chụp trong cửa sổ
     "M_breakout": 1000,    # Nhánh 2: bán lũy kế tối thiểu   ← NGƯỜI DÙNG
     "X_spike": 500,        # Nhánh 2: ngưỡng đột biến (%)    ← NGƯỜI DÙNG
     "T_fast": 2,           # Nhánh 2: cửa sổ bắt đột biến (ngày)
@@ -40,16 +41,13 @@ DEFAULTS: dict[str, float] = {
 
 TOP_N = 10
 
-#: Mốc gốc tối thiểu cho nhánh 1 Ở CHẾ ĐỘ ƯỚC LƯỢNG. Xem lý do trong `_estimate`.
-EST_MIN_BASE = 100
-
-
 #: Khoảng hợp lệ của từng tham số. Không có bảng này thì một lần gõ nhầm sẽ được lưu im
 #: lặng và bảng vẫn hiện ra — `W_main = 1` biến "tăng trưởng 30 ngày" thành "chênh lệch một
 #: ngày" mà không dòng nào trên màn hình nói khác đi. Đã xảy ra thật một lần.
 BOUNDS: dict[str, tuple[float, float]] = {
     "W_main": (7, 365),
     "min_base_main": (0, 10_000_000),
+    "presence": (0, 100),
     "M_breakout": (0, 10_000_000),
     "X_spike": (10, 100_000),
     "T_fast": (1, 30),
@@ -153,6 +151,56 @@ def _card(points: list[dict]) -> dict:
     }
 
 
+#: Bao nhiêu sản phẩm được theo dõi mỗi ngày. Hạng 1 ăn trọn điểm, hạng cuối gần 0.
+RANK_POOL = 100
+
+
+def _rank_points(rank: int | None) -> float:
+    """Hạng → điểm của MỘT ngày. Không có mặt trong bảng ngày đó = 0 điểm."""
+    if not rank or rank < 1:
+        return 0.0
+    if rank > RANK_POOL:
+        return 0.0
+    return (RANK_POOL - rank + 1) / RANK_POOL * 100.0
+
+
+def _rank_score(points: list[dict], days: list[str], cfg: dict) -> tuple[float | None, dict]:
+    """
+    Điểm hạng trung bình có TRỌNG SỐ NGHIÊNG VỀ NGÀY GẦN, trên cửa sổ W_main.
+
+    VÌ SAO KHÔNG DÙNG %-TĂNG Ở NHÁNH NÀY. Sản phẩm giữ hạng 3 suốt ba mươi ngày có mức tăng
+    xấp xỉ 0 — theo cách cũ nó rơi khỏi bảng, trong khi nó đúng là sản phẩm mạnh nhất của
+    partition. Hạng đo trực tiếp cái ta muốn (đang bán khoẻ tới mức nào), còn %-tăng chỉ đo
+    sự thay đổi, và ở nhánh "bền" thì thay đổi không phải điều đang hỏi.
+
+    `days` là những ngày ĐÃ CHỤP THẬT trong cửa sổ, không phải mọi ngày lịch. Đêm nào lịch
+    không chạy thì không sản phẩm nào có dòng, và tính ngày đó thành "out" cho tất cả là
+    phạt oan cả bảng vì một sự cố hạ tầng.
+
+    Trọng số tăng tuyến tính theo thứ tự ngày: ngày cũ nhất hệ số 1, ngày mới nhất hệ số N.
+    """
+    if not days:
+        return None, {}
+    by_day = {p["day"]: p.get("rank") for p in points}
+    total_w = 0.0
+    total = 0.0
+    present = 0
+    for i, day in enumerate(days):
+        w = i + 1
+        rank = by_day.get(day)
+        if rank:
+            present += 1
+        total += _rank_points(rank) * w
+        total_w += w
+    need = len(days) * float(cfg["presence"]) / 100.0
+    meta = {"present_days": present, "window_days": len(days),
+            "best_rank": min([r for r in by_day.values() if r] or [0]) or None,
+            "last_rank": by_day.get(days[-1])}
+    if present < need:
+        return None, meta
+    return (total / total_w if total_w else None), meta
+
+
 def _growth_long(points: list[dict], w_main: int) -> tuple[float | None, int | None, str | None]:
     """
     % tăng lũy kế trên cửa sổ W_main. Trả (giá trị, lũy kế tại MỐC GỐC, lý do bỏ qua).
@@ -215,9 +263,11 @@ def readiness(rows: list[dict], cfg: dict) -> dict:
         "span": span,
         "first_day": days[0],
         "last_day": days[-1],
-        "main_ready": span >= int(cfg["W_main"]),
+        # Nhánh 1 chạy được ngay từ ngày đầu: một ngày cũng đã có hạng để chấm. Cửa sổ
+        # dài chỉ làm điểm bền hơn, không phải điều kiện để có bảng.
+        "main_ready": len(days) >= 1,
         "hot_ready": span >= hot_need,
-        "main_missing": max(0, int(cfg["W_main"]) - span),
+        "main_missing": 0,
         "hot_missing": max(0, hot_need - span),
     }
 
@@ -226,25 +276,15 @@ def _estimate(rows: list[dict], cfg: dict) -> dict:
     """
     Hai bảng dựng từ MỘT lần chụp, dùng bộ đếm "đã bán 30 ngày" mà sàn hiển thị sẵn.
 
-    VÌ SAO CÓ CHẾ ĐỘ NÀY. Cách đo thật cần ≥ 30 ngày lịch sử, và trong lúc chờ thì hai bảng
-    trống trơn — không dùng được để xem công cụ chạy ra cái gì. Nhưng Shopee trả CẢ HAI con
-    số cạnh nhau: tổng đã bán và đã bán 30 ngày. Từ đó suy ra chính xác mốc gốc của cửa sổ
-    30 ngày mà không cần chụp lần nào:
+    CHỈ CÒN PHỤC VỤ NHÁNH 2. Nhánh 1 nay chấm bằng hạng nên chạy được ngay từ ngày chụp đầu
+    tiên — không cần ước lượng gì.
 
-        lũy kế 30 ngày trước = tổng − (đã bán 30 ngày)
-        growth_30d%          = (đã bán 30 ngày) / (lũy kế 30 ngày trước) × 100
-
-    Đây là ĐÚNG công thức của nhánh 1, chỉ khác chỗ lấy mốc gốc — suy ra thay vì đo được.
-
-    NHÁNH 2 THÌ KHÔNG DỰNG LẠI ĐƯỢC, và đây là chỗ phải nói thẳng. `spike%` so bán/ngày của
-    2 ngày cuối với nền tuần trước; một lần chụp không có độ phân giải ngày nào cả. Thay vào
-    đó là một đại lượng KHÁC hẳn: tỉ trọng 30 ngày gần nhất trên tổng đời sản phẩm. Bán 80%
-    cả đời trong 30 ngày qua là dấu hiệu bùng nổ thật, nhưng nó không phải `spike%` và không
-    so được với `spike%` — nên cột mang tên khác và kết quả gắn cờ `estimated`.
-
-    Cả hai bảng chỉ sống tới khi có đủ lịch sử thật; lúc đó `build` tự chuyển sang cách đo.
+    `spike%` thì không dựng lại được từ một lần chụp: nó so bán/ngày của 2 ngày cuối với nền
+    tuần trước, mà một lần chụp không có độ phân giải ngày nào. Thay vào đó là một đại lượng
+    KHÁC hẳn — tỉ trọng 30 ngày gần nhất trên tổng đời sản phẩm. Bán 80% cả đời trong 30 ngày
+    qua là dấu hiệu bùng nổ thật, nhưng nó không phải `spike%`, nên cột mang tên khác và kết
+    quả gắn cờ `estimated`. Tự tắt khi có đủ lịch sử thật.
     """
-    main: list[dict] = []
     hot: list[dict] = []
     for _pid, raw in _group(rows).items():
         points = _clean(raw)
@@ -258,25 +298,12 @@ def _estimate(rows: list[dict], cfg: dict) -> dict:
             continue
         monthly = min(int(monthly), int(total))          # sàn làm tròn, tháng > tổng là được
         card = _card(points)
-        base = total - monthly
-        # SÀN MỐC GỐC, và ở chế độ ước lượng nó bắt buộc chứ không tuỳ chọn như `min_base_main`
-        # của cách đo thật. Mốc gốc ở đây là hiệu của hai con số sàn tự làm tròn, nên với hàng
-        # mới ra nó thường rơi về 1–10 và %-tăng phóng lên hàng trăm nghìn phần trăm: đo thật
-        # trên dữ liệu ngày 07/09 cho +1.003.600% từ mốc gốc bằng 1.
-        #
-        # Loại chúng khỏi nhánh 1 KHÔNG phải để bảng đẹp — nhánh 1 trả lời "bán đều, ổn định
-        # lâu ngày", mà một listing có toàn bộ lịch sử nằm trong 30 ngày thì đúng nghĩa là
-        # chưa có "lâu ngày" nào cả. Chỗ của nó là nhánh 2, và nhánh 2 vẫn giữ nó.
-        if base >= max(int(cfg["min_base_main"]), EST_MIN_BASE):
-            main.append({**card, "growth_long_pct": round(monthly / base * 100.0, 1),
-                         "base_sold": base, "sold_monthly": monthly})
         if total >= int(cfg["M_breakout"]):
             hot.append({**card, "recent_share_pct": round(monthly / total * 100.0, 1),
                         "sold_monthly": monthly})
 
-    main.sort(key=lambda r: -r["growth_long_pct"])
     hot.sort(key=lambda r: -r["recent_share_pct"])
-    return {"main": main[:TOP_N], "hot": hot[:TOP_N]}
+    return {"main": [], "hot": hot[:TOP_N]}
 
 
 def build(platform: str, market: str, saved_cfg: dict | None = None) -> dict:
@@ -284,14 +311,21 @@ def build(platform: str, market: str, saved_cfg: dict | None = None) -> dict:
     cfg = merged_config(saved_cfg)
     rows = store.snapshot_rows(platform, market)
     ready = readiness(rows, cfg)
+    # Ngày ĐÃ CHỤP THẬT trong cửa sổ — mẫu số của điều kiện có-mặt ở nhánh 1.
+    win_days = sorted({r["day"] for r in rows})[-int(cfg["W_main"]):]
 
     main: list[dict] = []
     hot: list[dict] = []
     #: Đếm lý do loại ở nhánh 2 — để giao diện nói được "vì sao bảng chỉ có 3 dòng".
     gates = {"dưới M_breakout": 0, "nền dưới floor": 0, "dưới X%": 0, "thiếu mốc": 0,
-             "bán không lũy kế": 0}
+             "bán không lũy kế": 0, "chưa đủ ngày có mặt": 0}
 
     for _pid, raw in _group(rows).items():
+        # `_clean` lọc theo tính ĐƠN ĐIỆU CỦA SỐ BÁN — đúng cho nhánh 2, sai cho nhánh 1.
+        # Nhánh 1 chấm HẠNG, và một ngày sàn báo tụt số bán (làm tròn lại, reset bộ đếm)
+        # không có nghĩa là ngày đó sản phẩm không có hạng. Dùng bản đã lọc để chấm hạng là
+        # âm thầm xoá những ngày sản phẩm CÓ mặt, rồi loại nó vì "chưa đủ ngày có mặt".
+        raw_days = raw
         points = _clean(raw)
         # Cờ `sold_type` là cửa đầu tiên, trước cả kiểm số mốc: cả hai chỉ số đều là hiệu
         # của bộ đếm bán, nên một bộ đếm khác loại là vô nghĩa ở đây. Vì sao Taobao rơi vào
@@ -304,14 +338,12 @@ def build(platform: str, market: str, saved_cfg: dict | None = None) -> dict:
             continue
         card = _card(points)
 
-        # Guard `min_base_main` áp lên LŨY KẾ TẠI ĐẦU CỬA SỔ, không phải lũy kế hôm nay —
-        # đúng như spec mục D. Nó tồn tại để chặn listing quá non bị đội hạng vì mẫu số bé
-        # (2 → 6 lượt là +200%); đo bằng con số hôm nay thì đúng cái listing ấy lại lọt,
-        # vì nó đã kịp lớn trong chính cửa sổ đang xét.
-        growth, base_sold, _skip = _growth_long(points, int(cfg["W_main"]))
-        if growth is not None and (base_sold or 0) >= int(cfg["min_base_main"]):
-            main.append({**card, "growth_long_pct": round(growth, 1),
-                         "base_sold": base_sold})
+        # NHÁNH 1 XẾP BẰNG ĐIỂM HẠNG, không bằng %-tăng. Xem `_rank_score`.
+        score, meta = _rank_score(raw_days, win_days, cfg)
+        if score is not None and card["sold_cumulative"] >= int(cfg["min_base_main"]):
+            main.append({**card, "rank_score": round(score, 1), **meta})
+        elif meta:
+            gates["chưa đủ ngày có mặt"] += 1
 
         if card["sold_cumulative"] < int(cfg["M_breakout"]):
             gates["dưới M_breakout"] += 1
@@ -327,7 +359,7 @@ def build(platform: str, market: str, saved_cfg: dict | None = None) -> dict:
                     "baseline_per_day": round(base, 2) if base is not None else None,
                     "note": why})
 
-    main.sort(key=lambda r: -r["growth_long_pct"])
+    main.sort(key=lambda r: -r["rank_score"])
     hot.sort(key=lambda r: -r["spike_pct"])
     out = {
         "platform": platform,

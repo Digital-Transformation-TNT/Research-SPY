@@ -78,8 +78,11 @@ async def _shopee(keyword: str, market: str, trace: dict) -> list[dict]:
     if outcome.notice:
         trace["notice"] = outcome.notice
 
-    rows, no_sold = [], 0
+    # Hạng = VỊ TRÍ trong danh sách. `ShopeeOptions` mặc định `sort='sales'` nên thứ tự trả
+    # về chính là thứ tự bán chạy — vị trí thứ n là hạng n, không phải suy đoán gì thêm.
+    rows, no_sold, position = [], 0, 0
     for ad in outcome.ads:
+        position += 1
         if ad.sold_count is None:
             no_sold += 1                  # không có bộ đếm bán thì dòng này vô dụng với ②
             continue
@@ -91,6 +94,7 @@ async def _shopee(keyword: str, market: str, trace: dict) -> list[dict]:
             "product_id": f"{shop_id}_{ad.id}" if shop_id else ad.id,
             "sold_cumulative": ad.sold_count,
             "sold_monthly": ad.monthly_sold,
+            "rank": position,
             "title": ad.title or ad.body, "price": ad.price, "currency": ad.currency,
             "rating": ad.rating, "reviews": ad.rating_count, "shop_id": shop_id,
             "url": ad.permalink,
