@@ -261,6 +261,8 @@ def _with_debug(result: dict) -> str:
         bits.append("endpoint trang đã gọi: " + ", ".join(str(u) for u in urls[:4]))
     # MẨU PAYLOAD THẬT. Khi endpoint có trả lời mà ta bóc ra toàn chữ giao diện, câu hỏi còn
     # lại là "gợi ý thật nằm ở khoá nào" — và chỉ nhìn vào payload mới trả lời được.
+    if debug.get("domScope"):
+        bits.append(f"đọc trong khối: {debug['domScope']}")
     if debug.get("sample"):
         bits.append("mẩu payload: " + str(debug["sample"])[:1200])
     return message + (" | " + " | ".join(bits) if bits else "")

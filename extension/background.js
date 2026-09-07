@@ -1631,8 +1631,20 @@ async function temuSuggestBatch(terms, region) {
           const want = norm(kw);
           const dom = [];
           const seen = {};
-          if (want) {
-            const all = document.querySelectorAll('li, [role="option"], a, span, div');
+          // KHOANH VÙNG QUANH Ô TÌM KIẾM. Quét cả trang thì mọi chữ chứa cụm vừa gõ đều lọt,
+          // kể cả nhãn trên thẻ sản phẩm — đo được "#2 best-selling item in men s t-shirts"
+          // và "top rated in men s t-shirts" chui vào như thể chúng là gợi ý.
+          //
+          // Lớp gợi ý luôn nằm trong cùng một khối với ô nhập (nó là một component). Leo lên
+          // vài tầng từ ô nhập rồi chỉ đọc trong khối đó là tách được nó khỏi phần còn lại
+          // của trang, mà không phải biết Temu đặt tên lớp CSS là gì.
+          const inp = document.querySelector('input[type="search"]')
+            || document.querySelector('input[role="searchbox"]')
+            || document.querySelector('input');
+          let scope = inp;
+          for (let up = 0; up < 5 && scope && scope.parentElement; up++) scope = scope.parentElement;
+          if (want && scope) {
+            const all = scope.querySelectorAll('li, [role="option"], a, span, div');
             for (let i = 0; i < all.length && dom.length < 40; i++) {
               const el = all[i];
               if (el.children && el.children.length) continue;      // chỉ lấy nút lá
@@ -1647,6 +1659,7 @@ async function temuSuggestBatch(terms, region) {
           }
           return {
             dom,
+            domScope: scope ? (scope.tagName + '.' + String(scope.className || '').slice(0, 40)) : 'khong thay o nhap',
             // TẤT CẢ url đã chộp, không chỉ search_suggest: khi không ra gợi ý, câu hỏi đầu
             // tiên là "trang có gọi suggest không, hay ta chộp nhầm endpoint".
             all: (window.__rsCap || []).map((c) => c.url),
@@ -1655,6 +1668,7 @@ async function temuSuggestBatch(terms, region) {
           };
         }, [term], 3000);
         if (!r) continue;
+        if (r.domScope && !debug.domScope) debug.domScope = r.domScope;
         for (const u of r.all || []) if (!debug.capUrls.includes(u)) debug.capUrls.push(u);
         if (/login\.html/.test(r.href)) { sawLogin = true; break; }
         // DOM trước, JSON sau: DOM là thứ người dùng thật sự nhìn thấy.
