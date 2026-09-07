@@ -2269,16 +2269,36 @@ function tbReadCapture() {
   let ret = '';
   // Lượt gọi ĐẦU của chính trang thường dính `RGV587_ERROR` rồi trang tự thử lại, nên phải
   // duyệt NGƯỢC tìm phản hồi CÓ `itemsArray` — lấy phản hồi đầu tiên khớp tên API là lấy nhầm.
+  let dataKeys = [];
   for (let i = caps.length - 1; i >= 0; i--) {
     let j = null;
     try { j = JSON.parse(caps[i].text); } catch (e) { continue; }
     if (!ret) ret = (j && j.ret && j.ret[0]) || '';
-    const arr = j && j.data && j.data.itemsArray;
+    let arr = j && j.data && j.data.itemsArray;
+    // ĐƯỜNG DỰ PHÒNG khi Taobao đổi chỗ để hàng. Đo 07/09/2026: mtop trả đúng
+    // `SUCCESS::调用成功` mà `data.itemsArray` không còn — nguồn chết câm, triệu chứng y hệt
+    // "Taobao không trả kết quả". Bám vào một đường dẫn cứng là đánh cược cả nguồn vào việc
+    // sàn không bao giờ đổi tên khoá. Nên: không thấy thì lùng bất kỳ mảng nào chứa object
+    // CÓ ĐỦ `item_id` và `title` — đó đúng là hai trường `_row` bên backend bắt buộc, nên
+    // mảng nào qua được phép thử này là mảng dùng được.
+    if (!Array.isArray(arr) || !arr.length) {
+      arr = rsDeepFindArray(j, (x) => x && typeof x === 'object' && x.item_id && x.title);
+    }
     if (Array.isArray(arr) && arr.length) { items = arr.slice(0, 40); break; }
+    if (!dataKeys.length && j && j.data) dataKeys = Object.keys(j.data).slice(0, 12);
   }
+  // Không có `items` thì kèm SỔ TÊN các API trang vừa gọi. Đó là thứ duy nhất phân biệt
+  // "Taobao chưa trả kịp" với "Taobao đổi tên API nên `NEEDLES` hết khớp" — hai nguyên nhân
+  // cho cùng một triệu chứng, và cách sửa khác hẳn nhau.
+  const seen = items ? [] : (window.__rsSeen || [])
+    .filter((u) => /mtop|\/api\/|search|recommend/i.test(u))
+    .slice(-12);
   return {
     items,
     ret,
+    seen,
+    dataKeys,
+    nCap: (window.__rsCap || []).length,
     href: location.href,
     body: document.body ? (document.body.innerText || '').slice(0, 400) : '',
   };
@@ -2337,6 +2357,9 @@ async function taobaoImageSearch(dataUrl) {
 
   const spawned = new Set();
   let lastRet = '';
+  const seen = new Set();
+  let keys = [];
+  let nCap = 0;
   while (Date.now() < deadline) {
     await sleep(900);
     let tabs = [];
@@ -2351,6 +2374,9 @@ async function taobaoImageSearch(dataUrl) {
         return { items: r.items, blocked: false };
       }
       if (r.ret) lastRet = r.ret;
+      for (const u of (r.seen || [])) seen.add(u);
+      if (r.dataKeys && r.dataKeys.length) keys = r.dataKeys;
+      if (r.nCap) nCap = Math.max(nCap, r.nCap);
       if (/login\.taobao/i.test(r.href || '') || /SESSION_EXPIRED|NOT_LOGIN/i.test(r.ret || '')) {
         await focusTab(t.id);
         return { items: [], blocked: true, reason: 'login' };
@@ -2362,7 +2388,14 @@ async function taobaoImageSearch(dataUrl) {
     }
   }
   await closeExtraTabs(spawned);
-  return { items: [], blocked: true, reason: 'timeout', error: lastRet || 'Taobao không trả kết quả kịp' };
+  let why = 'Taobao không trả kết quả trong ' + Math.round(IMAGE_JOB_BUDGET_MS / 1000) + 's';
+  if (lastRet) why += ' · mtop trả: ' + lastRet
+    + (keys.length ? ' · nhưng data chỉ có: ' + keys.join(', ') : '');
+  else if (nCap) why += ' · chộp được ' + nCap + ' response nhưng không cái nào chứa mục có item_id+title'
+    + (keys.length ? ' · data có các khoá: ' + keys.join(', ') : '');
+  else if (seen.size) why += ' · KHÔNG response nào khớp NEEDLES; trang vừa gọi: ' + [...seen].slice(-6).join(' ');
+  else why += ' · trang chưa gọi API nào — nhiều khả năng chưa bấm được nút tìm';
+  return { items: [], blocked: true, reason: 'timeout', error: why };
 }
 
 /** Đóng những tab mà chính lượt tìm này làm Taobao mở thêm. Xem `before` ở trên. */

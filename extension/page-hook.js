@@ -11,6 +11,11 @@
   if (window.__rsCapHooked) return;
   window.__rsCapHooked = true;
   window.__rsCap = []; // [{ url, text, ts }] — các response search đã chộp (mới nhất ở cuối)
+  // SỔ TÊN: mọi URL đi qua, KHÔNG kèm body. Khi một nguồn hết giờ tay không, `__rsCap` rỗng
+  // nên không ai biết trang đã gọi những gì — mà đó chính là lúc cần biết nhất: sàn đổi tên
+  // API thì `NEEDLES` hết khớp, và triệu chứng y hệt "sàn không trả kết quả".
+  // Chỉ giữ chuỗi URL, cắt còn 160 ký tự, tối đa 60 mục — rẻ tới mức bật thường trực được.
+  window.__rsSeen = [];
 
   var NEEDLES = [
     'mtop.taobao.wsearch.h5search', // Taobao search (mtop)
@@ -30,6 +35,16 @@
     for (var i = 0; i < NEEDLES.length; i++) if (u.indexOf(NEEDLES[i]) !== -1) return true;
     return false;
   }
+  function note(url) {
+    try {
+      if (typeof url !== 'string' || !url) return;
+      var u = url.split('?')[0].slice(0, 160);
+      if (window.__rsSeen[window.__rsSeen.length - 1] === u) return;   // gọi lặp thì ghi một lần
+      window.__rsSeen.push(u);
+      if (window.__rsSeen.length > 60) window.__rsSeen.shift();
+    } catch (e) {}
+  }
+
   function push(url, text) {
     try {
       if (!text) return;
@@ -54,6 +69,7 @@
     window.fetch = function () {
       var url = typeof arguments[0] === 'string' ? arguments[0] : (arguments[0] && arguments[0].url) || '';
       var p = origFetch.apply(this, arguments);
+      note(url);
       if (match(url)) {
         p.then(function (r) { try { r.clone().text().then(function (t) { push(url, t); }); } catch (e) {} }).catch(function () {});
       }
@@ -67,7 +83,9 @@
     OrigXHR.prototype.open = function (method, url) { this.__rsU = url; return origOpen.apply(this, arguments); };
     OrigXHR.prototype.send = function () {
       var self = this;
-      this.addEventListener('load', function () { try { if (match(self.__rsU)) push(self.__rsU, self.responseText); } catch (e) {} });
+      this.addEventListener('load', function () {
+        try { note(self.__rsU); if (match(self.__rsU)) push(self.__rsU, self.responseText); } catch (e) {}
+      });
       return origSend.apply(this, arguments);
     };
   }
