@@ -246,7 +246,7 @@ function Rows({ items, vnPrices }: { items: ImageMatch[]; vnPrices?: VnPriceMap 
           >
             {item.thumbnail ? (
               /* eslint-disable-next-line @next/next/no-img-element */
-              <img className="img-thumb" src={item.thumbnail} alt="" loading="lazy" />
+              <img className="img-thumb" src={mediaSrc(item.thumbnail)} alt="" loading="lazy" />
             ) : (
               <span className="img-thumb" />
             )}
@@ -520,6 +520,22 @@ function MarketSection({
       )}
     </div>
   )
+}
+
+/**
+ * Đưa ảnh CDN qua `/api/media` thay vì để `<img>` gọi thẳng.
+ *
+ * `cbu01.alicdn.com` — CDN ảnh chào hàng của 1688, tức phần lớn kết quả nguồn hàng — TỪ CHỐI
+ * khi Referer không phải 1688. Curl không gửi Referer nên tải được, còn trình duyệt luôn gửi
+ * origin của trang nên hỏng: đo 07/09/2026, cùng một URL cho `onerror` khi `<img>` gọi thẳng
+ * và ra ảnh 800×800 khi đi qua proxy. Đó là lý do proxy tồn tại — nó gắn đúng Referer cho
+ * từng sàn (xem `backend/app/api/media.py`).
+ *
+ * `data:` URI đi thẳng: chúng đã là bytes, đẩy qua proxy chỉ tổ hỏng.
+ */
+function mediaSrc(url: string): string {
+  if (!url || url.startsWith('data:')) return url
+  return `/api/media?url=${encodeURIComponent(url)}`
 }
 
 export default function ImageSearchWorkspace() {
