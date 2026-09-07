@@ -174,6 +174,14 @@ td.num,th.num{text-align:right;font-family:"JetBrains Mono",monospace;font-varia
 .parts select{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:7px 11px;font-weight:600}
 .parts .lb{font-size:12px;color:var(--ink3);font-weight:600}
 
+/* ── dãy nút chọn cửa sổ ── */
+.wpick{display:flex;gap:6px;flex-wrap:wrap}
+.wbtn{border:1px solid var(--line);background:var(--card);border-radius:9px;padding:7px 15px;
+  font-size:13px;font-weight:600;color:var(--ink2)}
+.wbtn:hover:not(:disabled){border-color:var(--pri);color:var(--pri)}
+.wbtn[aria-pressed="true"]{background:var(--priBg);border-color:var(--priLn);color:var(--pri)}
+.wbtn:disabled{opacity:.4;cursor:default}
+
 /* ── sparkline ── */
 .spark{display:block;width:78px;height:22px}
 .spark path{fill:none;stroke:var(--pri);stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round}
@@ -385,16 +393,14 @@ async function ping(){
 
 /* Tooltip lấy nguyên ý từ spec — người dùng là dân bán hàng, không phải dev, nên phần
    giải thích phải nói bằng nghĩa kinh doanh trước rồi mới tới tên chỉ số. */
+/* Chỉ còn hai ngưỡng quyết định "có đang lên hay không". `MIN_INDEX` (sàn quy mô) và
+   `NGUONG_HUONG` (mốc đi ngang) vẫn CHẠY ở backend theo giá trị mặc định — bỏ chúng khỏi
+   màn hình là bớt nút phải chỉnh, không phải tắt luật chống tín hiệu giả. */
 const TR_KNOBS = [
   {k:'NGUONG_HOT', label:'Gọi là HOT khi tăng đều từ', unit:'%', scale:100,
    tip:'Trung bình 4 tuần gần nhất so với 4 tuần liền trước. Cao hơn = ít tín hiệu nhưng chắc hơn.'},
   {k:'NGUONG_SPIKE', label:'Gọi là MỚI NỔI khi bỗng vọt từ', unit:'%', scale:100,
-   tip:'Hôm nay so với trung bình tuần trước. 100% = gấp đôi. Cú vọt phải <b>giữ sang ngày thứ hai</b> mới được gắn nhãn.'},
-  {k:'MIN_INDEX', label:'Bỏ qua từ khoá có chỉ số 7 ngày dưới', unit:'/100', scale:1,
-   tip:'Trung bình chỉ số 7 ngày. <b>Thang 0–100 của Google, không phải lượt tìm/ngày.</b> '
-     +'Chưa khai từ khoá neo thì mỗi từ một thang riêng, ngưỡng chỉ đúng tương đối.'},
-  {k:'NGUONG_HUONG', label:'Coi là LÊN / XUỐNG khi đổi quá ±', unit:'%', scale:100,
-   tip:'Trong khoảng ±mức này coi là đi ngang, và đi ngang thì bị loại. Ít khi cần chỉnh.'}
+   tip:'Hôm nay so với trung bình tuần trước. 100% = gấp đôi. Cú vọt phải <b>giữ sang ngày thứ hai</b> mới được gắn nhãn.'}
 ];
 const ANCHORED = (k)=>/^anchored:/.test(k||'');
 let TR = null, SHOW_ALL = false;
@@ -432,15 +438,17 @@ function trRender(d){
     notes.push('<div class="note w"><b>Thang đo chưa neo.</b> Mỗi từ khoá đang được Google chấm theo đỉnh '
       +'của chính nó, nên cột <b>Chỉ số</b> chưa so được giữa các dòng. Khai <b>từ khoá neo</b> rồi cào lại.</div>');
 
-  // Ngưỡng cắt sạch bảng thì phải nói ra kèm dải thật — neo vào một từ khoá quá lớn là mọi
-  // ngách rơi xuống dưới 5, và mặc định 15 giấu hết, trông y hệt "không có tín hiệu nào".
+  // Ngưỡng quy mô nay cố định ở mặc định (ô nhập đã gỡ), nên việc-cần-làm không còn là "hạ
+  // ngưỡng" mà là đổi từ khoá neo: neo vào một từ khoá quá lớn thì mọi ngách rơi xuống dưới
+  // ngưỡng cùng lúc, trông y hệt "không có tín hiệu nào".
   const tooSmall = (d.dropped||{})['quá nhỏ']||0;
   if(tooSmall && !d.rows.length && rg)
-    notes.push('<div class="note w"><b>Ngưỡng quy mô đang cắt sạch bảng.</b> '
-      +tooSmall+' từ khoá bị loại vì chỉ số dưới '+d.config.MIN_INDEX+', trong khi cả danh sách chỉ nằm trong '
-      +'khoảng <b>'+rg[0]+'–'+rg[1]+'</b>. '
-      +'Hạ ngưỡng xuống quanh <b>'+Math.max(1,Math.floor(rg[0]))+'</b>'
-      +(ANCHORED(d.value_kind) ? ', hoặc chọn từ khoá neo vừa tầm hơn.' : ' rồi áp dụng lại.')
+    notes.push('<div class="note w"><b>Cả bảng đang dưới ngưỡng quy mô.</b> '
+      +tooSmall+' từ khoá bị loại vì chỉ số dưới '+d.config.MIN_INDEX+', trong khi cả danh sách '
+      +'chỉ nằm trong khoảng <b>'+rg[0]+'–'+rg[1]+'</b>. '
+      +(ANCHORED(d.value_kind)
+        ? 'Từ khoá neo đang quá lớn so với ngành hàng — chọn một từ vừa tầm hơn rồi cào lại.'
+        : 'Khai <b>từ khoá neo</b> trong Danh sách theo dõi rồi cào lại.')
       +'</div>');
 
   /* "Chưa cào bao giờ" khác hẳn "đã cào nhưng bị loại" — gộp hai thứ là người dùng đi
@@ -510,24 +518,16 @@ async function loadTrends(){
 /* ══════════════════════════════════════════════════════════════════════════
    ② TOP 10
    ══════════════════════════════════════════════════════════════════════════ */
+//: Cửa sổ đo tăng trưởng — chọn bằng nút, không gõ số. Chỉ hai ô của nhánh nổi bật còn là
+//: ô nhập, và đó đúng là hai cái spec đánh dấu "NGƯỜI DÙNG".
+const W_CHOICES = [7, 14, 30, 60];
 const TK_KNOBS = {
-  main: [
-    {k:'W_main', label:'Cửa sổ đo tăng trưởng', unit:'ngày',
-     tip:'% tăng của <b>số đã bán lũy kế</b> trên cửa sổ này. Dài hơn = ổn định hơn nhưng phản ứng chậm.'},
-    {k:'min_base_main', label:'Bỏ listing có lũy kế dưới', unit:'lượt',
-     tip:'0 = tắt. Chặn listing quá non bị đội hạng vì mốc gốc nhỏ: từ 2 lên 6 lượt là +200%.'}
-  ],
+  main: [],
   hot: [
     {k:'X_spike', label:'Ngưỡng đột biến', unit:'%',
      tip:'Bán/ngày mấy ngày cuối phải vượt nền liền trước ngần này. Đặt cao để ít dòng lọt.'},
     {k:'M_breakout', label:'Bán lũy kế tối thiểu', unit:'lượt',
-     tip:'<b>Thứ loại tăng ảo.</b> Từ 1 lên 5 lượt là +400% — chưa bán đủ ngần này thì %-tăng bao nhiêu cũng không xét.'},
-    {k:'T_fast', label:'Cửa sổ bắt đột biến', unit:'ngày',
-     tip:'Ngắn = bắt sóng sớm hơn nhưng nhiễu hơn.'},
-    {k:'base_win', label:'Độ dài cửa sổ nền', unit:'ngày',
-     tip:'Quãng ngay trước cửa sổ đột biến, dùng làm mẫu số. Dài hơn = nền ổn định hơn.'},
-    {k:'floor', label:'Nền tối thiểu', unit:'/ngày',
-     tip:'Nền dưới mức này thì không tính %-vọt — mẫu số bé làm con số phóng lên vô hạn.'}
+     tip:'<b>Thứ loại tăng ảo.</b> Từ 1 lên 5 lượt là +400% — chưa bán đủ ngần này thì %-tăng bao nhiêu cũng không xét.'}
   ]
 };
 let TK = null, TAB = localStorage.getItem('tsh_tab') || 'main';
@@ -537,7 +537,17 @@ let PF = localStorage.getItem('tsh_pf') || 'shopee', MK = localStorage.getItem('
 const PLATFORMS = ['shopee','taobao','1688'];
 const MARKETS = {shopee:['vn','ph','th','id','my','sg','tw','br','mx'], taobao:['cn'], '1688':['cn']};
 
-function tkKnobsHtml(cfg){
+function tkKnobsHtml(cfg, est){
+  if(TAB==='main'){
+    // Ở chế độ ước lượng, con số đến từ bộ đếm 30 ngày của Shopee nên cửa sổ khác 30 là vô
+    // nghĩa — khoá lại thay vì để bấm rồi hiện một số trả lời câu hỏi khác.
+    return '<div class="knob" style="flex:1 1 100%"><label>Cửa sổ đo tăng trưởng</label>'
+      + '<div class="wpick">' + W_CHOICES.map(function(w){
+          const on = Number(cfg.W_main)===w, off = est && w!==30;
+          return '<button class="wbtn" data-w="'+w+'"'+(on?' aria-pressed="true"':'')
+            + (off?' disabled title="Chế độ ước lượng chỉ có cửa sổ 30 ngày"':'')+'>'+w+' ngày</button>';
+        }).join('') + '</div></div>';
+  }
   return TK_KNOBS[TAB].map(function(k){
     return '<div class="knob"><label>'+esc(k.label)
       +' <span class="tipwrap" tabindex="0"><span class="tip">i</span><span class="bub">'+k.tip+'</span></span></label>'
@@ -568,29 +578,29 @@ function partSelects(parts){
 }
 
 function tkRender(d){
-  $('tkKnobs').innerHTML = tkKnobsHtml(d.config);
+  const est = (d.estimated||{})[TAB];
+  $('tkKnobs').innerHTML = tkKnobsHtml(d.config, est);
+  // Bấm nút là áp dụng luôn — thêm một nút "Áp dụng" nữa chỉ là một cú bấm thừa.
+  $('tkKnobs').querySelectorAll('.wbtn').forEach(function(b){
+    b.onclick = async function(){
+      const r = await call('/signal/top10/config', {body:{platform:PF, market:MK, W_main:Number(b.dataset.w)}});
+      if(r.ok) loadTop10();
+    };
+  });
+  // Hai nút kia chỉ phục vụ ô nhập của nhánh nổi bật.
+  $('tkKnobBox').querySelector('div[style*="margin-top"]').style.display = TAB==='main' ? 'none' : '';
   $('tkHint').textContent = TAB==='main'
     ? 'Bán khoẻ, tăng đều lâu ngày.' : 'Đang phát nổ ngay lúc này.';
 
   const rd = d.readiness || {}, notes=[];
   const ready = TAB==='main' ? rd.main_ready : rd.hot_ready;
   const miss  = TAB==='main' ? rd.main_missing : rd.hot_missing;
-  const est   = (d.estimated||{})[TAB];
   if(!rd.n_days){
     notes.push('<div class="note w"><b>Chưa có snapshot nào cho '+esc(PF)+'·'+esc(MK.toUpperCase())+'.</b> '
       +'Cả hai bảng là <b>hiệu</b> giữa hai lần chụp, nên cần ít nhất hai ngày. '
       +'Mở <b>Danh sách theo dõi</b> ở mục ① rồi bấm <b>Chụp sàn ngay</b>.</div>');
   }else if(est){
-    // Chưa đủ lịch sử nhưng vẫn có bảng: nói rõ số ở đâu ra, và nó khác cách đo thật thế nào.
-    notes.push('<div class="note i"><b>Bảng ước lượng từ một lần chụp.</b> '
-      +(TAB==='main'
-        ? 'Shopee hiển thị sẵn cả tổng đã bán lẫn <b>đã bán 30 ngày</b>, nên mốc gốc của cửa sổ '
-          +'30 ngày suy ra được ngay: <code>% tăng = bán 30 ngày ÷ (tổng − bán 30 ngày)</code>. '
-          +'Cùng công thức với cách đo thật, chỉ khác chỗ mốc gốc là suy ra.'
-        : '<b>Không phải % đột biến.</b> Một lần chụp không có độ phân giải ngày để so 2 ngày cuối '
-          +'với nền tuần trước. Cột dưới là <b>tỉ trọng 30 ngày trên tổng đời sản phẩm</b> — bán 80% '
-          +'cả đời trong 30 ngày qua là dấu hiệu bùng nổ thật, nhưng là một thước đo khác.')
-      +' Còn '+miss+' ngày nữa là chuyển sang số đo thật.</div>');
+    // Cột chỉ số đã mang nhãn "ước lượng", không cần một đoạn giải thích nữa.
   }else if(!ready){
     notes.push('<div class="note w"><b>Còn thiếu '+miss+' ngày</b> để đủ '
       +(TAB==='main'
@@ -815,7 +825,7 @@ function sayRejected(sent, applied, box){
   const bad = Object.keys(sent).filter(function(k){ return Number(sent[k]) !== Number(applied[k]) });
   if(!bad.length) return;
   // Hiện NHÃN người dùng đang nhìn, không phải tên biến: "W_main" không có ở đâu trên màn hình.
-  const label = {};
+  const label = {W_main:'Cửa sổ đo tăng trưởng'};
   TR_KNOBS.concat(TK_KNOBS.main, TK_KNOBS.hot).forEach(function(k){ label[k.k] = k.label; });
   const el = document.createElement('div');
   el.className = 'note w';
