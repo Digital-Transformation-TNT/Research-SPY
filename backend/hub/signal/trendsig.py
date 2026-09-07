@@ -24,14 +24,23 @@ BA CHỖ LỆCH KHỎI SPEC GỐC, đều vì dữ liệu thật không như spe
 
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from . import store
 
 #: Bốn ngưỡng người dùng chỉnh. Ba cái đầu lưu dạng phân số, hiển thị ra % ở giao diện.
+#: Mặc định đặt THẤP để bảng có nhiều dòng — người dùng muốn thấy nhiều ứng viên rồi tự
+#: sàng, hơn là một bảng hai dòng. Con số của spec (25/100/15) cho đúng 2 tín hiệu trên 10
+#: từ khoá thật; bộ dưới cho 6 và vẫn giữ được cả ba nhãn phân biệt nhau.
+#:
+#: RÀNG BUỘC BẮT BUỘC: NGUONG_HUONG < NGUONG_HOT. `classify` xét "Hot" TRƯỚC "Đang lên",
+#: nên nếu mốc đi ngang cao hơn mốc Hot thì nhánh "Đang lên" không bao giờ với tới được —
+#: nhãn đó biến mất khỏi hệ mà không có gì báo.
 DEFAULTS: dict[str, float] = {
-    "NGUONG_HOT": 0.25,     # M_bền ≥ 25%  → "Hot"
-    "NGUONG_SPIKE": 1.00,   # M_ngắn ≥ 100% (gấp đôi) → "Mới nổi"
-    "MIN_INDEX": 15.0,      # L dưới mức này → bỏ. Thang 0–100, KHÔNG phải lượt/ngày.
-    "NGUONG_HUONG": 0.15,   # ±15% quanh 0 coi là đi ngang
+    "NGUONG_HOT": 0.10,     # M_bền ≥ 10%  → "Hot"
+    "NGUONG_SPIKE": 0.50,   # M_ngắn ≥ 50% → "Mới nổi"
+    "MIN_INDEX": 5.0,       # L dưới mức này → bỏ. Thang 0–100, KHÔNG phải lượt/ngày.
+    "NGUONG_HUONG": 0.05,   # ±5% quanh 0 coi là đi ngang → "Đang lên" phủ 5–10%
 }
 
 #: Số điểm ngày tối thiểu để M_bền có nghĩa (cần cả cửa sổ d[-55..-28]).
@@ -67,6 +76,30 @@ def merged_config(saved: dict | None = None) -> dict:
         if lo <= num <= hi:
             cfg[k] = num
     return cfg
+
+
+def _drop_partial(rows: list[dict], today: str, span_days: int) -> list[dict]:
+    """
+    Bỏ điểm CUỐI khi quãng nó đại diện chưa khép lại.
+
+    Lịch cào chạy 05:00, nên điểm của "hôm nay" mới gom được năm tiếng — Google vẫn trả về
+    nó như một điểm bình thường. Đo thật ngày 07/09/2026: "giá đỡ điện thoại" 8,5 → 0,0 và
+    "nồi chiên không dầu" 157,6 → 67,5, thuần vì ngày chưa hết.
+
+    Hậu quả rơi thẳng vào M_ngắn, chỉ số duy nhất đọc `d[-0]` trần: hai từ khoá bị chấm
+    −100% trong khi nhu cầu không hề sụp. `_spike_held` cũng đọc d[-1] và d[-2] nên nhãn
+    "Mới nổi" hỏng theo.
+
+    `span_days` là độ dài quãng của một điểm — 1 cho chuỗi ngày, 7 cho chuỗi tuần (điểm tuần
+    dán nhãn ngày ĐẦU tuần, nên nó chỉ khép lại sau sáu ngày nữa).
+    """
+    if not rows:
+        return rows
+    try:
+        end = date.fromisoformat(rows[-1]["date"]) + timedelta(days=span_days - 1)
+    except (ValueError, KeyError, TypeError):
+        return rows
+    return rows[:-1] if end.isoformat() >= today else rows
 
 
 def _win(vals: list[float], a: int, b: int) -> list[float]:
@@ -230,9 +263,10 @@ def build(region: str = "ALL", saved_cfg: dict | None = None,
     else:
         keywords = stored
 
+    today = date.today().isoformat()
     for kw in keywords:
-        d_rows = store.series(kw, region, "day")
-        w_rows = store.series(kw, region, "week")
+        d_rows = _drop_partial(store.series(kw, region, "day"), today, 1)
+        w_rows = _drop_partial(store.series(kw, region, "week"), today, 7)
         daily = [r["value"] for r in d_rows]
         weekly = [r["value"] for r in w_rows]
         ind = indicators(daily, weekly)
