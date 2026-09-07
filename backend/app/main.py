@@ -80,6 +80,22 @@ async def lifespan(app: FastAPI):
     await close_client()
 
 
+# ROOT LOGGER PHẢI CÓ HANDLER, nếu không mọi chẩn đoán trong repo rơi vào hư không.
+#
+# Uvicorn chỉ cấu hình ba logger của chính nó (`uvicorn`, `uvicorn.error`, `uvicorn.access`);
+# root không được gắn handler nào. Nghĩa là mỗi `logging.getLogger("...")` rải khắp `lib/` và
+# `hub/` — scheduler, nguồn từ khoá, các lớp ingest — ghi ra rồi biến mất, kể cả `warning`.
+# Phát hiện khi đi tìm một dòng chẩn đoán Temu vừa cắm: nó chạy đúng, chỉ là không ai thấy.
+#
+# `force=True` vì uvicorn đã gọi `dictConfig` trước đó; không có nó thì `basicConfig` thấy
+# cấu hình sẵn rồi và lặng lẽ không làm gì.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s · %(message)s",
+    stream=sys.stderr,
+    force=True,
+)
+
 app = FastAPI(
     title="Research SPY API",
     description="Tầng dữ liệu cho công cụ research quảng cáo và từ khoá.",

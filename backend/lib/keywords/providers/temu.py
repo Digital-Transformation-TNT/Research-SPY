@@ -50,7 +50,11 @@ from ..types import SearchContext
 #: chốt ở cả hai đầu, để một payload méo không biến thành một lượt chiếm máy-thợ mười phút.
 _LOG = logging.getLogger("keywords.temu")
 
-MAX_TERMS = 12
+#: 4 chứ không phải 12. Mỗi cụm là một lượt gõ vào ô tìm kiếm thật trên máy-thợ — mười hai
+#: lượt tốn gần một phút và, đo được, gần như không thêm gợi ý nào so với bốn lượt đầu. Cụm
+#: nằm sau trong `build_terms` là những biến thể xa dần từ gốc; ai cần phủ rộng thì đổi mức
+#: sâu, còn mặc định nên trả về thứ SÁT nhất.
+MAX_TERMS = 4
 
 #: Temu bán xuyên biên giới bằng MỘT tên miền `temu.com`, khác Shopee (mỗi nước một tên miền).
 #:
@@ -155,8 +159,34 @@ class Temu(KeywordProvider):
         # im lặng — trong khi đó đúng là lúc cần đọc nó nhất. Ghi log thay vì ném: một gợi ý
         # thật vẫn là kết quả, không được vứt.
         total = sum(len(v) for v in by_term.values())
+        raw = sum(len(g.get("suggestions") or []) for g in groups if isinstance(g, dict))
+        # Ghi LUÔN, không chỉ khi thấp: biết "hàm có chạy không" là câu hỏi đầu tiên, và một
+        # dòng log mỗi lượt tìm rẻ hơn nhiều so với một vòng đoán.
+        # In cả KHOÁ NHÓM lẫn cụm đã gửi: `_expand_batched` tra `by_term.get(term)` theo đúng
+        # chuỗi đã gửi, nên chỉ cần extension trả về một biến thể (cắt khoảng trắng, đổi hoa
+        # thường) là mọi nhóm rơi hết mà không ai báo gì.
+        _LOG.info("Temu: %d cụm → %d gợi ý thô → %d sau lọc · blocked=%s | gửi=%r | nhận=%r | mẫu=%r",
+                  len(terms), raw, total, result.get("blocked"),
+                  terms[:3], list(by_term)[:3],
+                  [w.keyword for v in by_term.values() for w in v][:5])
         if total < len(terms):
-            _LOG.warning("Temu: %d cụm → %d gợi ý · %s", len(terms), total, _with_debug(result))
+            _LOG.warning("Temu chẩn đoán: %s", _with_debug(result))
+
+        # LOẠI CHỮ CỦA GIAO DIỆN. `parseTemuSuggest` bên extension cố ý duyệt cây tìm những
+        # khoá NGHE NHƯ từ khoá thay vì bám một đường dẫn cứng — bền trước việc Temu đổi cấu
+        # trúc, nhưng đổi lại nó nhặt luôn nhãn tĩnh của trang. Đo 07/09/2026, từ gốc
+        # "bluetooth headphones": cả 12 cụm trả về đúng một chuỗi "Explore your interests".
+        #
+        # Phép thử không cần biết Temu viết nhãn gì: MỘT CHUỖI XUẤT HIỆN Ở MỌI CỤM thì không
+        # thể là gợi ý cho cụm nào — mười hai truy vấn khác nhau không có chung một gợi ý duy
+        # nhất. Nó chỉ có thể là chữ có sẵn trên trang.
+        if len(by_term) > 2:
+            everywhere = set.intersection(*({_norm(w.keyword) for w in v} for v in by_term.values()))                 if all(by_term.values()) else set()
+            if everywhere:
+                _LOG.warning("Temu: bỏ %d chuỗi có mặt ở MỌI cụm (chữ của giao diện): %r",
+                             len(everywhere), sorted(everywhere)[:3])
+                by_term = {t: [w for w in v if _norm(w.keyword) not in everywhere]
+                           for t, v in by_term.items()}
 
         if not any(by_term.values()):
             # Kèm chẩn đoán của extension vào câu lỗi. Không kèm thì thứ duy nhất hiện lên là
@@ -199,6 +229,10 @@ def _with_debug(result: dict) -> str:
     urls = debug.get("capUrls") or []
     if urls:
         bits.append("endpoint trang đã gọi: " + ", ".join(str(u) for u in urls[:4]))
+    # MẨU PAYLOAD THẬT. Khi endpoint có trả lời mà ta bóc ra toàn chữ giao diện, câu hỏi còn
+    # lại là "gợi ý thật nằm ở khoá nào" — và chỉ nhìn vào payload mới trả lời được.
+    if debug.get("sample"):
+        bits.append("mẩu payload: " + str(debug["sample"])[:300])
     return message + (" | " + " | ".join(bits) if bits else "")
 
 

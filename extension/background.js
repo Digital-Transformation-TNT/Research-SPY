@@ -1428,7 +1428,7 @@ const temuSuggestTab = () => keptTab('temuSuggest');
 //: Số cụm tối đa nhận trong một job. Trùng với trần phía backend (`MAX_TERMS` ở
 //: `lib/keywords/providers/temu.py`); chốt ở cả hai đầu để một payload méo không biến thành
 //: một lượt chiếm máy-thợ mười phút.
-const TEMU_SUGGEST_MAX_TERMS = 12;
+const TEMU_SUGGEST_MAX_TERMS = 4;   // khớp `MAX_TERMS` ở lib/keywords/providers/temu.py
 
 // Đọc gợi ý ra khỏi JSON của Temu mà KHÔNG chốt cứng cấu trúc.
 //
@@ -1452,6 +1452,29 @@ function parseTemuSuggest(text, typed) {
   const out = [];
   const seen = new Set();
   const echo = String(typed || '').toLowerCase().split(/\s+/).filter(Boolean).join(' ');
+  const norm = (x) => String(x || '').toLowerCase().split(/\s+/).filter(Boolean).join(' ');
+  const take = (v) => {
+    const t = String(v || '').trim();
+    if (t.length < 2 || t.length > 60 || /[\n\r]/.test(t) || /^https?:/i.test(t)) return;
+    const k = t.toLowerCase();
+    if (echo && norm(t) === echo) return;
+    if (!seen.has(k)) { seen.add(k); out.push(t); }
+  };
+
+  // ĐƯỜNG DẪN THẬT TRƯỚC. Đo 07/09/2026, payload `search_suggest` có dạng
+  //   result.data.slice_words[] → { p_search: { query }, text | word }
+  // Bộ duyệt cây tổng quát bên dưới nhặt được cả nhãn tĩnh của trang ("Explore your
+  // interests") và trả nó ra như một từ khoá — đúng một chuỗi cho cả bốn cụm. Đọc thẳng chỗ
+  // gợi ý thật thì không dính; bộ duyệt vẫn giữ làm lưới hứng khi Temu đổi cấu trúc.
+  try {
+    const j = JSON.parse(text);
+    const words = ((j && j.result && j.result.data && j.result.data.slice_words) || []);
+    for (const w of words) {
+      if (!w || typeof w !== 'object') continue;
+      take(w.query || w.word || w.text || (w.p_search && w.p_search.query));
+    }
+  } catch (e) { /* rơi về bộ duyệt cây */ }
+  if (out.length) return out;
   const KEYS = /^(query|text|keyword|word|suggest_word|suggestWord|name|title|search_key|searchKey)$/i;
   let data;
   try { data = JSON.parse(text); } catch (e) { return out; }
@@ -1604,7 +1627,7 @@ async function temuSuggestBatch(terms, region) {
         for (const u of r.all || []) if (!debug.capUrls.includes(u)) debug.capUrls.push(u);
         if (/login\.html/.test(r.href)) { sawLogin = true; break; }
         for (const text of r.hit) {
-          if (!debug.sample) debug.sample = String(text).slice(0, 400);
+          if (!debug.sample) debug.sample = String(text).slice(0, 1200);
           for (const s of parseTemuSuggest(text, term)) {
             if (!suggestions.includes(s)) suggestions.push(s);
           }
