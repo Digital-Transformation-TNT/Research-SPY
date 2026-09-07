@@ -201,9 +201,19 @@ class Temu(KeywordProvider):
         # thể là gợi ý cho cụm nào — mười hai truy vấn khác nhau không có chung một gợi ý duy
         # nhất. Nó chỉ có thể là chữ có sẵn trên trang.
         if len(by_term) > 2:
-            everywhere = set.intersection(*({_norm(w.keyword) for w in v} for v in by_term.values()))                 if all(by_term.values()) else set()
+            # ĐẾM THEO SỐ NHÓM, không đòi có mặt ở TẤT CẢ. Bản trước lấy giao của mọi nhóm,
+            # nên chỉ cần một cụm không trả về nhãn đó là nhãn thoát lưới — và "Explore your
+            # interests" đã thoát đúng kiểu ấy, rồi đi tiếp thành một "từ khoá".
+            # Một chuỗi KHÔNG chứa cụm truy vấn mà xuất hiện ở từ hai cụm trở lên thì không
+            # thể là gợi ý cho cụm nào; nó là chữ có sẵn trên trang.
+            count: dict[str, int] = {}
+            for term, words in by_term.items():
+                for w in {_norm(x.keyword) for x in words}:
+                    if w not in _norm(term):
+                        count[w] = count.get(w, 0) + 1
+            everywhere = {w for w, n in count.items() if n >= 2}
             if everywhere:
-                _LOG.warning("Temu: bỏ %d chuỗi có mặt ở MỌI cụm (chữ của giao diện): %r",
+                _LOG.warning("Temu: bỏ %d chuỗi lặp ở nhiều cụm (chữ của giao diện): %r",
                              len(everywhere), sorted(everywhere)[:3])
                 by_term = {t: [w for w in v if _norm(w.keyword) not in everywhere]
                            for t, v in by_term.items()}
