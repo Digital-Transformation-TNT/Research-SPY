@@ -630,13 +630,12 @@ function tkRender(d){
         : 'cửa sổ nhanh cộng nền ('+d.config.T_fast+' + '+d.config.base_win+' ngày).')
       +'</div>');
   }
-  // Dữ liệu chụp TRƯỚC khi có cột `rank` không mang hạng nào, nên nhánh 1 loại sạch — và
-  // "chưa đủ ngày có mặt" đọc thành lỗi cấu hình chứ không thành "cần chụp lại".
-  if(TAB==='main' && !d.main.length && rd.n_products
-     && (d.gates||{})['chưa đủ ngày có mặt'] === rd.n_products)
-    notes.push('<div class="note w"><b>Chưa có thứ hạng trong dữ liệu.</b> '
-      +num(rd.n_products)+' sản phẩm đã chụp nhưng từ trước khi hệ ghi hạng. '
-      +'Bấm <b>Chụp sàn ngay</b> một lượt là bảng chạy.</div>');
+  // Dữ liệu chụp TRƯỚC khi hệ ghi hạng không mang hạng nào, nên nhánh 1 loại sạch. Không nói
+  // ra thì bảng trống đọc thành "sàn không có gì", và người dùng đi chỉnh ngưỡng vô ích.
+  if(TAB==='main' && !d.main.length && rd.n_products && !rd.n_ranked)
+    notes.push('<div class="note w"><b>Dữ liệu của '+esc(MK.toUpperCase())+' chưa có thứ hạng.</b> '
+      +num(rd.n_products)+' sản phẩm đã chụp, nhưng từ trước khi hệ ghi hạng — mà bảng chính '
+      +'xếp bằng hạng. Chạy một lượt <b>cào theo danh mục</b> cho thị trường này là có bảng.</div>');
 
   const g = d.gates||{};
   if(g['bán không lũy kế'])

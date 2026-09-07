@@ -2124,7 +2124,13 @@ async function searchShopee(msg) {
       const url = `https://${domain}/${slug}-cat.${catId}?sortBy=sales&page=${page}`;
       // Nhận diện response theo GIÁ TRỊ id, chấp nhận vài tên tham số: Shopee gọi nó là
       // `match_id` ở endpoint search, nhưng tên ấy không phải thứ ta kiểm soát được.
-      last = await shopeeCapture(domain, url, 'match_id|catid|category', catId);
+      //
+      // VÀ PHẢI KÈM ĐÚNG OFFSET. Hai trang của cùng một danh mục mang CÙNG `match_id`, nên
+      // riêng nó không phân biệt được trang 1 với trang 2: lượt chụp trang 2 nhận lại đúng
+      // response của trang 1 còn sót, và cả danh mục dừng ở 60 mục thay vì 100. Shopee đánh
+      // offset bằng `newest` (0, 60, 120…) — đó mới là thứ khác nhau giữa hai trang.
+      last = await shopeeCapture(domain, url, 'match_id|catid|category', catId,
+                                 `newest=${page * 60}`);
       if (last.blocked && last.reason) return last;      // login / xác minh: dừng hẳn
       for (const t of (last.texts || [])) texts.push(t);
       if (!last.texts || !last.texts.length) break;      // trang rỗng thì trang sau cũng rỗng
@@ -2135,7 +2141,7 @@ async function searchShopee(msg) {
   return shopeeCapture(domain, url, 'keyword', msg.keyword || '');
 }
 
-async function shopeeCapture(domain, pageUrl, param, want) {
+async function shopeeCapture(domain, pageUrl, param, want, mustHave) {
   try {
     // Dùng lại tab shopee CÓ SẴN (không đẻ tab thừa), navigate ngầm (active:false → không cướp focus).
     // search_items bắn NGAY khi load → thoát ngay khi chộp được (nhanh ~2-3s), không chờ/không cuộn.
@@ -2153,8 +2159,8 @@ async function shopeeCapture(domain, pageUrl, param, want) {
       let r = null;
       try {
         const out = await chrome.scripting.executeScript({
-          target: { tabId: tab.id }, world: 'MAIN', args: [param, String(want)],
-          func: (pname, pwant) => {
+          target: { tabId: tab.id }, world: 'MAIN', args: [param, String(want), mustHave || ''],
+          func: (pname, pwant, must) => {
             // CHỈ NHẬN JSON CỦA ĐÚNG TỪ KHOÁ ĐANG HỎI. `executeScript` có thể chạy trúng tài
             // liệu CŨ khi `tabs.update` chưa commit xong; lúc đó `__rsCap` còn nguyên
             // `search_items` của lần trước, vòng lặp thấy có `texts` nên thoát ngay và trả
@@ -2178,7 +2184,9 @@ async function shopeeCapture(domain, pageUrl, param, want) {
             // Lọc theo `keyword=` trong chính URL của JSON — bằng chứng cứng, và tự nó đủ.
             // KHÔNG chặn thêm bằng `onRightPage`: Shopee đá một số truy vấn sang trang danh
             // mục (URL không còn `keyword=`), chặn hai lớp làm hụt 6/10 từ khoá.
-            const cap = all.filter((c) => sameKw(c.url)).map((c) => c.text);
+            const cap = all
+              .filter((c) => sameKw(c.url) && (!must || String(c.url).indexOf(must) !== -1))
+              .map((c) => c.text);
             // Có JSON của từ khoá KHÁC mà không có của mình = đúng tình huống nhiễm chéo,
             // báo ra để lần sau khỏi phải đoán.
             const nOther = all.length - cap.length;

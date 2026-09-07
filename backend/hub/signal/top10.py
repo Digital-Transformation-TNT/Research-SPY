@@ -252,7 +252,7 @@ def readiness(rows: list[dict], cfg: dict) -> dict:
     """Còn thiếu bao nhiêu ngày nữa thì mỗi nhánh chạy được."""
     days = sorted({r["day"] for r in rows})
     if not days:
-        return {"n_days": 0, "n_products": 0, "span": 0,
+        return {"n_days": 0, "n_products": 0, "n_ranked": 0, "span": 0,
                 "main_ready": False, "hot_ready": False,
                 "main_missing": int(cfg["W_main"]), "hot_missing": int(cfg["T_fast"]) + 1}
     span = (_d(days[-1]) - _d(days[0])).days
@@ -260,6 +260,9 @@ def readiness(rows: list[dict], cfg: dict) -> dict:
     return {
         "n_days": len(days),
         "n_products": len({r["product_id"] for r in rows}),
+        # Bao nhiêu sản phẩm CÓ hạng. Dữ liệu chụp trước khi hệ ghi hạng thì cột này bằng 0,
+        # và giao diện cần phân biệt "chưa cào" với "cào rồi nhưng bản cũ không mang hạng".
+        "n_ranked": len({r["product_id"] for r in rows if r.get("rank")}),
         "span": span,
         "first_day": days[0],
         "last_day": days[-1],
@@ -333,17 +336,24 @@ def build(platform: str, market: str, saved_cfg: dict | None = None) -> dict:
         if points and (points[-1].get("sold_type") or "cumulative") != "cumulative":
             gates["bán không lũy kế"] += 1
             continue
-        if len(points) < 2:
-            gates["thiếu mốc"] += 1
+        if not points:
             continue
         card = _card(points)
 
-        # NHÁNH 1 XẾP BẰNG ĐIỂM HẠNG, không bằng %-tăng. Xem `_rank_score`.
+        # NHÁNH 1 CHẤM TRƯỚC, và KHÔNG chịu cổng "≥ 2 mốc" của nhánh 2. Điểm hạng đọc được
+        # từ MỘT ngày chụp; bắt nó chờ hai mốc là bảng chính trống trơn suốt ngày đầu trong
+        # khi dữ liệu đã đủ. Đo thật 07/09/2026: 632 sản phẩm shopee·PH có hạng đầy đủ mà
+        # bảng vẫn rỗng, toàn bộ rơi vào cổng "thiếu mốc" của nhánh kia.
         score, meta = _rank_score(raw_days, win_days, cfg)
         if score is not None and card["sold_cumulative"] >= int(cfg["min_base_main"]):
             main.append({**card, "rank_score": round(score, 1), **meta})
         elif meta:
             gates["chưa đủ ngày có mặt"] += 1
+
+        # Từ đây trở xuống là nhánh 2, và nó thật sự cần hai mốc để có một hiệu.
+        if len(points) < 2:
+            gates["thiếu mốc"] += 1
+            continue
 
         if card["sold_cumulative"] < int(cfg["M_breakout"]):
             gates["dưới M_breakout"] += 1
@@ -359,7 +369,12 @@ def build(platform: str, market: str, saved_cfg: dict | None = None) -> dict:
                     "baseline_per_day": round(base, 2) if base is not None else None,
                     "note": why})
 
-    main.sort(key=lambda r: -r["rank_score"])
+    # PHÁ HOÀ BẰNG LŨY KẾ. Ngày đầu chạy, hạng 1 của cả 25 danh mục đều được 100 điểm chẵn —
+    # bảng thành ra mười dòng bằng điểm và thứ tự do từ điển quyết định. Trong hai sản phẩm
+    # cùng đứng đầu ngành của mình, cái đã bán nhiều hơn là cái mạnh hơn; đó là một sự thật
+    # sẵn có trong dữ liệu, không phải một trọng số nghĩ ra. Sau vài chục ngày điểm tự tách
+    # nhau và cột này gần như không còn tác dụng.
+    main.sort(key=lambda r: (-r["rank_score"], -(r.get("sold_cumulative") or 0)))
     hot.sort(key=lambda r: -r["spike_pct"])
     out = {
         "platform": platform,
