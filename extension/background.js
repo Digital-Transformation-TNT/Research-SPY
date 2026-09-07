@@ -1559,7 +1559,7 @@ async function temuSuggestBatch(terms, region) {
 
   // `stage` là thứ trả lời được câu "nó kẹt ở đâu" — cập nhật trước MỖI bước có thể treo.
   // Không có nó thì một lần quá hạn chỉ nói được "quá hạn", và đó là chỗ đã tốn hai vòng đoán.
-  const debug = { stage: 'bắt đầu', inputFound: null, capUrls: [], sample: '', terms: list.length, ranTerms: 0 };
+  const debug = { stage: 'bắt đầu', inputFound: null, pickedInput: '', listbox: null, capUrls: [], sample: '', terms: list.length, ranTerms: 0 };
   const groups = [];
 
   try {
@@ -1587,10 +1587,17 @@ async function temuSuggestBatch(terms, region) {
 
       // Gõ bằng native setter (React bỏ qua gán .value trực tiếp).
       const typedInfo = await evalInTab(tab.id, (kw) => {
-        const inp = document.querySelector('input[type="search"]')
-          || document.querySelector('input[role="searchbox"]')
-          || [...document.querySelectorAll('input')].find((e) => /search|tìm/i.test((e.placeholder || '') + (e.getAttribute('aria-label') || '')));
-        if (!inp) return { ok: false, inputs: document.querySelectorAll('input').length, href: location.href };
+        // PHẢI LÀ Ô ĐANG NHÌN THẤY. Temu có nhiều `input` ẩn (form đăng nhập, bộ lọc); gõ vào
+        // một ô ẩn thì mọi sự kiện đều bắn đúng mà lớp gợi ý không bao giờ mở, và triệu chứng
+        // giống hệt "Temu không có gợi ý".
+        const visible = (e) => e && e.offsetParent !== null && e.getClientRects().length > 0;
+        const cands = [...document.querySelectorAll('input')].filter(visible);
+        const inp = cands.find((e) => e.type === 'search')
+          || cands.find((e) => e.getAttribute('role') === 'searchbox')
+          || cands.find((e) => /search|tìm/i.test((e.placeholder || '') + (e.getAttribute('aria-label') || '')))
+          || cands[0];
+        if (!inp) return { ok: false, inputs: document.querySelectorAll('input').length,
+                           visibleInputs: cands.length, href: location.href };
         // GÕ TỪNG KÝ TỰ, không nhét cả cụm một lần. Lớp gợi ý của Temu chỉ dựng khi ô nhập
         // nhận đúng chuỗi sự kiện của một người đang gõ: bấm → focus → mỗi ký tự một
         // `InputEvent` có `inputType: 'insertText'`. Nhét thẳng `.value` rồi bắn một `Event`
@@ -1609,13 +1616,26 @@ async function temuSuggestBatch(terms, region) {
           inp.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ch }));
           inp.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true }));
         }
-        return { ok: true, inputs: document.querySelectorAll('input').length, href: location.href };
+        return {
+          ok: true,
+          inputs: document.querySelectorAll('input').length,
+          visibleInputs: cands.length,
+          // Ô nào đã được gõ, và sau khi gõ trang có dựng ra lớp gợi ý nào không — hai câu
+          // trả lời cần thiết để lần sau không phải đoán tiếp.
+          pickedInput: (inp.type || '') + '|' + (inp.placeholder || inp.getAttribute('aria-label') || '(không nhãn)').slice(0, 40),
+          listbox: document.querySelectorAll('[role="listbox"], [role="option"], [aria-expanded="true"]').length,
+          href: location.href,
+        };
       }, [term], 5000);
 
       if (debug.inputFound === null) {
         debug.inputFound = typedInfo === null
           ? 'bơm script vào trang bị treo/quá hạn'
-          : typedInfo.ok ? true : `không thấy ô search (có ${typedInfo.inputs} input, đang ở ${String(typedInfo.href).slice(0, 60)})`;
+          : typedInfo.ok ? true : `không thấy ô search (có ${typedInfo.inputs} input, ${typedInfo.visibleInputs} cái nhìn thấy được, đang ở ${String(typedInfo.href).slice(0, 60)})`;
+      }
+      if (typedInfo && typedInfo.ok && !debug.pickedInput) {
+        debug.pickedInput = typedInfo.pickedInput;
+        debug.listbox = typedInfo.listbox;
       }
       if (!typedInfo || !typedInfo.ok) { groups.push({ term, suggestions: [] }); continue; }
 
@@ -1661,12 +1681,11 @@ async function temuSuggestBatch(terms, region) {
               dom.push(t);
             }
           };
-          if (want) {
-            pick(document, (n) => n.indexOf(want) === 0);
-            // Lưới thưa hơn, chỉ dùng khi lưới trên không bắt được gì: vài engine trả cả gợi
-            // ý không bắt đầu bằng cụm gõ ("tai nghe" → "airpods pro").
-            if (!dom.length) pick(document, (n) => n.indexOf(want) !== -1);
-          }
+          // CHỈ MỘT LƯỚI: gợi ý phải BẮT ĐẦU bằng cụm vừa gõ. Lưới thưa "chỉ cần chứa" từng
+          // được giữ làm dự phòng và nó chỉ vớt ra nhãn thẻ sản phẩm — "most repurchased in
+          // men s jeans", "#2 best-selling item in men s t-shirts". Rác trông như kết quả
+          // thì tệ hơn hẳn một bảng rỗng, vì nó che mất chuyện lớp gợi ý chưa hề mở.
+          if (want) pick(document, (n) => n.indexOf(want) === 0);
           return {
             dom,
             domScope: 'toàn trang, lọc theo tiền tố',

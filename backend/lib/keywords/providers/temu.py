@@ -271,6 +271,10 @@ def _with_debug(result: dict) -> str:
         bits.append("endpoint trang đã gọi: " + ", ".join(str(u) for u in urls[:4]))
     # MẨU PAYLOAD THẬT. Khi endpoint có trả lời mà ta bóc ra toàn chữ giao diện, câu hỏi còn
     # lại là "gợi ý thật nằm ở khoá nào" — và chỉ nhìn vào payload mới trả lời được.
+    if debug.get("pickedInput"):
+        bits.append(f"đã gõ vào ô: {debug['pickedInput']}")
+    if debug.get("listbox") is not None:
+        bits.append(f"số phần tử lớp gợi ý sau khi gõ: {debug['listbox']}")
     if debug.get("domScope"):
         bits.append(f"đọc trong khối: {debug['domScope']}")
     if debug.get("sample"):
