@@ -1611,17 +1611,30 @@ async function temuSuggestBatch(terms, region) {
         // trần thì React cập nhật state nhưng phần gợi ý không chạy — và triệu chứng là
         // "trang có gọi suggest, DOM không có gì", đúng thứ đã làm tôi kết luận nhầm rằng
         // Temu không có gợi ý.
+        // `execCommand('insertText')` TRƯỚC, gán `.value` chỉ là đường lui.
+        //
+        // Sự kiện do script tự dựng mang `isTrusted: false`, và Temu bỏ qua chúng — đo được:
+        // gõ đúng ô, trang có focus và đang hiện, gõ từng ký tự bằng `InputEvent` chuẩn, mà
+        // lớp gợi ý vẫn không dựng. `execCommand` thì khác: nó đi qua đúng đường soạn thảo của
+        // trình duyệt, nên `input` event sinh ra là event thật do trình duyệt phát.
         const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
         inp.click();
         inp.focus();
-        setter.call(inp, '');
-        inp.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
-        for (let i = 0; i < kw.length; i++) {
-          const ch = kw[i];
-          inp.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true }));
-          setter.call(inp, kw.slice(0, i + 1));
-          inp.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ch }));
-          inp.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true }));
+        inp.select && inp.select();
+        let usedExec = false;
+        try {
+          usedExec = document.execCommand('insertText', false, kw);
+        } catch (e) { usedExec = false; }
+        if (!usedExec || inp.value !== kw) {
+          setter.call(inp, '');
+          inp.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
+          for (let i = 0; i < kw.length; i++) {
+            const ch = kw[i];
+            inp.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true }));
+            setter.call(inp, kw.slice(0, i + 1));
+            inp.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ch }));
+            inp.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true }));
+          }
         }
         return {
           ok: true,
@@ -1630,6 +1643,7 @@ async function temuSuggestBatch(terms, region) {
           // Ô nào đã được gõ, và sau khi gõ trang có dựng ra lớp gợi ý nào không — hai câu
           // trả lời cần thiết để lần sau không phải đoán tiếp.
           pickedInput: (inp.type || '') + '|' + (inp.placeholder || inp.getAttribute('aria-label') || '(không nhãn)').slice(0, 40),
+          typedBy: usedExec ? 'execCommand' : 'gán .value',
           listbox: document.querySelectorAll('[role="listbox"], [role="option"], [aria-expanded="true"]').length,
           // Hai câu trả lời cuối cùng còn thiếu: trang có đang được focus không, và nó có
           // đang hiện không. Cả hai đều là điều kiện để một lớp gợi ý chịu dựng ra.
@@ -1648,6 +1662,7 @@ async function temuSuggestBatch(terms, region) {
         debug.pickedInput = typedInfo.pickedInput;
         debug.listbox = typedInfo.listbox;
         debug.hasFocus = typedInfo.hasFocus;
+        debug.typedBy = typedInfo.typedBy;
         debug.visible = typedInfo.visible;
       }
       if (!typedInfo || !typedInfo.ok) { groups.push({ term, suggestions: [] }); continue; }

@@ -166,9 +166,9 @@ class Temu(KeywordProvider):
         # chuỗi đã gửi, nên chỉ cần extension trả về một biến thể (cắt khoảng trắng, đổi hoa
         # thường) là mọi nhóm rơi hết mà không ai báo gì.
         dbg = result.get("debug") or {}
-        _LOG.info("Temu: ô đã gõ=%r · lớp gợi ý=%s · trang được focus=%s · hiện=%s · bước cuối=%r",
-                  dbg.get("pickedInput"), dbg.get("listbox"), dbg.get("hasFocus"),
-                  dbg.get("visible"), dbg.get("stage"))
+        _LOG.info("Temu: ô=%r · gõ bằng=%s · lớp gợi ý=%s · focus=%s · hiện=%s · bước cuối=%r",
+                  dbg.get("pickedInput"), dbg.get("typedBy"), dbg.get("listbox"),
+                  dbg.get("hasFocus"), dbg.get("visible"), dbg.get("stage"))
         _LOG.info("Temu: %d cụm → %d gợi ý thô → %d sau lọc · blocked=%s | gửi=%r | nhận=%r | mẫu=%r",
                   len(terms), raw, total, result.get("blocked"),
                   terms[:3], list(by_term)[:3],
