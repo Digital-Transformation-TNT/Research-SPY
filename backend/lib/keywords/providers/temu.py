@@ -232,7 +232,7 @@ def _with_debug(result: dict) -> str:
     # MẨU PAYLOAD THẬT. Khi endpoint có trả lời mà ta bóc ra toàn chữ giao diện, câu hỏi còn
     # lại là "gợi ý thật nằm ở khoá nào" — và chỉ nhìn vào payload mới trả lời được.
     if debug.get("sample"):
-        bits.append("mẩu payload: " + str(debug["sample"])[:300])
+        bits.append("mẩu payload: " + str(debug["sample"])[:1200])
     return message + (" | " + " | ".join(bits) if bits else "")
 
 

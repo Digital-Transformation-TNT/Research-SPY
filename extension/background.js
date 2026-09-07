@@ -1471,7 +1471,7 @@ function parseTemuSuggest(text, typed) {
     const words = ((j && j.result && j.result.data && j.result.data.slice_words) || []);
     for (const w of words) {
       if (!w || typeof w !== 'object') continue;
-      take(w.query || w.word || w.text || (w.p_search && w.p_search.query));
+      take(w.slice_word || w.query || w.word || w.text || (w.p_search && w.p_search.query));
     }
   } catch (e) { /* rơi về bộ duyệt cây */ }
   if (out.length) return out;
@@ -1595,7 +1595,11 @@ async function temuSuggestBatch(terms, region) {
         inp.focus();
         setter.call(inp, '');
         inp.dispatchEvent(new Event('input', { bubbles: true }));
-        setter.call(inp, kw);
+        // GÕ KÈM MỘT KHOẢNG TRẮNG Ở CUỐI. `search_suggest` trả về phần HOÀN THIỆN cho cụm
+        // đang gõ dở; với một cụm đã trọn vẹn thì không còn gì để hoàn thiện và Temu vọng
+        // lại đúng cụm đó kèm tiêu đề "Explore your interests" — trạng thái "không có gợi
+        // ý" của giao diện. Thêm khoảng trắng là hỏi "sau cụm này người ta gõ tiếp gì".
+        setter.call(inp, kw + ' ');
         inp.dispatchEvent(new Event('input', { bubbles: true }));
         // Một số bản dựng chỉ gọi suggest khi thấy phím thật; KHÔNG gửi Enter (Enter là điều
         // hướng sang trang kết quả, mất luôn lớp gợi ý).
@@ -1627,7 +1631,7 @@ async function temuSuggestBatch(terms, region) {
         for (const u of r.all || []) if (!debug.capUrls.includes(u)) debug.capUrls.push(u);
         if (/login\.html/.test(r.href)) { sawLogin = true; break; }
         for (const text of r.hit) {
-          if (!debug.sample) debug.sample = String(text).slice(0, 1200);
+          if (!debug.sample) debug.sample = String(text).slice(0, 4000);
           for (const s of parseTemuSuggest(text, term)) {
             if (!suggestions.includes(s)) suggestions.push(s);
           }
