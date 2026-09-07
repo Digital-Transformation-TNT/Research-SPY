@@ -1595,11 +1595,7 @@ async function temuSuggestBatch(terms, region) {
         inp.focus();
         setter.call(inp, '');
         inp.dispatchEvent(new Event('input', { bubbles: true }));
-        // GÕ KÈM MỘT KHOẢNG TRẮNG Ở CUỐI. `search_suggest` trả về phần HOÀN THIỆN cho cụm
-        // đang gõ dở; với một cụm đã trọn vẹn thì không còn gì để hoàn thiện và Temu vọng
-        // lại đúng cụm đó kèm tiêu đề "Explore your interests" — trạng thái "không có gợi
-        // ý" của giao diện. Thêm khoảng trắng là hỏi "sau cụm này người ta gõ tiếp gì".
-        setter.call(inp, kw + ' ');
+        setter.call(inp, kw);
         inp.dispatchEvent(new Event('input', { bubbles: true }));
         // Một số bản dựng chỉ gọi suggest khi thấy phím thật; KHÔNG gửi Enter (Enter là điều
         // hướng sang trang kết quả, mất luôn lớp gợi ý).
@@ -1620,16 +1616,49 @@ async function temuSuggestBatch(terms, region) {
       const termDeadline = Math.min(Date.now() + PER_TERM_MS, jobDeadline);
       while (Date.now() < termDeadline) {
         await sleep(500);
-        const r = await evalInTab(tab.id, () => ({
-          // TẤT CẢ url đã chộp, không chỉ search_suggest: khi không ra gợi ý, câu hỏi đầu tiên
-          // là "trang có gọi suggest không, hay ta chộp nhầm endpoint".
-          all: (window.__rsCap || []).map((c) => c.url),
-          hit: (window.__rsCap || []).filter((c) => /search_suggest/i.test(c.url)).map((c) => c.text),
-          href: location.href,
-        }), [], 3000);
+        const r = await evalInTab(tab.id, (kw) => {
+          // ĐỌC LỚP GỢI Ý ĐANG HIỆN TRÊN MÀN HÌNH, không chỉ đọc JSON của mạng.
+          //
+          // Đo 07/09/2026: `search_suggest` chỉ trả `slice_words` — cách Temu cắt câu truy vấn
+          // thành từ — nên bóc từ JSON ra toàn mảnh của chính truy vấn. Nhưng lớp gợi ý VẪN
+          // hiện ra dưới ô tìm kiếm; nó được dựng từ nguồn khác. Cái mắt người nhìn thấy mới
+          // là cái cần lấy.
+          //
+          // Nhận diện KHÔNG dựa vào tên lớp CSS của Temu (đổi bất cứ lúc nào) mà dựa vào một
+          // tính chất của chính gợi ý: nó CHỨA cụm vừa gõ, dài 2–60 ký tự, và là nút lá (không
+          // có phần tử con mang chữ). Ba điều đó đủ để tách gợi ý khỏi mọi chữ khác trên trang.
+          const norm = (x) => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim();
+          const want = norm(kw);
+          const dom = [];
+          const seen = {};
+          if (want) {
+            const all = document.querySelectorAll('li, [role="option"], a, span, div');
+            for (let i = 0; i < all.length && dom.length < 40; i++) {
+              const el = all[i];
+              if (el.children && el.children.length) continue;      // chỉ lấy nút lá
+              const t = (el.textContent || '').trim();
+              if (t.length < 2 || t.length > 60) continue;
+              const n = norm(t);
+              if (n === want || n.indexOf(want) === -1) continue;   // phải chứa, và khác cụm gõ
+              if (seen[n]) continue;
+              seen[n] = 1;
+              dom.push(t);
+            }
+          }
+          return {
+            dom,
+            // TẤT CẢ url đã chộp, không chỉ search_suggest: khi không ra gợi ý, câu hỏi đầu
+            // tiên là "trang có gọi suggest không, hay ta chộp nhầm endpoint".
+            all: (window.__rsCap || []).map((c) => c.url),
+            hit: (window.__rsCap || []).filter((c) => /search_suggest/i.test(c.url)).map((c) => c.text),
+            href: location.href,
+          };
+        }, [term], 3000);
         if (!r) continue;
         for (const u of r.all || []) if (!debug.capUrls.includes(u)) debug.capUrls.push(u);
         if (/login\.html/.test(r.href)) { sawLogin = true; break; }
+        // DOM trước, JSON sau: DOM là thứ người dùng thật sự nhìn thấy.
+        for (const s of r.dom || []) if (!suggestions.includes(s)) suggestions.push(s);
         for (const text of r.hit) {
           if (!debug.sample) debug.sample = String(text).slice(0, 4000);
           for (const s of parseTemuSuggest(text, term)) {

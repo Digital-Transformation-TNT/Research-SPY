@@ -184,8 +184,11 @@ class Temu(KeywordProvider):
         n_fragment = 0
         for term, words in list(by_term.items()):
             whole = _norm(term)
-            kept = [w for w in words
-                    if _norm(w.keyword) not in whole and whole not in _norm(w.keyword)]
+            # CHỈ loại chuỗi NẰM TRONG cụm truy vấn (mảnh của nó), tuyệt đối không loại chuỗi
+            # CHỨA cụm truy vấn — đó chính là hình dạng của một gợi ý thật: "áo thun" →
+            # "áo thun nam". Bản trước loại cả hai chiều và sẽ vứt sạch phần đọc được từ lớp
+            # gợi ý trên màn hình.
+            kept = [w for w in words if _norm(w.keyword) not in whole]
             n_fragment += len(words) - len(kept)
             by_term[term] = kept
 
