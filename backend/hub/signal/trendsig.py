@@ -43,15 +43,29 @@ MIN_WEEKS = 56
 UP_LABELS = ("Mới nổi", "Hot", "Đang lên")
 
 
+#: Khoảng hợp lệ — xem ghi chú cùng tên ở `top10.py`. `MIN_INDEX` trần 100 vì thang Google
+#: chỉ tới đó; đặt 150 (con số của spec, vốn tính theo lượt tìm) là loại sạch mọi từ khoá.
+BOUNDS: dict[str, tuple[float, float]] = {
+    "NGUONG_HOT": (0.01, 100.0),
+    "NGUONG_SPIKE": (0.01, 100.0),
+    "MIN_INDEX": (0.0, 100.0),
+    "NGUONG_HUONG": (0.0, 10.0),
+}
+
+
 def merged_config(saved: dict | None = None) -> dict:
-    """Ngưỡng đang dùng = mặc định, đè bằng những gì người dùng đã lưu."""
+    """Ngưỡng đang dùng = mặc định, đè bằng giá trị đã lưu NẾU nằm trong khoảng hợp lệ."""
     cfg = dict(DEFAULTS)
     for k, v in (saved or {}).items():
-        if k in DEFAULTS:
-            try:
-                cfg[k] = float(v)
-            except (TypeError, ValueError):
-                pass
+        if k not in DEFAULTS:
+            continue
+        try:
+            num = float(v)
+        except (TypeError, ValueError):
+            continue
+        lo, hi = BOUNDS[k]
+        if lo <= num <= hi:
+            cfg[k] = num
     return cfg
 
 
@@ -161,29 +175,29 @@ def _pc(x: float | None) -> str:
 
 
 def _why(row: dict, cfg: dict) -> str:
-    """Một câu nói thẳng vì sao dòng này ở nhãn đó — người bán hàng đọc, không phải dev."""
-    kind, level = row["kind"], row.get("L")
-    ms, mn, yoy = row.get("m_sustain"), row.get("m_short"), row.get("yoy")
+    """
+    Cột "Vì sao" — chỉ nói phần KHÔNG có trong các cột số bên cạnh.
+
+    Bản trước chép lại chính những con số vừa hiện ra ("Tăng bền +54%… năm ngoái +7%…"),
+    nên người đọc phải đọc hai lần cùng một thứ. Ở đây chỉ còn phần diễn giải: sóng thật
+    hay mùa lặp, thiếu gì để kết luận, vì sao bị loại.
+    """
+    kind = row["kind"]
+    ms, yoy = row.get("m_sustain"), row.get("yoy")
     if kind == "Mới nổi":
-        tail = "" if yoy is None else f", cùng kỳ năm ngoái {_pc(yoy)}"
-        return f"Vọt {_pc(mn)} so tuần trước và giữ được sang ngày thứ hai{tail}."
+        return "Vọt mạnh và giữ được sang ngày thứ hai."
     if kind == "Hot":
-        base = f"Tăng bền {_pc(ms)} (4 tuần so 4 tuần liền trước)"
         if yoy is None:
-            return base + ", chưa có lát năm ngoái nên chưa xác nhận được là sóng thật."
-        if yoy > 0:
-            return base + f", năm ngoái cùng kỳ thấp hơn {_pc(yoy)} → sóng thật, không phải mùa lặp."
-        return base + f", nhưng năm ngoái cũng vậy ({_pc(yoy)}) → nhiều khả năng là mùa lặp lại."
+            return "Chưa có lát năm ngoái nên chưa xác nhận được là sóng thật."
+        return ("Năm ngoái cùng kỳ thấp hơn → sóng thật, không phải mùa lặp."
+                if yoy > 0 else "Năm ngoái cũng vậy → nhiều khả năng là mùa lặp lại.")
     if kind == "Đang lên":
-        return (f"Tăng bền {_pc(ms)} — vượt mốc đi ngang nhưng chưa tới ngưỡng Hot "
-                f"{cfg['NGUONG_HOT'] * 100:.0f}%.")
+        return f"Chưa tới ngưỡng Hot {cfg['NGUONG_HOT'] * 100:.0f}%."
     if kind == "— bỏ (quá nhỏ)":
-        return (f"Chỉ số 7 ngày chỉ {level}, dưới mức tối thiểu {cfg['MIN_INDEX']:.0f} — "
-                "%-tăng đẹp tới đâu cũng không đủ nền.")
+        return f"Dưới ngưỡng quy mô {cfg['MIN_INDEX']:.0f}."
     if kind == "— bỏ (đứng im)":
-        return (f"Tăng bền {_pc(ms)}, nằm trong khoảng đi ngang "
-                f"±{cfg['NGUONG_HUONG'] * 100:.0f}%.")
-    return "Chuỗi còn quá ngắn để tính xu hướng bền (cần 56 ngày)."
+        return f"Nằm trong khoảng đi ngang ±{cfg['NGUONG_HUONG'] * 100:.0f}%."
+    return "Chuỗi còn ngắn hơn 56 ngày, chưa tính được xu hướng bền."
 
 
 def build(region: str = "ALL", saved_cfg: dict | None = None,

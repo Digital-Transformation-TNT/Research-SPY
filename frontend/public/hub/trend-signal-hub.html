@@ -228,8 +228,7 @@ td.num,th.num{text-align:right;font-family:"JetBrains Mono",monospace;font-varia
 <section class="blk" id="s-trends"><div class="wrap">
   <div class="bh">
     <span class="num">①</span><h2>Tín hiệu Google Trends</h2>
-    <p>Nhu cầu tìm kiếm đang lên hay không — trước khi bàn tới việc nhập hàng.
-       Bảng chỉ giữ tín hiệu <b>đi lên</b>; đi ngang và đi xuống bị loại theo đúng luật đã chốt.</p>
+    <p>Nhu cầu tìm kiếm đang lên hay không — trước khi bàn tới việc nhập hàng.</p>
     <button class="btn ghost sm" id="wlToggle">Danh sách theo dõi</button>
   </div>
 
@@ -270,7 +269,7 @@ td.num,th.num{text-align:right;font-family:"JetBrains Mono",monospace;font-varia
     <div style="display:flex;gap:8px;margin-top:13px;align-items:center;flex-wrap:wrap">
       <button class="btn sm" id="trSave">Áp dụng ngưỡng</button>
       <button class="btn ghost sm" id="trReset">Về mặc định</button>
-      <span style="font-size:12.5px;color:var(--ink3)">Số càng <b>cao</b> → càng ít tín hiệu nhưng chắc ăn. Càng <b>thấp</b> → nhiều tín hiệu nhưng lẫn nhiễu.</span>
+      <span style="font-size:12.5px;color:var(--ink3)">Số càng cao → ít tín hiệu nhưng chắc ăn hơn.</span>
     </div>
   </div>
 
@@ -283,7 +282,7 @@ td.num,th.num{text-align:right;font-family:"JetBrains Mono",monospace;font-varia
   <div class="bh">
     <span class="num">②</span><h2>Top 10 chính &amp; Top 10 nổi bật</h2>
     <p>Sản phẩm thật trên sàn, xếp theo % tăng của số <b>đã bán lũy kế</b>.
-       Mọi phép tính chạy trong <b>một cặp sàn × thị trường</b> — không gộp sàn, không quy đổi tiền.</p>
+       Tính trong <b>một cặp sàn × thị trường</b>, giá để nguyên tiền gốc.</p>
   </div>
 
   <div class="parts">
@@ -455,7 +454,7 @@ function trRender(d){
   const dr=d.dropped||{}; const nd=Object.keys(dr).reduce(function(s,k){return s+(dr[k]||0)},0);
   if(nd) notes.push('<div class="note i"><b>Đã loại '+nd+' từ khoá.</b> '
     +'quá nhỏ '+(dr['quá nhỏ']||0)+' · đứng im '+(dr['đứng im']||0)+' · đi xuống '+(dr['đi xuống']||0)
-    +' · chưa đủ dữ liệu '+(dr['chưa đủ dữ liệu']||0)+'. Bảng chỉ giữ tín hiệu đi lên. '
+    +' · chưa đủ dữ liệu '+(dr['chưa đủ dữ liệu']||0)+'. '
     +'<button class="btn ghost sm" id="trShowAll" style="margin-left:6px">'
     +(SHOW_ALL?'Ẩn dòng bị loại':'Xem cả dòng bị loại')+'</button></div>');
   $('trNotes').innerHTML = notes.join('');
@@ -571,8 +570,7 @@ function partSelects(parts){
 function tkRender(d){
   $('tkKnobs').innerHTML = tkKnobsHtml(d.config);
   $('tkHint').textContent = TAB==='main'
-    ? 'Nhánh chính trả lời: cái gì bán khoẻ và tăng đều lâu ngày.'
-    : 'Nhánh nổi bật trả lời: cái gì đang phát nổ ngay lúc này.';
+    ? 'Bán khoẻ, tăng đều lâu ngày.' : 'Đang phát nổ ngay lúc này.';
 
   const rd = d.readiness || {}, notes=[];
   const ready = TAB==='main' ? rd.main_ready : rd.hot_ready;
@@ -582,11 +580,10 @@ function tkRender(d){
       +'Cả hai bảng là <b>hiệu</b> giữa hai lần chụp, nên cần ít nhất hai ngày. '
       +'Mở <b>Danh sách theo dõi</b> ở mục ① rồi bấm <b>Chụp sàn ngay</b>.</div>');
   }else if(!ready){
-    notes.push('<div class="note w"><b>Còn thiếu '+miss+' ngày dữ liệu.</b> '
-      +'Đã chụp '+rd.n_days+' ngày (trải '+rd.span+' ngày) trên '+num(rd.n_products)+' sản phẩm. '
+    notes.push('<div class="note w"><b>Còn thiếu '+miss+' ngày</b> để đủ '
       +(TAB==='main'
-        ? 'Bảng chính cần đủ cửa sổ '+d.config.W_main+' ngày.'
-        : 'Bảng nổi bật cần cửa sổ nhanh cộng nền ('+d.config.T_fast+' + '+d.config.base_win+' ngày).')
+        ? 'cửa sổ '+d.config.W_main+' ngày của bảng chính.'
+        : 'cửa sổ nhanh cộng nền ('+d.config.T_fast+' + '+d.config.base_win+' ngày).')
       +'</div>');
   }
   const g = d.gates||{};
@@ -602,10 +599,12 @@ function tkRender(d){
 
   const rows = TAB==='main' ? d.main : d.hot;
   if(!rows.length){
-    $('tkBody').innerHTML = '<div class="card"><div class="empty"><b>Bảng trống</b>'
-      + (rd.n_days>1 ? 'Có dữ liệu nhưng chưa sản phẩm nào qua được cổng — nới ngưỡng ở trên rồi áp dụng lại.'
-                     : 'Chưa đủ ngày để tính. Xem ghi chú phía trên.')
-      + '</div></div>';
+    // Chưa đủ ngày thì ghi chú vàng ngay trên đã nói rồi — thêm một thẻ "Bảng trống" nữa
+    // chỉ là tiếng vọng. Chỉ hiện thẻ khi lý do KHÁC với lý do đã ghi ở trên.
+    $('tkBody').innerHTML = ready
+      ? '<div class="card"><div class="empty"><b>Chưa sản phẩm nào qua cổng</b>'
+        + 'Nới ngưỡng ở trên rồi bấm Áp dụng.</div></div>'
+      : '';
     return;
   }
   const metric = TAB==='main'
@@ -790,9 +789,29 @@ $('wlSnap').onclick = async function(){
   loadTop10();
 };
 
+/* Giá trị ngoài khoảng hợp lệ bị backend bỏ qua và giữ nguyên số cũ (xem `BOUNDS`). Im lặng
+   thì người dùng tưởng nút hỏng, nên nói thẳng cái nào không nhận. */
+function sayRejected(sent, applied, box){
+  const bad = Object.keys(sent).filter(function(k){ return Number(sent[k]) !== Number(applied[k]) });
+  if(!bad.length) return;
+  // Hiện NHÃN người dùng đang nhìn, không phải tên biến: "W_main" không có ở đâu trên màn hình.
+  const label = {};
+  TR_KNOBS.concat(TK_KNOBS.main, TK_KNOBS.hot).forEach(function(k){ label[k.k] = k.label; });
+  const el = document.createElement('div');
+  el.className = 'note w';
+  el.style.margin = '12px 0 0';
+  el.innerHTML = '<b>Không nhận giá trị vừa nhập</b> (ngoài khoảng hợp lệ), giữ nguyên số cũ: '
+    + bad.map(function(k){ return '“'+esc(label[k]||k)+'”' }).join(' · ');
+  box.appendChild(el);
+  setTimeout(function(){ el.remove(); }, 6000);
+}
+
 $('trSave').onclick = async function(){
-  const r = await call('/signal/trends/config', {body:trRead()});
-  if(r.ok){ TR.config = r.data.config; loadTrends(); }
+  const sent = trRead();
+  const r = await call('/signal/trends/config', {body:sent});
+  // AWAIT trước rồi mới báo: `loadTrends` vẽ lại cả vùng ghi chú, gọi song song thì dòng
+  // báo vừa chèn bị xoá ngay trong cùng một nhịp.
+  if(r.ok){ TR.config = r.data.config; await loadTrends(); sayRejected(sent, r.data.config, $('trNotes')); }
 };
 $('trReset').onclick = async function(){
   if(!TR) return;
@@ -800,8 +819,9 @@ $('trReset').onclick = async function(){
   if(r.ok) loadTrends();
 };
 $('tkSave').onclick = async function(){
-  const r = await call('/signal/top10/config', {body:Object.assign({platform:PF, market:MK}, tkRead())});
-  if(r.ok) loadTop10();
+  const sent = tkRead();
+  const r = await call('/signal/top10/config', {body:Object.assign({platform:PF, market:MK}, sent)});
+  if(r.ok){ await loadTop10(); sayRejected(sent, r.data.config, $('tkNotes')); }
 };
 $('tkReset').onclick = async function(){
   if(!TK) return;

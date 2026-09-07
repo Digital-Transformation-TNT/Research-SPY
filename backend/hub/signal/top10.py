@@ -41,14 +41,33 @@ DEFAULTS: dict[str, float] = {
 TOP_N = 10
 
 
+#: Khoảng hợp lệ của từng tham số. Không có bảng này thì một lần gõ nhầm sẽ được lưu im
+#: lặng và bảng vẫn hiện ra — `W_main = 1` biến "tăng trưởng 30 ngày" thành "chênh lệch một
+#: ngày" mà không dòng nào trên màn hình nói khác đi. Đã xảy ra thật một lần.
+BOUNDS: dict[str, tuple[float, float]] = {
+    "W_main": (7, 365),
+    "min_base_main": (0, 10_000_000),
+    "M_breakout": (0, 10_000_000),
+    "X_spike": (10, 100_000),
+    "T_fast": (1, 30),
+    "base_win": (2, 90),
+    "floor": (0.01, 10_000),
+}
+
+
 def merged_config(saved: dict | None = None) -> dict:
+    """Ngưỡng đang dùng = mặc định, đè bằng giá trị đã lưu NẾU nằm trong khoảng hợp lệ."""
     cfg = dict(DEFAULTS)
     for k, v in (saved or {}).items():
-        if k in DEFAULTS:
-            try:
-                cfg[k] = float(v) if k in ("floor", "X_spike") else int(float(v))
-            except (TypeError, ValueError):
-                pass
+        if k not in DEFAULTS:
+            continue
+        try:
+            num = float(v) if k in ("floor", "X_spike") else int(float(v))
+        except (TypeError, ValueError):
+            continue
+        lo, hi = BOUNDS[k]
+        if lo <= num <= hi:
+            cfg[k] = num
     return cfg
 
 
