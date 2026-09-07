@@ -2282,7 +2282,23 @@ function tbReadCapture() {
     // CÓ ĐỦ `item_id` và `title` — đó đúng là hai trường `_row` bên backend bắt buộc, nên
     // mảng nào qua được phép thử này là mảng dùng được.
     if (!Array.isArray(arr) || !arr.length) {
-      arr = rsDeepFindArray(j, (x) => x && typeof x === 'object' && x.item_id && x.title);
+      // Lùng TẠI CHỖ, không gọi `rsDeepFindArray`: hàm này chạy `world: 'MAIN'` nên nó được
+      // tuần tự hoá rồi thả vào TRANG, nơi không có gì của background.js cả. Gọi ra ngoài là
+      // ReferenceError, và `evalInTab` nuốt lỗi thành `null` — nguồn chết câm y như cũ.
+      const stack = [j];
+      for (let g = 0; g < 4000 && stack.length && !arr; g++) {
+        const o = stack.pop();
+        if (!o || typeof o !== 'object') continue;
+        if (Array.isArray(o)) {
+          if (o.length && o.slice(0, 5).every((x) => x && typeof x === 'object' && x.item_id && x.title)) {
+            arr = o;
+            break;
+          }
+          for (let k = 0; k < Math.min(o.length, 40); k++) stack.push(o[k]);
+        } else {
+          for (const k in o) stack.push(o[k]);
+        }
+      }
     }
     if (Array.isArray(arr) && arr.length) { items = arr.slice(0, 40); break; }
     if (!dataKeys.length && j && j.data) dataKeys = Object.keys(j.data).slice(0, 12);
@@ -2310,8 +2326,37 @@ function tbReadCapture() {
  * KẾT QUẢ HIỆN Ở TAB MỚI: Taobao mở một tab khác cho trang kết quả, tab trang chủ đứng yên.
  * Nên sau khi bấm tìm phải quét MỌI tab taobao chứ không chỉ tab của mình.
  */
-async function taobaoImageSearch(dataUrl) {
-  await ensurePageHook();
+/**
+ * Bọc cả lượt tìm bằng ảnh trong MỘT hạn giờ, và ghi lại bước đang chạy.
+ *
+ * `IMAGE_JOB_BUDGET_MS` trước đây chỉ chi phối vòng quét kết quả ở cuối; mọi bước TRƯỚC đó —
+ * đăng ký hook, hỏi cookie, mở tab, thả ảnh — không có hạn nào cả. Bước nào treo là cả job
+ * treo im, không tab nào mở, không kết quả nào về, và backend phải chờ hết 100s rồi báo một
+ * câu vô nghĩa: "máy-thợ không trả kết quả kịp". Gặp thật ngày 07/09/2026.
+ *
+ * `stage` để câu báo nói được job chết ở bước nào thay vì chỉ nói nó chết.
+ */
+async function withStageBudget(ms, run) {
+  const st = { at: 'bắt đầu' };
+  const timeout = new Promise((resolve) =>
+    setTimeout(() => resolve({ items: [], blocked: true, reason: 'timeout',
+      error: `treo ở bước "${st.at}" quá ${Math.round(ms / 1000)}s` }), ms));
+  return Promise.race([Promise.resolve(run(st)).catch((e) => ({
+    items: [], blocked: true, reason: 'error', error: `lỗi ở bước "${st.at}": ${e}` })), timeout]);
+}
+
+/** Không để một lời hứa nào chạy vô hạn — trả `fallback` khi quá hạn. */
+function capped(promise, ms, fallback) {
+  return Promise.race([promise, new Promise((r) => setTimeout(() => r(fallback), ms))]);
+}
+
+function taobaoImageSearch(dataUrl) {
+  return withStageBudget(IMAGE_JOB_BUDGET_MS, (st) => taobaoImageRun(dataUrl, st));
+}
+
+async function taobaoImageRun(dataUrl, st) {
+  st.at = 'đăng ký page-hook';
+  await capped(ensurePageHook(), 5000, null);
   const deadline = Date.now() + IMAGE_JOB_BUDGET_MS;
 
   // Hỏi cookie TRƯỚC: khách vãng lai thì mọi lượt gọi MTOP đều trả `FAIL_SYS_SESSION_EXPIRED`,
@@ -2321,18 +2366,26 @@ async function taobaoImageSearch(dataUrl) {
   // cái có mặt là đủ kết luận. Bám vào đúng một tên là đánh cược cả nguồn vào việc Taobao
   // không bao giờ đổi tên nó — mà nếu đổi thì hỏng theo kiểu tệ nhất: nguồn báo "chưa đăng
   // nhập" trong khi phiên vẫn tốt, và không lượt nào được thử nữa để lộ ra sự thật.
-  const signedIn = await Promise.all(['unb', 'cookie17', '_nk_', 'tracknick'].map((name) =>
+  st.at = 'hỏi cookie đăng nhập Taobao';
+  // `capped`: `chrome.cookies.get` không gọi callback khi quyền `cookies` bị gỡ hoặc API kẹt,
+  // và một `Promise.all` không hạn giờ ở đây treo cả job trước cả khi mở tab.
+  const signedIn = await capped(Promise.all(['unb', 'cookie17', '_nk_', 'tracknick'].map((name) =>
     new Promise((resolve) => {
       try {
         chrome.cookies.get({ url: 'https://www.taobao.com/', name }, (c) => resolve(!!(c && c.value)));
       } catch (e) { resolve(false); }
     })
-  ));
+  )), 6000, null);
+  if (signedIn === null) {
+    return { items: [], blocked: true, reason: 'ui',
+      error: 'không đọc được cookie Taobao trong 6s — extension có thể thiếu quyền `cookies`' };
+  }
   if (!signedIn.some(Boolean)) {
     await openVerifyTab('verify:taobao', 'https://login.taobao.com/');
     return { items: [], blocked: true, reason: 'login' };
   }
 
+  st.at = 'mở tab Taobao';
   const tab = await keptTab('taobao');
   await chrome.tabs.update(tab.id, { url: 'https://www.taobao.com/' });
   await focusTab(tab.id); // SPA nặng chỉ render + bắn XHR khi tab HIỆN TRƯỚC
@@ -2345,6 +2398,7 @@ async function taobaoImageSearch(dataUrl) {
   const before = new Set((await chrome.tabs.query({ url: 'https://*.taobao.com/*' }))
     .map((t) => t.id).filter((id) => id != null));
 
+  st.at = 'thả ảnh vào panel tìm-bằng-ảnh';
   const dropped = await evalInTab(tab.id, tbDropImage, [dataUrl], 20000);
   if (!dropped || !dropped.ok) {
     return {
@@ -2355,6 +2409,7 @@ async function taobaoImageSearch(dataUrl) {
     };
   }
 
+  st.at = 'chờ Taobao trả kết quả';
   const spawned = new Set();
   let lastRet = '';
   const seen = new Set();
@@ -2552,7 +2607,14 @@ async function lensHarvest() {
 }
 
 /** Ảnh → thẻ kết quả Google Lens. Trả `{ cards, blocked, reason, error }`. */
-async function lensImageSearch(dataUrl, language) {
+function lensImageSearch(dataUrl, language) {
+  // Cùng lỗ hổng cấu trúc với Taobao: `deadline` chỉ chi phối vòng quét cuối, mọi bước mở
+  // tab / thả ảnh trước đó treo là treo im. Bọc cả lượt lại — xem `withStageBudget`.
+  return withStageBudget(IMAGE_JOB_BUDGET_MS, (st) => lensImageRun(dataUrl, language, st));
+}
+
+async function lensImageRun(dataUrl, language, st) {
+  st.at = 'mở lớp phủ tìm-bằng-ảnh của Google';
   const deadline = Date.now() + IMAGE_JOB_BUDGET_MS;
   const tab = await keptTab('lens');
   await chrome.tabs.update(tab.id, { url: 'https://www.google.com/?hl=' + encodeURIComponent(language || 'vi') });
