@@ -459,14 +459,7 @@ function trRender(d){
       +nc.slice(0,8).map(esc).join(' · ')+(nc.length>8?' …':'')
       +'. Mở <b>Danh sách theo dõi</b> rồi bấm <b>Cào Trends ngay</b>.</div>');
 
-  const dr=d.dropped||{}; const nd=Object.keys(dr).reduce(function(s,k){return s+(dr[k]||0)},0);
-  if(nd) notes.push('<div class="note i"><b>Đã loại '+nd+' từ khoá.</b> '
-    +'quá nhỏ '+(dr['quá nhỏ']||0)+' · đứng im '+(dr['đứng im']||0)+' · đi xuống '+(dr['đi xuống']||0)
-    +' · chưa đủ dữ liệu '+(dr['chưa đủ dữ liệu']||0)+'. '
-    +'<button class="btn ghost sm" id="trShowAll" style="margin-left:6px">'
-    +(SHOW_ALL?'Ẩn dòng bị loại':'Xem cả dòng bị loại')+'</button></div>');
   $('trNotes').innerHTML = notes.join('');
-  if($('trShowAll')) $('trShowAll').onclick = function(){ SHOW_ALL = !SHOW_ALL; trRender(d); };
 
   const shown = SHOW_ALL ? all : d.rows;
   if(!shown.length){
@@ -493,12 +486,16 @@ function trRender(d){
               :'<span class="pill '+(r.heat.indexOf('HOT')===0?'hot':'info')+'">'+esc(r.heat)+'</span>')+'</td>'
       +'<td class="why">'+esc(r.why)+'</td></tr>';
   }).join('');
+  const dr=d.dropped||{}; const nd=Object.keys(dr).reduce(function(s,k){return s+(dr[k]||0)},0);
   $('trBody').innerHTML = '<div class="tw"><table><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>'
     +'<div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
     +'<button class="btn ghost sm" id="trCsv">Tải CSV</button>'
+    +(nd ? '<button class="btn ghost sm" id="trShowAll">'
+           +(SHOW_ALL?'Ẩn '+nd+' dòng bị loại':'Xem '+nd+' dòng bị loại')+'</button>' : '')
     +'<span style="font-size:12.5px;color:var(--ink3)">'+(SHOW_ALL ? (shown.length+' từ khoá (mờ = đã bị loại)') : (d.rows.length+' tín hiệu đi lên'))
     +(shown[0].last_date?(' · mốc mới nhất '+esc(shown[0].last_date)):'')
     +(d.anchor?(' · chỉ số tính theo thước “'+esc(d.anchor)+'” = 100'):'')+'</span></div>';
+  if($('trShowAll')) $('trShowAll').onclick = function(){ SHOW_ALL = !SHOW_ALL; trRender(d); };
   $('trCsv').onclick = function(){
     csv([['tu khoa','chi so 7 ngay','vot ngan','tang ben','YoY','nhan','do nong','vi sao']].concat(
       shown.map(function(r){return [r.keyword,r.L,r.m_short,r.m_sustain,r.yoy,r.kind,r.heat,r.why]})),
@@ -521,6 +518,15 @@ async function loadTrends(){
 //: Cửa sổ đo tăng trưởng — chọn bằng nút, không gõ số. Chỉ hai ô của nhánh nổi bật còn là
 //: ô nhập, và đó đúng là hai cái spec đánh dấu "NGƯỜI DÙNG".
 const W_CHOICES = [7, 14, 30, 60];
+
+/* Lọc theo % tăng trưởng — LỌC PHÍA TRANG, không lưu vào cấu hình. Bảng đã sắp giảm dần
+   theo đúng chỉ số này nên cắt ở một mức chỉ là giữ phần đầu: không sót dòng nào lẽ ra
+   phải hiện, và đổi mức không cần gọi lại backend. */
+//: Thang phải phủ CẢ HAI chế độ. Ước lượng cho %-tăng hàng nghìn (mốc gốc là phần đời còn
+//: lại của sản phẩm), còn đo thật trên cửa sổ 30 ngày cho vài chục phần trăm — một thang
+//: 50–500 vô dụng ở chế độ này thì cắt sạch ở chế độ kia.
+const G_CHOICES = [0, 25, 100, 500, 1000];
+let GMIN = Number(localStorage.getItem('tsh_gmin') || 0);
 const TK_KNOBS = {
   main: [],
   hot: [
@@ -538,6 +544,12 @@ const PLATFORMS = ['shopee','taobao','1688'];
 const MARKETS = {shopee:['vn','ph','th','id','my','sg','tw','br','mx'], taobao:['cn'], '1688':['cn']};
 
 function tkKnobsHtml(cfg, est){
+  const gpick = '<div class="knob" style="flex:1 1 100%"><label>'
+    + (TAB==='main' ? 'Lọc theo % tăng trưởng' : (est ? 'Lọc theo tỉ trọng 30 ngày' : 'Lọc theo % đột biến'))
+    + '</label><div class="wpick">' + G_CHOICES.map(function(g){
+        return '<button class="wbtn" data-g="'+g+'"'+(GMIN===g?' aria-pressed="true"':'')+'>'
+          + (g ? '≥ '+g+'%' : 'Tất cả') + '</button>';
+      }).join('') + '</div></div>';
   if(TAB==='main'){
     // Ở chế độ ước lượng, con số đến từ bộ đếm 30 ngày của Shopee nên cửa sổ khác 30 là vô
     // nghĩa — khoá lại thay vì để bấm rồi hiện một số trả lời câu hỏi khác.
@@ -546,9 +558,9 @@ function tkKnobsHtml(cfg, est){
           const on = Number(cfg.W_main)===w, off = est && w!==30;
           return '<button class="wbtn" data-w="'+w+'"'+(on?' aria-pressed="true"':'')
             + (off?' disabled title="Chế độ ước lượng chỉ có cửa sổ 30 ngày"':'')+'>'+w+' ngày</button>';
-        }).join('') + '</div></div>';
+        }).join('') + '</div></div>' + gpick;
   }
-  return TK_KNOBS[TAB].map(function(k){
+  return gpick + TK_KNOBS[TAB].map(function(k){
     return '<div class="knob"><label>'+esc(k.label)
       +' <span class="tipwrap" tabindex="0"><span class="tip">i</span><span class="bub">'+k.tip+'</span></span></label>'
       +'<div class="box"><input id="tk_'+k.k+'" type="number" step="any" value="'+cfg[k.k]+'">'
@@ -583,6 +595,11 @@ function tkRender(d){
   // Bấm nút là áp dụng luôn — thêm một nút "Áp dụng" nữa chỉ là một cú bấm thừa.
   $('tkKnobs').querySelectorAll('.wbtn').forEach(function(b){
     b.onclick = async function(){
+      if(b.dataset.g !== undefined){
+        GMIN = Number(b.dataset.g); localStorage.setItem('tsh_gmin', GMIN);
+        tkRender(d);                       // lọc phía trang, không phải gọi lại backend
+        return;
+      }
       const r = await call('/signal/top10/config', {body:{platform:PF, market:MK, W_main:Number(b.dataset.w)}});
       if(r.ok) loadTop10();
     };
@@ -619,7 +636,16 @@ function tkRender(d){
       +' · thiếu mốc '+num(g['thiếu mốc']||0)+'.</div>');
   $('tkNotes').innerHTML = notes.join('');
 
-  const rows = TAB==='main' ? d.main : d.hot;
+  const val = function(r){
+    return TAB==='main' ? r.growth_long_pct : (est ? r.recent_share_pct : r.spike_pct);
+  };
+  const all = TAB==='main' ? d.main : d.hot;
+  const rows = GMIN ? all.filter(function(r){ return (val(r)||0) >= GMIN }) : all;
+  if(!rows.length && all.length){
+    $('tkBody').innerHTML = '<div class="card"><div class="empty"><b>Không dòng nào đạt ≥ '+GMIN+'%</b>'
+      + all.length+' dòng có sẵn, cao nhất '+(val(all[0])||0).toFixed(1)+'%. Chọn mức thấp hơn.</div></div>';
+    return;
+  }
   if(!rows.length){
     // Chưa đủ ngày thì ghi chú vàng ngay trên đã nói rồi — thêm một thẻ "Bảng trống" nữa
     // chỉ là tiếng vọng. Chỉ hiện thẻ khi lý do KHÁC với lý do đã ghi ở trên.
