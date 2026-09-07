@@ -365,7 +365,9 @@ def build_terms(seed: str, country: str) -> list[str]:
 #:
 #: Trục tiền tố vẫn đáng có, nhưng nó phải được CẤP THÊM chỗ chứ không phải giành chỗ: các cụm
 #: nó tìm ra gần như không trùng hai trục kia, tức là độ phủ mới thật, không phải lặp lại.
-DEPTH_CALLS = {"quick": 12, "normal": 25, "deep": 45}
+#: Chỉ còn một mức — xem ghi chú ở `search.py`. Giữ dạng dict để `DEPTH_CALLS[depth]`
+#: không phải sửa, và để thêm lại một mức khác sau này chỉ là thêm một dòng.
+DEPTH_CALLS = {"quick": 12}
 
 #: Khoảng cách MẶC ĐỊNH giữa hai lượt gọi cùng một nguồn. Đo thấy an toàn ở 700ms với Shopee,
 #: TikTok và Amazon. Nguồn nào cần rộng hơn thì tự khai qua `KeywordProvider.call_delay_ms`.

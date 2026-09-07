@@ -172,6 +172,23 @@ class Temu(KeywordProvider):
         if total < len(terms):
             _LOG.warning("Temu chẩn đoán: %s", _with_debug(result))
 
+        # LOẠI MẢNH CỦA CHÍNH TRUY VẤN. `slice_words` — cái tên đã nói — là cách Temu CẮT câu
+        # truy vấn thành từ, không phải danh sách gợi ý. Đo 07/09/2026 bằng ba phép thử:
+        #
+        #     "blueto"        → "blueto"      (gõ dở cũng không có phần hoàn thiện)
+        #     "wireless ear"  → "ear"         (một mảnh của chính nó)
+        #     "túi xách"      → "handbag"     (bản dịch, vẫn là chính nó)
+        #
+        # Trả những chuỗi ấy ra như từ khoá là tệ hơn trả rỗng: "ear" trông như một từ khoá
+        # thật và sẽ đi tiếp vào mọi bảng phía sau.
+        n_fragment = 0
+        for term, words in list(by_term.items()):
+            whole = _norm(term)
+            kept = [w for w in words
+                    if _norm(w.keyword) not in whole and whole not in _norm(w.keyword)]
+            n_fragment += len(words) - len(kept)
+            by_term[term] = kept
+
         # LOẠI CHỮ CỦA GIAO DIỆN. `parseTemuSuggest` bên extension cố ý duyệt cây tìm những
         # khoá NGHE NHƯ từ khoá thay vì bám một đường dẫn cứng — bền trước việc Temu đổi cấu
         # trúc, nhưng đổi lại nó nhặt luôn nhãn tĩnh của trang. Đo 07/09/2026, từ gốc
@@ -187,6 +204,16 @@ class Temu(KeywordProvider):
                              len(everywhere), sorted(everywhere)[:3])
                 by_term = {t: [w for w in v if _norm(w.keyword) not in everywhere]
                            for t, v in by_term.items()}
+
+        if not any(by_term.values()) and n_fragment:
+            # Nói ĐÚNG chuyện đã xảy ra, đừng để nó thành một bảng rỗng không lời. Đây không
+            # phải "Temu im lặng" mà là "Temu chỉ vọng lại truy vấn" — hai chuyện khác nhau,
+            # và chuyện thứ hai có nghĩa là đường này không cho gợi ý được.
+            raise RuntimeError(
+                f"Temu chỉ trả lại mảnh của chính truy vấn ({n_fragment} chuỗi), không có gợi "
+                f"ý nào. Endpoint `search_suggest` đáp bằng `slice_words` — đó là cách Temu CẮT "
+                f"câu tìm thành từ, không phải danh sách gợi ý."
+            )
 
         if not any(by_term.values()):
             # Kèm chẩn đoán của extension vào câu lỗi. Không kèm thì thứ duy nhất hiện lên là

@@ -83,8 +83,14 @@ def parse_keyword_search_params(query: Mapping[str, list[str]]) -> KeywordSearch
 
     requested = [s.strip() for s in (first("sources") or "").split(",") if is_keyword_source(s.strip())]
 
-    depth_param = first("depth")
-    depth = depth_param if depth_param in ("quick", "deep") else "normal"
+    # CHỈ CÒN MỘT MỨC. Ba mức trước đây mặc định rơi vào "normal" (25 lượt gọi) trong khi
+    # giao diện KHÔNG hề gửi tham số này — nên mọi lượt tìm đều chạy mức 25 mà không ai chọn.
+    # Đo trên Shopee cùng một từ gốc: quick 12 lượt ra 111 từ khoá, normal 25 lượt ra 244.
+    # 133 từ khoá thêm vào đó là phần đuôi đã trôi xa từ gốc — trong đó có "tai nghe bluetooth
+    # đẹp dép nam". Trả gấp đôi thời gian để mua thêm nhiễu.
+    #
+    # Tham số `depth` vẫn nhận cho khỏi vỡ chỗ gọi cũ, nhưng mọi giá trị đều về `quick`.
+    depth = "quick"
 
     gprop = (first("gprop") or "").strip().lower()
 

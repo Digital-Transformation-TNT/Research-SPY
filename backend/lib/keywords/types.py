@@ -159,7 +159,8 @@ class KeywordSearchParams(CamelModel):
     country: str
     sources: list[KeywordSource]
     #: Số cụm mở rộng hỏi mỗi nguồn. Nhiều hơn = nhiều long-tail hơn, chậm hơn.
-    depth: Literal["quick", "normal", "deep"]
+    #: Chỉ còn một mức; xem `search.py`. Giữ `Literal` để đổi lại là một dòng.
+    depth: Literal["quick"]
     include_informational: bool
     limit: int
     time_range: str = DEFAULT_TIME_RANGE
