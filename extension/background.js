@@ -1591,16 +1591,23 @@ async function temuSuggestBatch(terms, region) {
           || document.querySelector('input[role="searchbox"]')
           || [...document.querySelectorAll('input')].find((e) => /search|tìm/i.test((e.placeholder || '') + (e.getAttribute('aria-label') || '')));
         if (!inp) return { ok: false, inputs: document.querySelectorAll('input').length, href: location.href };
+        // GÕ TỪNG KÝ TỰ, không nhét cả cụm một lần. Lớp gợi ý của Temu chỉ dựng khi ô nhập
+        // nhận đúng chuỗi sự kiện của một người đang gõ: bấm → focus → mỗi ký tự một
+        // `InputEvent` có `inputType: 'insertText'`. Nhét thẳng `.value` rồi bắn một `Event`
+        // trần thì React cập nhật state nhưng phần gợi ý không chạy — và triệu chứng là
+        // "trang có gọi suggest, DOM không có gì", đúng thứ đã làm tôi kết luận nhầm rằng
+        // Temu không có gợi ý.
         const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        inp.click();
         inp.focus();
         setter.call(inp, '');
-        inp.dispatchEvent(new Event('input', { bubbles: true }));
-        setter.call(inp, kw);
-        inp.dispatchEvent(new Event('input', { bubbles: true }));
-        // Một số bản dựng chỉ gọi suggest khi thấy phím thật; KHÔNG gửi Enter (Enter là điều
-        // hướng sang trang kết quả, mất luôn lớp gợi ý).
-        for (const type of ['keydown', 'keyup']) {
-          inp.dispatchEvent(new KeyboardEvent(type, { key: 'a', bubbles: true }));
+        inp.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
+        for (let i = 0; i < kw.length; i++) {
+          const ch = kw[i];
+          inp.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true }));
+          setter.call(inp, kw.slice(0, i + 1));
+          inp.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ch }));
+          inp.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true }));
         }
         return { ok: true, inputs: document.querySelectorAll('input').length, href: location.href };
       }, [term], 5000);
@@ -1631,35 +1638,38 @@ async function temuSuggestBatch(terms, region) {
           const want = norm(kw);
           const dom = [];
           const seen = {};
-          // KHOANH VÙNG QUANH Ô TÌM KIẾM. Quét cả trang thì mọi chữ chứa cụm vừa gõ đều lọt,
-          // kể cả nhãn trên thẻ sản phẩm — đo được "#2 best-selling item in men s t-shirts"
-          // và "top rated in men s t-shirts" chui vào như thể chúng là gợi ý.
+          // ĐỌC CẢ TRANG, nhưng lọc bằng "BẮT ĐẦU BẰNG cụm vừa gõ".
           //
-          // Lớp gợi ý luôn nằm trong cùng một khối với ô nhập (nó là một component). Leo lên
-          // vài tầng từ ô nhập rồi chỉ đọc trong khối đó là tách được nó khỏi phần còn lại
-          // của trang, mà không phải biết Temu đặt tên lớp CSS là gì.
-          const inp = document.querySelector('input[type="search"]')
-            || document.querySelector('input[role="searchbox"]')
-            || document.querySelector('input');
-          let scope = inp;
-          for (let up = 0; up < 5 && scope && scope.parentElement; up++) scope = scope.parentElement;
-          if (want && scope) {
-            const all = scope.querySelectorAll('li, [role="option"], a, span, div');
+          // Khoanh vùng quanh ô nhập là sai: lớp gợi ý của SPA thường được portal thẳng ra
+          // `body`, nằm ngoài cây con của ô nhập. Còn quét cả trang mà chỉ đòi "chứa cụm" thì
+          // nhãn thẻ sản phẩm lọt vào ("#2 best-selling item in men s t-shirts").
+          //
+          // Phép lọc đúng nằm ở bản chất của autocomplete: gợi ý là phần NỐI DÀI của cụm đang
+          // gõ, nên nó BẮT ĐẦU bằng cụm đó — "jeans" → "jeans for men", "jeans baggy",
+          // "jeans y2k". Nhãn merchandising thì không bao giờ bắt đầu như vậy.
+          const pick = (root, test) => {
+            const all = root.querySelectorAll('li, [role="option"], a, span, div');
             for (let i = 0; i < all.length && dom.length < 40; i++) {
               const el = all[i];
               if (el.children && el.children.length) continue;      // chỉ lấy nút lá
               const t = (el.textContent || '').trim();
               if (t.length < 2 || t.length > 60) continue;
               const n = norm(t);
-              if (n === want || n.indexOf(want) === -1) continue;   // phải chứa, và khác cụm gõ
+              if (n === want || !test(n)) continue;
               if (seen[n]) continue;
               seen[n] = 1;
               dom.push(t);
             }
+          };
+          if (want) {
+            pick(document, (n) => n.indexOf(want) === 0);
+            // Lưới thưa hơn, chỉ dùng khi lưới trên không bắt được gì: vài engine trả cả gợi
+            // ý không bắt đầu bằng cụm gõ ("tai nghe" → "airpods pro").
+            if (!dom.length) pick(document, (n) => n.indexOf(want) !== -1);
           }
           return {
             dom,
-            domScope: scope ? (scope.tagName + '.' + String(scope.className || '').slice(0, 40)) : 'khong thay o nhap',
+            domScope: 'toàn trang, lọc theo tiền tố',
             // TẤT CẢ url đã chộp, không chỉ search_suggest: khi không ra gợi ý, câu hỏi đầu
             // tiên là "trang có gọi suggest không, hay ta chộp nhầm endpoint".
             all: (window.__rsCap || []).map((c) => c.url),
