@@ -1582,6 +1582,13 @@ async function temuSuggestBatch(terms, region) {
       debug.ranTerms++;
       debug.stage = `gõ cụm ${debug.ranTerms}/${list.length}`;
 
+      // ĐƯA TAB RA TRƯỚC LẠI Ở MỖI CỤM. `focusTab` cũ chỉ chạy một lần trước vòng lặp; bốn
+      // lượt gõ sau đó hoàn toàn có thể diễn ra khi cửa sổ đã mất focus (job khác chiếm tab,
+      // hoặc người dùng bấm sang việc khác). Lớp gợi ý của Temu không dựng khi
+      // `document.hasFocus()` là false — mọi sự kiện vẫn bắn đúng, chỉ là không có gì hiện ra,
+      // và triệu chứng giống hệt "Temu không có gợi ý".
+      await withTimeout(focusTab(tab.id), 3000, null);
+
       // Xoá giỏ đã chộp TRƯỚC mỗi cụm, để gợi ý cụm này không lẫn của cụm trước.
       await evalInTab(tab.id, () => { try { window.__rsCap = []; } catch (e) {} }, [], 3000);
 
@@ -1624,6 +1631,10 @@ async function temuSuggestBatch(terms, region) {
           // trả lời cần thiết để lần sau không phải đoán tiếp.
           pickedInput: (inp.type || '') + '|' + (inp.placeholder || inp.getAttribute('aria-label') || '(không nhãn)').slice(0, 40),
           listbox: document.querySelectorAll('[role="listbox"], [role="option"], [aria-expanded="true"]').length,
+          // Hai câu trả lời cuối cùng còn thiếu: trang có đang được focus không, và nó có
+          // đang hiện không. Cả hai đều là điều kiện để một lớp gợi ý chịu dựng ra.
+          hasFocus: document.hasFocus(),
+          visible: document.visibilityState,
           href: location.href,
         };
       }, [term], 5000);
@@ -1636,6 +1647,8 @@ async function temuSuggestBatch(terms, region) {
       if (typedInfo && typedInfo.ok && !debug.pickedInput) {
         debug.pickedInput = typedInfo.pickedInput;
         debug.listbox = typedInfo.listbox;
+        debug.hasFocus = typedInfo.hasFocus;
+        debug.visible = typedInfo.visible;
       }
       if (!typedInfo || !typedInfo.ok) { groups.push({ term, suggestions: [] }); continue; }
 
