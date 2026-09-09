@@ -1997,6 +1997,7 @@ async function loadModalTiktok(region) {
     const som = vidMerge(st.fbAds, st.bingTk || [], g.ads, st.bingDy || [], st.ytAds || [], st.sanAds || [], st.marketAds);
     renderVideos(som);
     void fillTiktokStats(som, my); // tim/xem/ngày đăng lấy từ backend, không cần extension
+    void fillDouyinStats(som, my);
   }
 
   // BƯỚC 2 — lượt tìm THẬT trong tab TikTok. Chậm (tới hơn hai phút) nhưng thấy được cả những
@@ -2066,6 +2067,7 @@ async function loadModalTiktok(region) {
   // Vẽ xong rồi mới đi lấy tim/bình luận/lượt xem — xem ghi chú ở `fillTiktokStats`. Không
   // `await`: lưới đã dùng được ngay, số điền vào sau.
   void fillTiktokStats(all, my);
+  void fillDouyinStats(all, my);
 }
 
 /**
@@ -2119,6 +2121,42 @@ async function fillTiktokStats(ads, token) {
 }
 
 /**
+ * Bổ sung tim / bình luận / LƯỢT LƯU cho các thẻ Douyin.
+ *
+ * Tách khỏi `fillTiktokStats` vì Douyin trả BỘ SỐ KHÁC — không có chia sẻ, không có lượt xem,
+ * đổi lại có lượt lưu. Gộp hai đường vào một hàm sẽ phải bịa ánh xạ giữa hai bộ số khác nghĩa.
+ *
+ * BẢNG SỐ Ở ĐÂY SẼ THƯA, và đó là giới hạn của Douyin chứ không phải lỗi: họ siết endpoint
+ * player, lúc hụt thì trả về một trang trắng. Nên ô trống nghĩa là "Douyin không trả lần này",
+ * còn số 0 mới là số thật. Cache sáu giờ theo từng id ở backend khiến các lượt sau nhặt dần
+ * những video đã đọc được.
+ */
+async function fillDouyinStats(ads, token) {
+  const ids = ads.filter((a) => a.platform === 'douyin' && a.id && a.likeCount == null).map((a) => a.id);
+  if (!ids.length) return;
+  let data;
+  try {
+    const r = await fetch(`${BACKEND}/api/ads/douyin-stats?ids=${encodeURIComponent(ids.join(','))}`);
+    data = await r.json();
+    if (!r.ok) throw new Error((data && data.error) || `HTTP ${r.status}`);
+  } catch (e) {
+    return; // không có số thì thôi; dòng trạng thái đã đủ dài, đừng thêm một câu nữa
+  }
+  if (token !== vidToken) return;
+
+  let co = 0;
+  for (const ad of ads) {
+    const st = data.stats && data.stats[ad.id];
+    if (!st) continue;
+    co++;
+    ad.likeCount = st.likeCount ?? ad.likeCount;
+    ad.commentCount = st.commentCount ?? ad.commentCount;
+    ad.collectCount = st.collectCount ?? ad.collectCount;
+  }
+  if (co) renderVideos(ads);
+}
+
+/**
  * Nguồn của một thẻ, dùng cho hàng lọc. Gom "sàn" thành MỘT nhóm: Shopee, Taobao, 1688, Temu
  * đều là video sản phẩm lấy từ trang bán hàng, người dùng đọc chúng như một loại.
  */
@@ -2151,6 +2189,13 @@ function vidEmbed(ad) {
   if (!ad || !ad.id) return '';
   if (ad.platform === 'tiktok') return `https://www.tiktok.com/embed/v2/${encodeURIComponent(ad.id)}`;
   if (ad.platform === 'youtube') return `https://www.youtube.com/embed/${encodeURIComponent(ad.id)}`;
+  // Douyin CÓ player nhúng chính thức, và nó nhận thẳng `aweme_id` mình đang có. Đo 2026-09-09:
+  // trả 200, KHÔNG có `X-Frame-Options` cũng không có `frame-ancestors`, và nhúng thử vào chính
+  // trang này thì chạy. Ghi chú cũ ("Douyin không mở player cho người ngoài") đã hết đúng.
+  //
+  // Nhúng từ TRÌNH DUYỆT NGƯỜI DÙNG nên không dính chỗ Douyin siết server của mình: mỗi người
+  // mở một video một lúc, bằng IP của chính họ.
+  if (ad.platform === 'douyin') return `https://open.douyin.com/player/video?vid=${encodeURIComponent(ad.id)}&autoplay=0`;
   return '';
 }
 
@@ -2215,6 +2260,10 @@ function vidCard(ad, idx) {
     stat('❤️', 'Lượt tim', ad.likeCount) +
     stat('💬', 'Bình luận', ad.commentCount) +
     stat('↗', 'Chia sẻ', ad.shareCount) +
+    // Douyin KHÔNG có chia sẻ và KHÔNG có lượt xem — player của họ đưa lượt LƯU vào đúng chỗ
+    // TikTok để chia sẻ. Cho nó một ô riêng thay vì nhét vào ô chia sẻ cho đủ hàng: hai thứ
+    // khác nghĩa, và một con số đặt nhầm tên thì tệ hơn một ô trống.
+    stat('🔖', 'Lượt lưu', ad.collectCount) +
     stat('▶', 'Lượt xem', ad.playCount);
   // Facebook không có tương tác nào (Ads Library không công bố — đo 2026-08-18), chỉ có số
   // người theo dõi Trang. Nói rõ đó là follower chứ không phải like của bài.
@@ -2308,6 +2357,7 @@ function tkInfoHTML(ad) {
     stat('❤️', 'Lượt tim', ad.likeCount) +
     stat('💬', 'Bình luận', ad.commentCount) +
     stat('↗', 'Chia sẻ', ad.shareCount) +
+    stat('🔖', 'Lượt lưu', ad.collectCount) +
     stat('▶', 'Lượt xem', ad.playCount);
   return (
     `<h3>${esc(ad.advertiser || '—')}</h3>` +

@@ -20,6 +20,7 @@ from lib.ads.imagematch import DEFAULT_MAX_DISTANCE, match_ads_by_image
 from lib.ads.keyword_extract import extract_keywords, extract_video_terms, region_lang
 from lib.ads.platform import PlatformSearchInput
 from lib.ads.platforms import PLATFORM_DESCRIPTORS, PLATFORM_IDS, get_platform
+from lib.ads.douyin_stats import fetch_stats as fetch_douyin_stats
 from lib.ads.tiktok_stats import fetch_stats
 from lib.ads.search import (
     MAX_LIMIT,
@@ -46,6 +47,9 @@ FILTERS_TTL_MS = 6 * 60 * 60 * 1000
 #: Tương tác video đổi chậm — một video hôm nay 35K tim thì ngày mai vẫn cỡ đó. Sáu giờ
 #: là đủ tươi để đọc mà vẫn cắt hẳn số lượt mở trang, thứ đắt nhất của đường này.
 TIKTOK_STATS_TTL_MS = 6 * 60 * 60 * 1000
+
+#: Nhớ cả lần KHÔNG đọc được (riêng Douyin), nhưng chỉ nửa giờ — xem chỗ dùng ở `/douyin-stats`.
+NHO_LAN_HUT_MS = 30 * 60 * 1000
 
 
 @router.get("/platforms")
@@ -277,6 +281,57 @@ async def tiktok_stats(request: Request) -> JSONResponse:
         for vid, one in moi.items():
             cache_set(f"tkstat:{vid}", one, TIKTOK_STATS_TTL_MS)
             stats[vid] = one
+
+    return JSONResponse({"stats": stats, "asked": len(ids), "got": len(stats)})
+
+
+@router.get("/douyin-stats")
+async def douyin_stats(request: Request) -> JSONResponse:
+    """
+    Tương tác của các video Douyin: tim, bình luận, lượt LƯU.
+
+    Tham số: `ids` — các id video ngăn bằng dấu phẩy.
+
+    Đọc từ player nhúng chính thức của Douyin (`open.douyin.com/player`) — xem
+    `lib/ads/douyin_stats.py`. KHÔNG có lượt chia sẻ và KHÔNG có lượt xem: Douyin không đưa hai
+    con số đó ra player, và chỗ TikTok để `shareCount` thì Douyin để `collect`.
+
+    CACHE LÀ PHẦN QUAN TRỌNG NHẤT ở đây, không phải chỗ tối ưu thêm. Douyin siết endpoint player
+    nên mỗi lượt đọc chỉ lấy được một phần; cache theo từng id khiến các lượt tìm sau nhặt dần
+    những video đã đọc được, thay vì mỗi lần lại bắt đầu từ con số không.
+    """
+    query = multi_query(request)
+    raw = (query.get("ids", [""])[0] or "").strip()
+    ids = [x.strip() for x in raw.split(",") if x.strip().isdigit()]
+    if not ids:
+        return JSONResponse({"stats": {}})
+
+    stats: dict[str, dict[str, int]] = {}
+    con_thieu: list[str] = []
+    for vid in ids:
+        cached = cache_get(f"dystat:{vid}")
+        if cached is not None:
+            if cached:  # `{}` = đã hỏi và Douyin không trả; xem NHO_LAN_HUT
+                stats[vid] = cached
+        else:
+            con_thieu.append(vid)
+
+    if con_thieu:
+        moi = await fetch_douyin_stats(con_thieu)
+        for vid in con_thieu:
+            one = moi.get(vid)
+            if one:
+                cache_set(f"dystat:{vid}", one, TIKTOK_STATS_TTL_MS)
+                stats[vid] = one
+            else:
+                # NHỚ CẢ LẦN HỤT. Không có dòng này thì mỗi lượt tìm lại đi hỏi đúng những video
+                # mà Douyin đã từ chối, và mỗi cái tốn hai lượt mở trang chờ hết giờ. Đo
+                # 2026-09-09: 5/6 video có cache mà lượt sau VẪN mất 44 giây, gần như toàn bộ
+                # là chờ đúng một video hỏng.
+                #
+                # TTL ngắn hơn hẳn bản có số: Douyin từ chối theo tần suất chứ không phải theo
+                # video, nên nửa giờ sau hỏi lại thì có khi lại được.
+                cache_set(f"dystat:{vid}", {}, NHO_LAN_HUT_MS)
 
     return JSONResponse({"stats": stats, "asked": len(ids), "got": len(stats)})
 

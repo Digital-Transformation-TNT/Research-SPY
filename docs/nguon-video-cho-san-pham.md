@@ -343,6 +343,68 @@ Douyin đầy ở cả hai dòng vì cả hai ngành hàng đều có mặt ở 
 
 ---
 
+## 3e. Douyin: chỉ số tương tác, và xem trực tiếp trên web (09/09/2026)
+
+### Chỉ số: Bing không có, phải đi chỗ khác
+
+Thẻ Douyin từ Bing **không có chỉ số nào** — kể cả lượt xem. Thẻ zh-CN chỉ chở tên kênh và
+ngày đăng ("7 个月之前"), khác hẳn thẻ TikTok vốn có kèm "2,1Ng lượt xem".
+
+| Đường thử | Kết quả |
+|---|---|
+| `douyin.com/video/<id>` | **đá sang feed gợi ý** (`/jingxuan?modal_id=…`) — trả về một video KHÁC |
+| `iesdouyin.com/share/video/` | chuyển hướng về đúng chỗ trên, cùng kết cục |
+| **`open.douyin.com/player/video?vid=<id>`** | ✅ chạy, và nhận thẳng `aweme_id` mình đang có |
+
+Player nhúng công khai không đòi đăng nhập và không đá đi đâu. Số nằm trong ba khối class rõ
+ràng: `.digg` (tim) · `.comment` (bình luận) · `.collect` (**lưu**).
+
+**Douyin không đưa lượt chia sẻ và không đưa lượt xem.** Chỗ TikTok để `shareCount` thì Douyin
+để `collect`. Không ánh xạ `collect` vào ô chia sẻ cho đủ cột — hai thứ khác nghĩa, và một con
+số đặt nhầm tên tệ hơn một ô trống. Giao diện có ô riêng 🔖 Lượt lưu.
+
+### Trần cứng: Douyin siết endpoint player
+
+Lúc hụt, trang trả về **rỗng hoàn toàn** — `innerText` dài 0, không `<video>`, không `.digg`,
+URL đúng và không chuyển hướng. Không phải trang lỗi, không phải trang xác minh.
+
+Chỉnh tốc độ **không cứu được**, và id hụt đổi chỗ mỗi lượt nên không phải video nào hỏng:
+
+| | video đọc được |
+|---|---|
+| 4 luồng song song | 4/6 |
+| 2 luồng song song | 2/6 — chậm gấp đôi mà tệ hơn |
+| chạy đơn lẻ, nghỉ 8 giây | 1/3 |
+| 3 luồng + **thử lại 1 lần** | **5/6** |
+
+Nút thắt là TỔNG SỐ REQUEST, không phải nhịp. Nên thứ thật sự đỡ là **cache**, không phải giảm
+tốc — kể cả cache LẦN HỤT:
+
+```
+lượt 1 (cache trống)              46,1 giây
+lượt 2, chỉ cache bản CÓ số       44,3 giây  ← gần như không đỡ gì
+lượt 2, cache cả lần hụt           0,3 giây
+```
+
+Không nhớ lần hụt thì mỗi lượt tìm lại đi hỏi đúng những video Douyin đã từ chối, mỗi cái hai
+lượt mở trang chờ hết giờ. TTL của bản hụt ngắn hơn hẳn (30 phút so với 6 giờ): Douyin từ chối
+theo tần suất chứ không theo video.
+
+**Hệ quả phải nói ra:** bảng số Douyin sẽ THƯA. Ô trống nghĩa là "Douyin không trả lần này";
+**số 0 mới là số thật** — đo được một video đăng một tuần trước giữ nguyên `0 0 0` suốt bảy
+giây trong khi video vẫn phát bình thường. Douyin đầy video bán hàng không ai tương tác.
+
+### Xem trực tiếp trên web: ĐƯỢC
+
+Cùng player ấy nhúng được. Đo: HTTP 200, **không** `X-Frame-Options`, **không**
+`frame-ancestors`; nhúng thử vào chính trang research thì chạy, có chrome người dùng bấm phát
+được. Ghi chú cũ *"Douyin không mở player cho người ngoài"* đã hết đúng.
+
+Và nhúng thì **không dính chỗ Douyin siết**: iframe chạy bằng trình duyệt và IP của người dùng,
+mỗi lần một video — khác hẳn việc server mở 16 trang một lượt để đọc số.
+
+---
+
 ## 4. Việc còn để lại
 
 - **`PLAYWRIGHT_BROWSERS_PATH`.** `playwright install` cất Chromium vào `%LOCALAPPDATA%` của
