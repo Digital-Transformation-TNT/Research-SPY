@@ -1,13 +1,20 @@
 """
 NGUỒN: Facebook Ads Library.
 
-API Ad Library chính thức của Facebook chỉ phủ quảng cáo chính trị và vấn đề xã hội,
-nên vô dụng với research sản phẩm thương mại. File này dùng đúng endpoint GraphQL mà
-giao diện Ads Library công khai đang dùng: nhặt một POST `AdLibrarySearchPaginationQuery`
-đã ký từ trang đã làm nóng, rồi phát lại nó với `variables` được viết lại cho từ khoá,
-quốc gia và con trỏ phân trang bất kỳ.
+API Ad Library chính thức của Facebook chỉ phủ quảng cáo chính trị và vấn đề xã hội, nên vô
+dụng với research sản phẩm thương mại. Ba đường lấy dữ liệu, thử theo đúng thứ tự này:
 
-Nếu Facebook đổi hình dạng truy vấn, đây là file duy nhất cần sửa.
+  1. ĐỌC TRANG (`_search_via_page`) — Facebook nhúng sẵn trang kết quả đầu vào HTML của trang
+     Ad Library. Không cần máy-thợ, không cần truy vấn đã ký, ~5 giây, 23–30 quảng cáo.
+  2. MÁY-THỢ (`_search_via_worker`) — Chrome thật ở IP dân cư, cho lúc IP server bị captcha.
+  3. PHÁT LẠI TRUY VẤN ĐÃ KÝ (`run` trong `search`) — nhặt POST `AdLibrarySearchPaginationQuery`
+     rồi phát lại với `variables` viết lại. Đường DUY NHẤT phân trang được (`end_cursor`), nhưng
+     Facebook soft-block việc phát lại (HTTP 200 kèm 0 kết quả), nên nó đứng cuối.
+
+Thứ tự này ĐẢO so với bản trước, và đảo vì một phép đo chứ không phải vì gu — xem ghi chú
+trong `_read_library_page` và `docs/nguon-video-cho-san-pham.md`.
+
+Nếu Facebook đổi hình dạng dữ liệu, đây là file duy nhất cần sửa.
 """
 
 from __future__ import annotations
@@ -21,7 +28,14 @@ from urllib.parse import parse_qsl, quote, urlencode
 
 from playwright.async_api import Request
 
-from lib.core.browser import SessionRecipe, fetch_in_page, get_session, invalidate_session
+from lib.core.browser import (
+    SessionRecipe,
+    browser_lane,
+    describe_browser_error,
+    fetch_in_page,
+    get_session,
+    invalidate_session,
+)
 from lib.core.config import env_number, env_string
 from lib.core.jscompat import jround
 from lib.core.rate_limit import schedule
@@ -43,6 +57,7 @@ from ..platform import (
     PlatformOption,
     PlatformSearchInput,
     PlatformSearchOutcome,
+    request_with,
 )
 from ..types import Ad, CountryCode, Creative
 
@@ -121,6 +136,20 @@ _recipe = SessionRecipe(
 # ---------------------------------------------------------------------------
 
 
+#: Độ sâu tối đa khi duyệt cây JSON của Facebook.
+#:
+#: 16 là con số của bản chỉ đọc RESPONSE GraphQL, nơi quảng cáo nằm khá nông. Trang Ad Library
+#: nhúng sẵn trang kết quả đầu vào HTML, và ở đó cùng bản ghi ấy bị bọc thêm mấy lớp
+#: `ScheduledServerJS → __bbox → RelayPrefetchedStreamCache` — đo 2026-09-08:
+#:
+#:     end_cursor      độ sâu 15   ← lọt qua giới hạn 16, nên vẫn đọc được con trỏ
+#:     ad_archive_id   độ sâu 19   ← BỊ CẮT
+#:
+#: Đúng cái bẫy tệ nhất: hàm trả về "0 quảng cáo, có con trỏ", trông y hệt một truy vấn thật
+#: sự không có kết quả. 26 chừa dư cho việc Facebook bọc thêm một hai lớp nữa.
+_WALK_DEPTH = 26
+
+
 def _extract_ads(text: str) -> tuple[list[dict[str, Any]], str | None]:
     """
     Phản hồi về dưới dạng nhiều dòng JSON, bản ghi quảng cáo nằm ở độ sâu không ổn định —
@@ -131,7 +160,7 @@ def _extract_ads(text: str) -> tuple[list[dict[str, Any]], str | None]:
 
     def walk(node: Any, depth: int = 0) -> None:
         nonlocal cursor
-        if depth > 16 or node is None:
+        if depth > _WALK_DEPTH or node is None:
             return
         if isinstance(node, list):
             for item in node:
@@ -295,6 +324,112 @@ def _rewrite_variables(post_body: str, mutate: dict[str, Any]) -> str:
     return urlencode(out)
 
 
+# ---------------------------------------------------------------------------
+# Đọc thẳng TRANG Ad Library (không cần máy-thợ, không cần truy vấn đã ký)
+# ---------------------------------------------------------------------------
+
+#: Facebook giờ NHÚNG SẴN trang kết quả đầu tiên vào chính HTML của trang Ad Library, trong một
+#: `<script type="application/json">` chứa `search_results_connection.edges[].node.collated_results[]`
+#: — cùng hình dạng mà `_extract_ads` vốn đã đọc được từ response GraphQL.
+#:
+#: Đây là đường RẺ NHẤT và nó đổi hẳn kết luận cũ ("playwright trên VPS bị soft-block"). Cái bị
+#: chặn là POST `AdLibrarySearchPaginationQuery` tự phát lại, không phải bản thân trang. Đo
+#: 2026-09-08 NGAY TRÊN VPS, 8 lượt (2 bản trình duyệt × 4 truy vấn VN/US): 7 lượt ra 23–30
+#: quảng cáo, 1 lượt trượt vì chờ mù bằng `wait_for_timeout` — nên ở đây chờ ĐÚNG cái script ấy
+#: xuất hiện, không chờ theo đồng hồ.
+#:
+#: Cùng lúc đó, đường máy-thợ trả 0 cho MỌI từ khoá: nó ngồi đợi `/api/graphql` mà trang không
+#: còn gọi nữa (đo: gql=1, cap=0). Nên đường này chạy TRƯỚC, máy-thợ chỉ còn là lưới đỡ.
+_PAGE_READY_JS = (
+    "() => [...document.querySelectorAll('script[type=\"application/json\"]')]"
+    ".some(s => s.textContent && s.textContent.includes('ad_archive_id'))"
+)
+_PAGE_SCRIPTS_JS = (
+    "els => els.map(e => e.textContent).filter(t => t && t.includes('ad_archive_id'))"
+)
+
+#: Trang nhúng đúng MỘT trang kết quả (đo: 30 bản ghi) và cuộn KHÔNG kéo thêm — đo 2026-09-08,
+#: cuộn 10 lần chỉ làm trang cao thêm, số `ad_archive_id` đứng yên ở 30 và không có `/api/graphql`
+#: nào chở quảng cáo. Nên đừng thêm vòng cuộn ở đây: nó chỉ tốn thời gian chờ.
+PAGE_LOAD_TIMEOUT_MS = 45_000
+PAGE_READY_TIMEOUT_MS = 25_000
+
+
+def _library_url(keyword: str, country: str, active_status: str, search_type: str) -> str:
+    """URL trang Ad Library — đúng thứ người dùng gõ vào trình duyệt, không phải endpoint nội bộ."""
+    query = urlencode(
+        {
+            "active_status": active_status,
+            "ad_type": "all",
+            "country": country,
+            "media_type": "all",
+            "q": keyword,
+            "search_type": search_type,
+        }
+    )
+    return f"https://www.facebook.com/ads/library/?{query}"
+
+
+async def _read_library_page(url: str, locale: str) -> tuple[list[str], str | None]:
+    """
+    Mở trang Ad Library bằng trình duyệt thật rồi trả về nội dung các script JSON có quảng cáo.
+
+    Trả `([], lý_do)` khi không đọc được. Lý do phải NÓI ĐƯỢC nó hỏng ở đâu — một danh sách rỗng
+    im lặng ở đây đọc thành "sản phẩm này không ai chạy quảng cáo", là kiểu sai đắt nhất của tool.
+
+    THỬ HAI LẦN, và không phải để cho chắc. Đo 2026-09-08: cùng một truy vấn, cùng một máy, lượt
+    này ra 30 quảng cáo lượt kia ra 0 — Facebook thỉnh thoảng trả bản HTML chưa kèm kết quả.
+    Một lần trượt như vậy hiện lên giao diện thành "không có quảng cáo nào", tức là một câu trả
+    lời SAI về thị trường, nên nó đáng giá thêm một lượt mở trang.
+    """
+    for _ in (1, 2):
+        pages, why = await _read_library_page_once(url, locale)
+        if pages or why:
+            return pages, why
+    return [], None
+
+
+async def _read_library_page_once(url: str, locale: str) -> tuple[list[str], str | None]:
+    try:
+        async with browser_lane() as browser:
+            context = await browser.new_context(locale=locale)
+            page = await context.new_page()
+            try:
+                await page.goto(url, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
+                try:
+                    await page.wait_for_function(_PAGE_READY_JS, timeout=PAGE_READY_TIMEOUT_MS)
+                except Exception:
+                    # Không có script quảng cáo nào sau ngần ấy giây: hoặc truy vấn thật sự
+                    # rỗng, hoặc gặp tường chặn. Phân biệt được bằng chữ trên trang.
+                    body = ""
+                    try:
+                        body = await page.inner_text("body")
+                    except Exception:
+                        pass
+                    if "captcha" in body.lower():
+                        return [], "Facebook đòi captcha ở IP này"
+                    if not body.strip():
+                        return [], "trang Ad Library không tải được (nội dung rỗng)"
+                    return [], None  # trang lên bình thường mà không có quảng cáo ⇒ rỗng THẬT
+                scripts = await page.eval_on_selector_all(
+                    'script[type="application/json"]', _PAGE_SCRIPTS_JS
+                )
+                return [t for t in scripts if isinstance(t, str)], None
+            finally:
+                try:
+                    await page.close()
+                except Exception:
+                    pass
+    except Exception as error:
+        return [], describe_browser_error(error)
+
+
+def _bo_nhay(keyword: str) -> str | None:
+    """Bỏ cặp nháy bọc ngoài, hoặc `None` nếu cụm vốn không bọc nháy. Gương với hai nguồn video."""
+    cắt = keyword.strip()
+    return cắt[1:-1].strip() or None if len(cắt) > 2 and cắt[0] == '"' and cắt[-1] == '"' else None
+
+
 class Facebook(AdPlatform):
     id = PLATFORM_ID
     label = "Facebook"
@@ -429,15 +564,95 @@ class Facebook(AdPlatform):
             )
         return PlatformSearchOutcome(ads=collected[:limit])
 
+    async def _search_via_page(self, request: PlatformSearchInput) -> PlatformSearchOutcome:
+        """
+        Đọc trang Ad Library bằng trình duyệt của CHÍNH server. Không máy-thợ, không extension,
+        không truy vấn đã ký — xem ghi chú ở `_read_library_page`.
+        """
+        options: FacebookOptions = request.options
+        url = _library_url(
+            request.keyword,
+            request.country,
+            options.active_status,
+            SEARCH_TYPE[options.match_mode],
+        )
+        pages, why = await _read_library_page(url, "vi-VN" if request.country == "VN" else "en-US")
+
+        collected: list[Ad] = []
+        seen: set[str] = set()
+        raw_count = 0
+        for text in pages:
+            raw, _cursor = _extract_ads(text)
+            raw_count += len(raw)
+            for raw_ad in raw:
+                ad = _normalise(raw_ad, request.country)
+                if ad is None or ad.id in seen:
+                    continue
+                seen.add(ad.id)
+                collected.append(ad)
+
+        if not collected:
+            # Cùng ba nhánh như đường máy-thợ, và cũng vì cùng lý do: "Facebook 0" không nói
+            # được nó rỗng vì trang không mở nổi, vì hình dạng dữ liệu đổi, hay vì đúng là
+            # không ai chạy quảng cáo cụm này.
+            chars = sum(len(t) for t in pages)
+            note = (
+                f"đọc trang Ad Library: {len(pages)} khối JSON ({chars:,} ký tự), "
+                f"{raw_count} quảng cáo thô → 0 dùng được cho “{request.keyword}” {request.country}"
+            )
+            return PlatformSearchOutcome(ads=[], notice=f"{note} · {why}" if why else note)
+
+        limit = request.limit
+        if request.relax_keyword:
+            return PlatformSearchOutcome(
+                ads=collected[:limit],
+                notice=f"Khớp ảnh: {len(collected)} ứng viên FB — để ảnh quyết định, không lọc chữ.",
+            )
+        return PlatformSearchOutcome(ads=collected[:limit])
+
     async def search(self, request: PlatformSearchInput) -> PlatformSearchOutcome:
+        # BỌC NHÁY, và chỉ bọc ở đây — không đụng `params.keyword` ở tầng trên, vì cụm trần
+        # còn được dùng cho cache key và cho `relevance.py` (cờ `phrase_hit` đi so cụm với chữ
+        # trong quảng cáo; bọc nháy vào đó là đi tìm dấu nháy trong ad copy, không bao giờ khớp).
+        #
+        # Nói thẳng: đo 2026-09-08 thì Facebook BỎ QUA dấu nháy — `massage gun` và
+        # `"massage gun"` đều ra đúng 1.522 kết quả, `tai nghe bluetooth` đều ra 890, cụm dài
+        # đều ra 1. Độ chặt của phép khớp do `search_type` quyết định, không do dấu nháy.
+        # Giữ nháy ở đây là theo yêu cầu của chủ dự án; nó vô hại theo số đo hiện tại, và nhánh
+        # thử-lại bên dưới là cái chặn nếu một ngày Facebook đổi ý và coi nháy là ký tự thường.
+        if not (request.keyword.startswith('"') and request.keyword.endswith('"')):
+            request = request_with(request, f'"{request.keyword.strip()}"')
+
+        out = await self._search_qua_ba_duong(request)
+        if out.ads:
+            return out
+        if (tran := _bo_nhay(request.keyword)) is not None:
+            lai = await self._search_qua_ba_duong(request_with(request, tran))
+            if lai.ads:
+                return PlatformSearchOutcome(
+                    ads=lai.ads,
+                    notice=f'Bọc nháy không ra quảng cáo nào — đã tìm lại bằng cụm trần "{tran}".',
+                )
+        return out
+
+    async def _search_qua_ba_duong(self, request: PlatformSearchInput) -> PlatformSearchOutcome:
         keyword, country, limit = request.keyword, request.country, request.limit
         options: FacebookOptions = request.options
 
-        # Máy-thợ online → đi đường Chrome THẬT (né soft-block automation của FB: playwright trên
-        # VPS trả 200 kèm 0, Chrome thật ra >50k). Trả None nghĩa là thợ vừa rớt → để playwright thử.
+        # THỨ TỰ ĐÃ ĐẢO, 2026-09-08. Trước đây máy-thợ đi trước vì tin rằng playwright bị FB
+        # soft-block. Đo lại thì ngược: đọc TRANG Ad Library bằng trình duyệt của server ra
+        # 23–30 quảng cáo ngay trên VPS, còn máy-thợ trả 0 cho mọi từ khoá (nó đợi
+        # `/api/graphql` mà trang không còn gọi). Xem `_read_library_page`.
+        #
+        # Máy-thợ vẫn giữ làm lưới đỡ: nó chạy Chrome ở IP dân cư, nên khi IP server bị FB
+        # đưa vào diện captcha thì nó là đường duy nhất còn lại.
+        page_out = await self._search_via_page(request)
+        if page_out.ads:
+            return page_out
+
         if worker_online():
             out = await self._search_via_worker(request)
-            if out is not None:
+            if out is not None and out.ads:
                 return out
 
         async def run() -> PlatformSearchOutcome:
@@ -516,7 +731,19 @@ class Facebook(AdPlatform):
                 )
             return PlatformSearchOutcome(ads=collected[:limit])
 
-        return await schedule(f"{PLATFORM_ID}:{country}", MIN_INTERVAL_MS, run)
+        # ĐƯỜNG THỨ BA: nhặt POST `AdLibrarySearchPaginationQuery` đã ký rồi phát lại. Đây là
+        # đường CŨ, và nó vẫn ở đây vì nó là đường duy nhất PHÂN TRANG được (`end_cursor`) —
+        # trang nhúng chỉ cho đúng 30 quảng cáo. Nó đứng cuối vì Facebook soft-block việc phát
+        # lại: HTTP 200 kèm 0 kết quả, không báo lỗi gì.
+        #
+        # Nuốt lỗi ở đây là CÓ CHỦ Ý: để nó ném lên thì thông báo cuối cùng người dùng đọc
+        # được sẽ là "Facebook GraphQL trả về HTTP 4xx" của đường phụ, che mất chẩn đoán của
+        # đường chính (`page_out.notice`) — thứ nói đúng chỗ cần đi sửa.
+        try:
+            replay = await schedule(f"{PLATFORM_ID}:{country}", MIN_INTERVAL_MS, run)
+        except Exception:
+            replay = PlatformSearchOutcome(ads=[])
+        return replay if replay.ads else page_out
 
 
 facebook = Facebook()

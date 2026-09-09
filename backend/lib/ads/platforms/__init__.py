@@ -17,15 +17,19 @@ from __future__ import annotations
 from lib.core.model import CamelModel
 
 from ..platform import AdPlatform, PlatformCapabilities, PlatformOption
+from .douyinvideo import douyinvideo
 from .etsy import etsy
 from .facebook import facebook
 from .shopee import shopee
 from .tiktok import tiktok
+from .tiktokvideo import tiktokvideo
 from .youtube import youtube
 
 AD_PLATFORMS: dict[str, AdPlatform] = {
     "facebook": facebook,
     "tiktok": tiktok,
+    "tiktokvideo": tiktokvideo,
+    "douyinvideo": douyinvideo,
     "youtube": youtube,
     "shopee": shopee,
     "etsy": etsy,

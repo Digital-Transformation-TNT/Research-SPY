@@ -29,6 +29,7 @@ from lib.ads.search import (
     run_ad_search,
 )
 from lib.ads.types import AdSearchResult, ClientSubmission, PlatformStatus
+from lib.core.browser import lane_stats
 from lib.core.cache import cache_get, cache_set, cache_stats
 from lib.core.config import env_string
 from lib.core.jscompat import or_default, to_number
@@ -85,7 +86,16 @@ async def search(request: Request) -> JSONResponse:
     title = (query.get("title", [""])[0] or "").strip()
     if title and not params.keyword:
         specific_kw, broad_kw = await _keywords_from_title(title)
-        params = params.model_copy(update={"keyword": broad_kw})
+        # broad cho Ad Library, specific cho các nguồn VIDEO — xem `keyword_by_platform`
+        # trong `lib/ads/types.py` để biết vì sao một cụm không dùng chung được.
+        params = params.model_copy(
+            update={
+                "keyword": broad_kw,
+                "keyword_by_platform": await _video_keywords(
+                    params.platforms, specific_kw, broad_kw, title
+                ),
+            }
+        )
     else:
         specific_kw = params.keyword  # search từ khoá trực tiếp: specific = broad = keyword
 
@@ -97,6 +107,96 @@ async def search(request: Request) -> JSONResponse:
     # Trả về SPECIFIC (đúng SP) để giao diện hiện đúng brand+model và extension tìm TikTok đúng SP,
     # dù FB vừa search bằng broad.
     return JSONResponse(dump(result.model_copy(update={"keyword": specific_kw})))
+
+
+#: Nguồn VIDEO tìm bằng cụm SPECIFIC, không phải cụm broad của Ad Library.
+#:
+#: Liệt kê theo TÊN chứ không suy ra từ `capabilities.video_ads`: Facebook cũng khai
+#: `video_ads=True` (nó có video quảng cáo thật), nhưng nó lại là nguồn DUY NHẤT phải dùng
+#: cụm broad. Suy theo cờ ấy là vừa sửa xong đã hỏng lại Facebook.
+_NGUON_VIDEO = ("youtube", "tiktokvideo")
+
+#: Douyin đứng riêng vì nó cần cụm bằng TIẾNG TRUNG, không phải cụm specific tiếng Việt.
+#:
+#: Đo 2026-09-08: `site:douyin.com tai nghe bluetooth` → Bing trả toàn kết quả YouTube, 0 link
+#: Douyin. Cùng lúc đó `site:douyin.com 蓝牙耳机` ra 20 thẻ. Douyin gần như không có nội dung
+#: tiếng Việt, nên hỏi bằng tiếng Việt là hỏi một thứ không tồn tại — và câu trả lời "0 video"
+#: đọc thành "sản phẩm này không ai làm video ở Trung Quốc", tức là một kết luận SAI về thị
+#: trường. Xem `lib/ads/platforms/douyinvideo.py`.
+_NGUON_TIENG_TRUNG = ("douyinvideo",)
+
+#: Etsy là sàn nói TIẾNG ANH. Đo 2026-09-08: cụm broad tiếng Việt "tai nghe bluetooth" → Etsy
+#: trả 0 kết quả, và câu "Etsy không có kết quả" đọc thành "món này không ai bán trên Etsy" —
+#: sai, vì thứ sai là ngôn ngữ của câu hỏi chứ không phải thị trường.
+_NGUON_TIENG_ANH = ("etsy",)
+
+
+async def _video_keywords(
+    platforms: list[str], specific: str, broad: str, title: str
+) -> dict[str, str]:
+    """
+    `{nguồn video: cụm specific đã bọc nháy}` cho các nguồn đang được hỏi.
+
+    BỌC NHÁY vì hai công cụ tìm kiếm này hiểu `"..."` là "phải có đúng cụm này" —
+    khác Facebook, nơi dấu nháy bị bỏ qua hoàn toàn (đo 2026-09-08: `massage gun` và
+    `"massage gun"` đều ra đúng 1.522 kết quả, nên thêm nháy ở đó chỉ là ký tự thừa).
+
+    Đo trên "tai nghe redmi buds 6 play", đếm thẻ có đúng tên sản phẩm trong 30 thẻ đầu:
+
+        YouTube  trần 25 · nháy 27   (lặp 2 lượt, ra đúng cặp số ấy cả hai lần)
+        Bing     trần 28 · nháy 28
+
+    Tức là nháy có lợi ở YouTube và không hại ở Bing. Nguồn tự lo phần rơi về cụm trần khi
+    cụm bọc nháy không ra gì — xem `_bo_nhay` ở mỗi nguồn.
+    """
+    ra: dict[str, str] = {}
+    if specific:
+        ra.update({pid: f'"{specific}"' for pid in platforms if pid in _NGUON_VIDEO})
+
+    if any(pid in _NGUON_TIENG_TRUNG for pid in platforms) and (broad or title):
+        # DỊCH TỪ CỤM BROAD, KHÔNG PHẢI TỪ TIÊU ĐỀ — và đây là chỗ đã đo, không phải gu.
+        #
+        # Dịch cả tiêu đề ra tiếng Trung thì Gemini trả một cụm ghép dài, và Douyin không có gì
+        # khớp. Đo 2026-09-08 trên chính hai cụm nó sinh ra:
+        #
+        #     "红米耳机redmi buds 6 play"   →  0 video   (4,2 giây — Bing thật sự không có)
+        #     "小猫印花纯棉T恤"              →  0 video
+        #     "蓝牙耳机"   (từ broad)       → 19 video
+        #     "猫咪T恤"                     → 20 video
+        #
+        # Lý do: Douyin là sàn NỘI ĐỊA Trung Quốc. Một mã máy bán ở Việt Nam thường không tồn
+        # tại ở đó, còn NGÀNH HÀNG thì luôn có. Nên với nguồn này, cụm broad không phải là hạ
+        # tiêu chuẩn — nó là cụm duy nhất hỏi được một câu có câu trả lời.
+        #
+        # KHÔNG bọc nháy: tiếng Trung không có dấu cách giữa từ, nên "đúng cụm" ở đây gần như
+        # là "đúng chuỗi ký tự" — chặt tới mức luôn rỗng.
+        cụm = await _cum_video_theo_tieng(broad or title, "CN")
+        if cụm:
+            ra.update({pid: cụm for pid in platforms if pid in _NGUON_TIENG_TRUNG})
+
+    if any(pid in _NGUON_TIENG_ANH for pid in platforms) and title:
+        anh = await _cum_video_theo_tieng(title, "US")
+        if anh:
+            ra.update({pid: anh for pid in platforms if pid in _NGUON_TIENG_ANH})
+    return ra
+
+
+async def _cum_video_theo_tieng(title: str, region: str) -> str:
+    """
+    Tiêu đề sản phẩm → MỘT cụm tìm video viết bằng tiếng của `region`, có cache.
+
+    Cùng cache key với route `/api/ads/video-keywords` (`gemvid3:<region>:<title>`) nên hai
+    đường dùng chung một bản dịch: nút 🎥 Douyin của giao diện và nguồn `douyinvideo` ở đây
+    không bao giờ đi tìm bằng hai cụm khác nhau.
+    """
+    key = f"gemvid3:{region}:{title.lower()}"
+    cached = cache_get(key)
+    if cached is None:
+        cached, from_gemini = await extract_video_terms(title, region)
+        if from_gemini:
+            cache_set(key, cached)
+    first = next((str(x).strip() for x in (cached or []) if str(x).strip()), "")
+    return first
 
 
 async def _keywords_from_title(title: str) -> tuple[str, str]:
@@ -414,6 +514,10 @@ async def health() -> JSONResponse:
         {
             "platforms": list(results),
             "cache": cache_stats(),
+            # Hàng đợi trình duyệt: `waiting` > 0 kéo dài nghĩa là request đang xếp chồng lên
+            # nhau và mọi nguồn sẽ chậm dần — thứ trước đây chỉ đoán được qua việc nguồn nào
+            # đó bỗng trả rỗng. Xem `browser_lane` trong `lib/core/browser.py`.
+            "browserLanes": lane_stats(),
             "tookMs": round((time.monotonic() - started_at) * 1000),
         }
     )

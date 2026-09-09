@@ -4,7 +4,7 @@ Công cụ nội bộ cho phòng test sản phẩm. Bốn mục lớn, độc l�
 
 | Mục | Đường dẫn | Làm gì | Lấy dữ liệu từ |
 |---|---|---|---|
-| **Sản phẩm & Content** | `/ads` | Top sản phẩm đa sàn, content quảng cáo đang chạy, video theo sản phẩm | Facebook Ads Library, YouTube, Etsy *(qua server)* · **Shopee, TikTok Shop, Amazon, Taobao, 1688, Temu, video TikTok/Douyin** *(qua extension)* |
+| **Sản phẩm & Content** | `/ads` | Top sản phẩm đa sàn, content quảng cáo đang chạy, video theo sản phẩm | Facebook Ads Library, YouTube, video TikTok *(qua Bing)*, Etsy *(qua server)* · **Shopee, TikTok Shop, Amazon, Taobao, 1688, Temu, video TikTok/Douyin** *(qua extension)* |
 | **Từ khoá** | `/keywords` | Mở rộng từ khoá gốc ra biến thể đang được tìm kiếm, đo xu hướng | Google Suggest, Shopee, TikTok, Google Trends, 1688, Amazon, Douyin |
 | **Tìm bằng ảnh** | `/image` | Một tấm ảnh, ra nguồn hàng và giá ở năm sàn | 1688, Alibaba.com, AliExpress, Taobao, Google Lens |
 | **Cơ hội** | `/opportunity` | Hỏi đáp về khoảng trống thị trường trên dữ liệu đã thu | tổng hợp từ ba mục trên |
