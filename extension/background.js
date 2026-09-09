@@ -857,8 +857,42 @@ async function costBatch(seedUrl, products) {
 // Amazon: SW fetch trần bị captcha. Cách chắc: điều hướng MỘT tab nền riêng tới trang search
 // (Amazon render SSR → tab load như user thật), rồi đọc sản phẩm từ DOM.
 const amazonTab = () => keptTab('amazon');
+
+/*
+ * ĐẶT TIỀN TỆ TỪ NGUỒN, thay vì đoán ở đầu bên kia.
+ *
+ * Amazon đổi tiền theo địa chỉ giao hàng nó ĐOÁN TỪ IP, không theo tên miền. Máy-thợ ngồi ở
+ * Việt Nam nên amazon.com trả "VND 693,173" chứ không phải "$26.65" — và bảng thì gắn nhãn
+ * USD cứng theo tên miền, tức mọi giá lệch hai vạn sáu nghìn lần mà không có dấu hiệu nào
+ * trên màn hình.
+ *
+ * Amazon nhớ lựa chọn ấy ở cookie `i18n-prefs`. Đo 2026-09-08, cùng truy vấn `razer blackshark
+ * v2 x` từ IP Việt Nam:
+ *
+ *     không cookie          giá VND, 15/21 thẻ có giá
+ *     i18n-prefs=USD        giá USD ($39.99, $71.99…), 15/16 thẻ có giá
+ *
+ * Hỏi đúng thứ mình cần rẻ hơn nhiều so với đoán xem mình vừa nhận được thứ gì.
+ */
+const AMZ_CUR_COOKIE = {
+  'amazon.com': 'USD', 'amazon.co.uk': 'GBP', 'amazon.de': 'EUR', 'amazon.fr': 'EUR',
+  'amazon.it': 'EUR', 'amazon.es': 'EUR', 'amazon.co.jp': 'JPY', 'amazon.ca': 'CAD',
+};
+async function amazonDatTienTe(domain) {
+  const cur = AMZ_CUR_COOKIE[domain];
+  if (!cur) return;
+  try {
+    await chrome.cookies.set({
+      url: `https://www.${domain}/`, domain: `.${domain}`, path: '/',
+      name: 'i18n-prefs', value: cur,
+      expirationDate: Math.floor(Date.now() / 1000) + 31536000,
+    });
+  } catch (e) { /* thiếu quyền hoặc Amazon từ chối — `curTuChu` bên research.js vẫn đỡ được */ }
+}
+
 async function amazonSearch(domain, url) {
   try {
+    await amazonDatTienTe(domain);
     const tab = await amazonTab();
     await chrome.tabs.update(tab.id, { url });
     await waitForComplete(tab.id, 15000);
@@ -883,18 +917,46 @@ async function amazonSearch(domain, url) {
         };
         // Giá hiện tại: ưu tiên .a-offscreen (đủ định dạng), fallback .a-price-whole+fraction, rồi
         // bất kỳ .a-offscreen nào có số — để dòng không buy-box vẫn ra giá thay vì "—".
-        const priceOf = (el) => {
+        // Giá kèm NGUYÊN VĂN chuỗi, vì loại tiền phải đọc từ chính chuỗi đó (Amazon đổi tiền
+        // theo IP, không theo tên miền — xem `curTuChu` bên research.js). Trả `{n, text}`.
+        const priceInfo = (el) => {
           const off = el.querySelector('.a-price:not(.a-text-price) .a-offscreen') || el.querySelector('.a-price .a-offscreen');
           let n = off && money(off.textContent);
-          if (n) return n;
+          if (n) return { n: n, text: off.textContent.trim() };
           const whole = el.querySelector('.a-price-whole');
           if (whole) {
             const frac = el.querySelector('.a-price-fraction');
-            n = money(whole.textContent + (frac ? '.' + frac.textContent : ''));
-            if (n) return n;
+            const t = whole.textContent + (frac ? '.' + frac.textContent : '');
+            n = money(t);
+            if (n) return { n: n, text: t };
           }
-          for (const o of el.querySelectorAll('.a-offscreen')) { n = money(o.textContent); if (n) return n; }
-          return null;
+          // BỐ CỤC THẺ KHÔNG DÙNG COMPONENT `.a-price` — có thật, không phải thẻ hết hàng.
+          //
+          // Đo 2026-09-08 trên `amazon.com/s?k=razer blackshark v2 x`: 6/21 thẻ không bóc được
+          // giá. Soi ra là HAI loại khác hẳn nhau, và gộp chúng làm một là lý do trước giờ
+          // không ai sửa:
+          //
+          //   3 thẻ  giá HIỆN RÕ trên màn hình ("VND 2,712,585") nhưng nằm trong một <span>
+          //          `a-color-base` trần — `.a-price` và `.a-offscreen` đều bằng 0. Đây là lỗi
+          //          của ta, và nhánh dưới đây vớt lại.
+          //   3 thẻ  thật sự không có giá nào trên thẻ (hàng "See options" / hết hàng). `—` là
+          //          câu trả lời ĐÚNG, không được bịa số.
+          //
+          // Chỉ nhận node mà TOÀN BỘ chữ của nó là một con số có ký hiệu tiền — như vậy không
+          // vớt nhầm "50mm", "7.1 Surround", "70 Hr". Bỏ qua node nằm trong `.a-text-price`
+          // (giá gạch) để không lấy giá niêm yết thay cho giá bán.
+          const CUR = /^(?:VND|USD|EUR|GBP|JPY|CAD|AUD|SGD|THB|PHP|IDR|MYR|TWD|BRL|MXN|US\$|C\$|A\$|S\$|NT\$|R\$|RM|Rp|[$£€¥₫])\s?[\d.,]+$/;
+          for (const node of el.querySelectorAll('span, div')) {
+            const t = (node.textContent || '').trim();
+            if (!CUR.test(t) || node.closest('.a-text-price')) continue;
+            n = money(t);
+            if (n) return { n: n, text: t };
+          }
+          for (const o of el.querySelectorAll('.a-offscreen')) {
+            n = money(o.textContent);
+            if (n) return { n: n, text: o.textContent.trim() };
+          }
+          return { n: null, text: '' };
         };
         const els = document.querySelectorAll('div[data-asin][data-component-type="s-search-result"], div.s-result-item[data-asin]');
         for (const el of els) {
@@ -904,7 +966,8 @@ async function amazonSearch(domain, url) {
           const name = t ? t.textContent.trim() : '';
           if (!name) continue;
           seen.add(asin);
-          const price = priceOf(el);
+          const gia = priceInfo(el);
+          const price = gia.n;
           const se = el.querySelector('.a-price.a-text-price .a-offscreen');
           const strike = se ? money(se.textContent) : null;
           const im = el.querySelector('img.s-image');
@@ -934,7 +997,20 @@ async function amazonSearch(domain, url) {
           const bm = (el.textContent || '').match(/([\d.,]+)\s*([KkMm])?\+?\s*bought in past month/i);
           if (bm) { let n = parseFloat(bm[1].replace(/,/g, '')); const u = (bm[2] || '').toLowerCase(); if (u === 'k') n *= 1000; else if (u === 'm') n *= 1e6; monthly = Math.round(n) || null; }
           const isAd = el.getAttribute('data-component-type') === 'sp-sponsored-result' || !!el.querySelector('.puis-sponsored-label-text');
-          items.push({ asin, name, price, strike, image, rating, ratingCount, monthly, isAd });
+          // TIỀN TỆ ĐỌC TỪ CHÍNH THẺ, không suy từ tên miền.
+          //
+          // Đo 2026-09-08 trên `amazon.com/s?k=men t shirt` từ IP Việt Nam: thẻ ghi
+          // "VND 693,173", KHÔNG phải "$26.65". Amazon đổi tiền theo địa chỉ giao hàng đoán từ
+          // IP, mà `research.js` thì gán cứng amazon.com = USD — nên mọi giá bị dán nhãn sai,
+          // lệch tới hai vạn sáu nghìn lần. Không có gì trên màn hình cho thấy sai: cột giá vẫn
+          // là một con số, chỉ là con số của một loại tiền khác.
+          const priceText = gia.text;
+          // Thẻ có KHOẢNG giá ("12,99 - 19,99"): hai `.a-price` không gạch. `price` ở trên lấy
+          // cái đầu = cận DƯỚI, nên phải nói ra là còn cận trên, đừng để nó thành "giá bán".
+          const dsGia = [...el.querySelectorAll('.a-price:not(.a-text-price) .a-offscreen')]
+            .map((o) => money(o.textContent)).filter((x) => x);
+          const priceMax = dsGia.length > 1 ? Math.max(...dsGia) : null;
+          items.push({ asin, name, price, priceText, priceMax, strike, image, rating, ratingCount, monthly, isAd });
         }
         return { captcha, items };
       },

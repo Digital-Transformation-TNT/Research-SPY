@@ -88,6 +88,13 @@ class Ad(CamelModel):
     ctr_percent: float | None = None
     #: Riêng TikTok: lượt thích trên creative.
     like_count: int | None = None
+    #: Lượt xem / bình luận / chia sẻ của một VIDEO (TikTok, YouTube). Ba trường này vốn chỉ tồn
+    #: tại phía giao diện — extension nhét thẳng vào thẻ — nên nguồn nào chạy ở server (YouTube,
+    #: TikTok qua Bing) không có chỗ chở chúng về, và thẻ của nó hiện trống trong khi thẻ TikTok
+    #: bên cạnh có đủ số. Giao diện đã đọc đúng ba tên này rồi (`tkInfoHTML`), chỉ thiếu ở model.
+    play_count: int | None = None
+    comment_count: int | None = None
+    share_count: int | None = None
     #: Riêng TikTok: chỉ số chi phí tương đối (không phải số tiền).
     cost_index: float | None = None
     industry: str | None = None
@@ -97,14 +104,43 @@ class Ad(CamelModel):
     price: float | None = None
     #: Mã tiền tệ ISO-4217, ví dụ 'VND' | 'THB'. Đi kèm `price` để giao diện định dạng đúng.
     currency: str | None = None
+    #: `price` chỉ là GIÁ SÀN (giá của biến thể rẻ nhất), không phải giá phải trả.
+    #:
+    #: Sàn nào có biến thể (size, màu, combo) thì trên thẻ tìm kiếm chúng chỉ hiện MỘT con số:
+    #: cái rẻ nhất. Đo 2026-09-08 trên Etsy listing 1657090788 — API trả `price` 6,70 GBP và
+    #: `has_variations: true`, còn trang bán ghi rõ "187.313₫**+**". Người bán còn cố ý gắn một
+    #: biến thể rẻ tiền (dây buộc, sticker) để tụt xuống đầu bảng sắp theo giá.
+    #:
+    #: Cờ này KHÔNG sửa con số — nó chỉ nói rằng con số ấy là cận dưới, để giao diện ghi "từ X"
+    #: thay vì để người dùng đọc thành giá bán. Sai kiểu này im lặng: bảng vẫn đẹp, cột giá vẫn
+    #: có số, chỉ là số đó không mua được cái gì.
+    price_is_from: bool = False
     #: Số lượng đã bán (tổng luỹ kế) nếu sàn công bố. Tín hiệu nhu cầu trực tiếp nhất cho
     #: product search — mạnh hơn cả đời quảng cáo, vì là con số bán thật chứ không phải suy luận.
     sold_count: int | None = None
     #: Số bán trong ~30 ngày gần nhất. Quan trọng hơn tổng luỹ kế để đo "đang hot bây giờ":
     #: một sản phẩm bán 700/tháng đáng research hơn cái tổng 400k nhưng nhịp gần đây đã nguội.
     monthly_sold: int | None = None
+    #: LƯỢT XEM trang sản phẩm, khi sàn công bố. Chỉ số cầu duy nhất mà Etsy cho ở cấp
+    #: LISTING — đo 2026-09-08 trên 120 listing: `views` có ở 57 (47%), `num_favorers` chỉ 41
+    #: (34%). Không phải số bán, nên không được đặt vào `sold_count` hay `monthly_sold`.
+    view_count: int | None = None
+    #: `sold_count` là số của SHOP, không phải của sản phẩm này.
+    #:
+    #: Etsy cố tình giấu số bán theo từng listing — không có trường nào. Thứ gần nhất là
+    #: `shop.transaction_sold_count` (đo: có ở 90% listing, trung vị 827 đơn), và nó nói về
+    #: cả shop. Đặt con số ấy vào cột "Tổng bán" mà không nói gì thì nó nằm cạnh số bán THẬT
+    #: của Shopee/Temu và bị đọc như cùng một loại.
+    sold_is_shop: bool = False
     #: Điểm đánh giá trung bình (0-5) nếu sàn công bố.
     rating: float | None = None
+    #: `rating` là điểm của SHOP, không phải của sản phẩm này.
+    #:
+    #: Etsy CÓ đường lấy rating theo listing (`listings/{id}/reviews`) — đã thử chạy được —
+    #: nhưng vô dụng: một shop 24.722 đánh giá trải trên 100 listing, mỗi listing đúng MỘT
+    #: review. Rating tính từ một review là con số vô nghĩa. Nên vẫn dùng điểm shop, chỉ cần
+    #: nói ra đó là điểm shop. 1688 cũng vậy (dùng `tradeService` của shop).
+    rating_is_shop: bool = False
     #: Số lượt đánh giá — quyết định độ tin của `rating` (rating cao mà 3 review thì chưa chắc).
     rating_count: int | None = None
     countries: list[CountryCode] = []
@@ -143,6 +179,21 @@ class AdSearchParams(CamelModel):
     #: True cho luồng khớp-ảnh (`/api/ads/match-image`): nguồn nới lọc từ khoá văn bản vì
     #: ẢNH (CLIP) mới là bộ lọc chính. Không đến từ query string — do route match-image tự bật.
     relax_keyword: bool = False
+    #: Từ khoá RIÊNG cho một số nguồn, đè lên `keyword`. Nguồn nào không có tên ở đây thì
+    #: vẫn dùng `keyword`.
+    #:
+    #: Sinh ra vì một cụm KHÔNG hợp với mọi nguồn. Từ tiêu đề sản phẩm, Gemini rút hai cụm:
+    #: `broad` ("tai nghe bluetooth") và `specific` ("tai nghe redmi buds 6 play"). Facebook
+    #: BẮT BUỘC dùng broad — đo 2026-09-08: cụm specific chỉ ra 1 quảng cáo trên toàn Ad
+    #: Library, cụm broad ra 892. Nhưng các nguồn VIDEO thì ngược hẳn, và ngược rất nặng:
+    #:
+    #:     cụm dùng để tìm      TikTok (Bing)      YouTube
+    #:     broad                 0/30 đúng SP       1/30 đúng SP
+    #:     specific             28/30              25/30
+    #:
+    #: Ép cả hai loại dùng chung một cụm nghĩa là phải chọn: hoặc Facebook rỗng, hoặc lưới
+    #: video toàn thứ không liên quan. Đây là chỗ để khỏi phải chọn.
+    keyword_by_platform: dict[PlatformId, str] = {}
 
 
 class PlatformStatus(CamelModel):

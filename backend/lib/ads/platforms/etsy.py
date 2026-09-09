@@ -12,9 +12,22 @@ Hai điều đo được (2026-08), phải xử lý đúng:
     nằm ở `listings/batch?includes=Images` — nên đây là mô hình "2 lần gọi": search lấy id +
     giá, rồi batch lấy ảnh + tên shop cho đúng những id đó.
 
-Etsy là MỘT sàn toàn cầu (không tách domain theo nước) nên `countries=None`. Etsy cũng không
-công khai số đã bán theo listing — tín hiệu cầu công khai duy nhất là `num_favorers` (lượt
-yêu thích), nên ta dùng nó làm proxy cầu và nói rõ trong `notice`.
+Etsy là MỘT sàn toàn cầu (không tách domain theo nước) nên `countries=None`.
+
+CHỈ SỐ NÀO CÓ THẬT — đo 2026-09-08 trên 120 listing / 3 từ khoá, bằng app key (không OAuth):
+
+    price                          100%   nhưng là GIÁ SÀN: 72% listing có biến thể
+    giá cận trên                     —    `inventory` đòi OAuth → 401. Trần cứng
+    số bán theo listing              —    Etsy giấu hẳn, không có trường nào
+    views (lượt xem listing)        47%   ← chỉ số cầu theo LISTING duy nhất
+    num_favorers                    34%   thưa hơn, và dễ bơm
+    shop.transaction_sold_count     90%   trung vị 827 đơn — số bán THẬT, nhưng của SHOP
+    shop.review_average             90%   trung vị 139 review
+    listings/{id}/reviews          chạy   nhưng thường 0-1 review → vô nghĩa thống kê
+
+Nên: cầu = `views`, tổng bán = số của shop (có cờ `sold_is_shop`), rating = điểm shop (cờ
+`rating_is_shop`). Ba cái sau nói về SHOP chứ không phải sản phẩm, và cờ tồn tại để giao diện
+gọi đúng tên chúng thay vì để chúng nằm cạnh số bán thật của Shopee/Temu như cùng một loại.
 """
 
 from __future__ import annotations
@@ -52,13 +65,34 @@ NO_KEY_NOTE = (
     "Etsy chưa cấu hình API key. Khai ETSY_KEYSTRING + ETSY_SHARED_SECRET trong backend/.env.local."
 )
 FAVORITES_NOTE = (
-    "Etsy: 'tổng bán' là LƯỢT YÊU THÍCH (favorites) — Etsy giấu số bán theo sản phẩm; rating là "
-    "điểm trung bình của SHOP (Etsy không có rating theo từng sản phẩm)."
+    "Etsy: cầu đo bằng LƯỢT XEM listing; 'tổng bán' và rating là số của SHOP — Etsy không công "
+    "bố số bán hay đánh giá theo từng sản phẩm."
 )
 
 
 def _headers() -> dict[str, str]:
     return {"x-api-key": _API_KEY, "accept": "application/json"}
+
+
+def _video_url(listing: dict) -> str | None:
+    """File video của listing, hoặc `None`. Etsy trả `videos: [{video_url, thumbnail_url}]`."""
+    videos = listing.get("videos")
+    if not isinstance(videos, list):
+        return None
+    for v in videos:
+        if isinstance(v, dict) and isinstance(v.get("video_url"), str) and v["video_url"]:
+            return v["video_url"]
+    return None
+
+
+def _creatives(video: str | None, image: str | None) -> list[Creative]:
+    """Video (nếu có) đứng trước, ảnh làm poster cho nó."""
+    out: list[Creative] = []
+    if video:
+        out.append(Creative(kind="video", url=video, poster_url=image or None))
+    if image:
+        out.append(Creative(kind="image", url=image))
+    return out
 
 
 def _price(price: dict | None) -> tuple[float | None, str | None]:
@@ -147,7 +181,8 @@ class Etsy(AdPlatform):
             ids = ",".join(order[:BATCH_MAX])
             try:
                 batch = await get_json(
-                    f"{BASE}/listings/batch?listing_ids={ids}&includes=Images,Shop", _headers()
+                    f"{BASE}/listings/batch?listing_ids={ids}&includes=Images,Shop,Videos",
+                    _headers(),
                 )
                 for r in (batch.get("results") or []) if isinstance(batch, dict) else []:
                     lid = r.get("listing_id")
@@ -162,10 +197,21 @@ class Etsy(AdPlatform):
             enriched = images_by_id.get(lid, {})
             price, currency = _price(base.get("price"))
             image = _image_url(enriched)
+            video = _video_url(enriched)
             title = base.get("title") if isinstance(base.get("title"), str) else ""
-            favorers = base.get("num_favorers")
+            # CẦU: `views` chứ không phải `num_favorers`.
+            #
+            # Đo 2026-09-08 trên 120 listing / 3 từ khoá: `views` có ở 57 (47%), `num_favorers`
+            # chỉ 41 (34%). Quan trọng hơn độ phủ: lượt xem là số của CHÍNH listing này, còn
+            # lượt thích thì vừa thưa vừa dễ bơm. Đây là chỉ số cầu theo listing DUY NHẤT Etsy
+            # công bố — số bán theo listing thì họ giấu hẳn, không có trường nào.
+            views = base.get("views")
+
             # Rating: Etsy không có rating theo listing, dùng rating của SHOP (review_average) làm proxy.
             shop = enriched.get("shop") if isinstance(enriched.get("shop"), dict) else {}
+            # TỔNG BÁN: số của SHOP. Etsy không cho số của listing. Đo: có ở 90% (54/60),
+            # trung vị 827 đơn — nhiều gấp đôi độ phủ của lượt thích, và là số bán THẬT.
+            shop_sold = shop.get("transaction_sold_count")
             raw_avg = shop.get("review_average")
             rating = float(raw_avg) if isinstance(raw_avg, (int, float)) and raw_avg > 0 else None
             rcount = shop.get("review_count")
@@ -177,13 +223,24 @@ class Etsy(AdPlatform):
                     body=title,
                     title=title,
                     permalink=base.get("url") if isinstance(base.get("url"), str) else None,
-                    creatives=[Creative(kind="image", url=image)] if image else [],
+                    # VIDEO TRƯỚC ẢNH. Cửa sổ "video content" lọc theo `kind == "video"`, nên
+                    # listing có video mà chỉ khai creative ảnh thì bị vứt ngay ở bộ lọc —
+                    # đó là lý do chip "Sàn" của cửa sổ ấy luôn bằng 0.
+                    #
+                    # Đo 2026-09-08, 20 listing đầu của "t shirt": 4 có video, và Etsy trả
+                    # thẳng file `.mp4` kèm ảnh bìa — phát nhúng được, không cần trang chi tiết.
+                    creatives=_creatives(video, image),
                     price=price,
                     currency=currency,
-                    # Etsy giấu số bán theo listing → dùng lượt yêu thích làm proxy cầu (xem notice).
-                    sold_count=favorers if isinstance(favorers, int) else None,
+                    # `has_variations` là chính Etsy nói "giá này chỉ là cận dưới". Đo listing
+                    # 1657090788: API trả 6,70 GBP, trang bán ghi "187.313₫+".
+                    price_is_from=bool(base.get("has_variations")),
+                    view_count=views if isinstance(views, int) and views > 0 else None,
+                    sold_count=shop_sold if isinstance(shop_sold, int) and shop_sold > 0 else None,
+                    sold_is_shop=True,
                     rating=rating,
                     rating_count=rcount if isinstance(rcount, int) else None,
+                    rating_is_shop=True,
                     countries=[request.country],
                 )
             )

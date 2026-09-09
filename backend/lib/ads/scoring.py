@@ -149,9 +149,22 @@ def _score_product(ad: Ad) -> AdScore:
             reasons.append(f"{vi_thousands(monthly)} bán/tháng — cầu ổn định")
         else:
             reasons.append(f"{vi_thousands(monthly)} bán/tháng — cầu còn thấp")
-    elif historical is not None:
+    elif historical is not None and not ad.sold_is_shop:
         demand = clamp(jround(math.log10(max(1, historical)) / 5.5 * 100))
         reasons.append(f"{vi_thousands(historical)} đã bán (tổng) — không có số theo tháng để đo đà")
+    elif ad.view_count is not None:
+        # LƯỢT XEM, không phải số bán. Thang thấp hơn hẳn hai nhánh trên và đó là chủ ý: xem
+        # không phải mua. Đo trên Etsy 2026-09-08, trung vị lượt xem (khác 0) là 65 còn đỉnh
+        # là 102.167 — nên ~10k lượt xem mới chạm 100, cùng bậc với "10k bán/tháng" ở nhánh
+        # đầu chỉ khi nhân thêm một bậc. Cho một sản phẩm 65 lượt xem ăn điểm cầu ngang một
+        # sản phẩm 65 đơn/tháng là nói dối về thị trường.
+        demand = clamp(jround(math.log10(max(1, ad.view_count)) / 5 * 100))
+        reasons.append(f"{vi_thousands(ad.view_count)} lượt xem — sàn không cho số bán theo sản phẩm")
+    elif historical is not None:
+        # Chỉ còn số bán của SHOP. Dùng được, nhưng phải hạ thang: một shop bán 800 đơn không
+        # nói được sản phẩm ĐANG XEM bán bao nhiêu — nó có thể là mẫu ế nhất trong 68 mẫu.
+        demand = clamp(jround(math.log10(max(1, historical)) / 7 * 100))
+        reasons.append(f"Shop đã bán {vi_thousands(historical)} — số của SHOP, không phải của sản phẩm này")
     else:
         demand = 0.0
         reasons.append("Không có dữ liệu số bán — không đo được cầu")
@@ -162,7 +175,8 @@ def _score_product(ad: Ad) -> AdScore:
         count = ad.rating_count or 0
         trust = min(1.0, math.log10(count + 1) / 2)  # ~100 review = tin cậy đầy đủ
         quality = clamp(jround(base * trust))
-        reasons.append(f"{_num(ad.rating)}★ từ {vi_thousands(count)} đánh giá")
+        ai = "của SHOP" if ad.rating_is_shop else ""
+        reasons.append(f"{_num(ad.rating)}★ từ {vi_thousands(count)} đánh giá{' ' + ai if ai else ''}")
     else:
         quality = 0.0
         reasons.append("Chưa có đánh giá — chưa đo được chất lượng")

@@ -15,7 +15,7 @@ khi kết quả bị suy giảm — đều nằm gọn trong file của nguồn 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from lib.core.model import CamelModel
@@ -105,6 +105,16 @@ class PlatformSearchInput:
     #: nguồn nên NỚI lọc từ khoá văn bản — đừng vứt ứng viên mà CLIP đáng lẽ khớp được
     #: (advertiser hiếm khi viết đúng tên sản phẩm trong ad copy). Mặc định False cho search thường.
     relax_keyword: bool = False
+
+
+def request_with(request: PlatformSearchInput, keyword: str) -> PlatformSearchInput:
+    """Bản sao của một `PlatformSearchInput` với từ khoá khác, giữ nguyên mọi thứ còn lại.
+
+    Có vì `PlatformSearchInput` là dataclass thường (không `frozen`), nên `replace()` của
+    dataclasses dùng được — nhưng viết tay ở hai nguồn thì hai chỗ ấy sẽ lệch nhau ngay lần
+    thêm trường tiếp theo.
+    """
+    return replace(request, keyword=keyword)
 
 
 @dataclass
