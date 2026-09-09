@@ -823,7 +823,7 @@ export default function ImageSearchWorkspace() {
         <div className="img-step">
           <div className="img-step-head">
             <h3>
-              <span className="img-step-no">1</span> Chọn sàn
+              Chọn sàn
             </h3>
             <div className="img-mode">
               <button data-on={!multi} onClick={() => switchMode(false)}>
@@ -858,7 +858,7 @@ export default function ImageSearchWorkspace() {
         <div className="img-step">
           <div className="img-step-head">
             <h3>
-              <span className="img-step-no">2</span> Đưa ảnh vào
+              Đưa ảnh vào
             </h3>
             {preview && (
               <button

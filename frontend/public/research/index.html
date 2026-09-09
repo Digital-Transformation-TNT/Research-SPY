@@ -49,7 +49,7 @@
     .brand { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
     .brand h1 { font-family: var(--font-display); font-size: 17px; font-weight: 700; margin: 0; letter-spacing: -.015em; }
     .brand .tag { font-size: 12.5px; color: var(--muted); }
-    .controls { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--line-soft); }
     input, select, button {
       font: inherit; padding: 8px 11px; border: 1px solid var(--line); border-radius: var(--radius-sm);
       background: var(--bg); color: var(--fg); transition: border-color .14s var(--ease), background-color .14s var(--ease), box-shadow .14s var(--ease), transform .1s var(--ease);
@@ -67,25 +67,29 @@
     /* ---- Bước có số, soi gương mục Image Search (`styles/imagesearch.css`) ----
        Giữ hai bên giống nhau là có chủ đích: người dùng đi qua lại giữa hai mục suốt, nên
        cùng một thao tác không được đòi học hai kiểu điều khiển khác nhau. */
-    .step + .step { padding-top: 14px; border-top: 1px solid var(--line-soft); margin-top: 14px; }
-    .step-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
-    .step-head h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-family: var(--font-display); font-size: 13.5px; font-weight: 600; }
-    .step-no { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 999px; background: var(--accent); color: #fff; font-family: var(--font-mono); font-size: 10px; font-weight: 600; flex: none; }
-    .step-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    /* HÀNG BỘ LỌC: nhãn nhỏ bên trái, điều khiển bên phải, phần phụ đẩy về cuối hàng.
+       Cột nhãn rộng cố định 62px để ba hàng thẳng nhau — lệch cột là thứ tạo cảm giác
+       "sắp xếp lôm côm" rõ nhất, và nó không sửa được bằng cách chỉnh khoảng cách. */
+    .frow { display: flex; align-items: flex-start; gap: 12px; padding: 8px 0; }
+    .frow + .frow { border-top: 1px solid var(--line-soft); }
+    .flabel { flex: none; width: 66px; padding-top: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+    .frow > #platforms, .frow > #regions { flex: 1; min-width: 0; }
+    .fend { flex: none; display: flex; align-items: center; gap: 8px; padding-top: 1px; }
 
     /* Nút HAI NẤC. Rõ hơn công tắc gạt vì nó nói thẳng cả hai lựa chọn, thay vì bắt người
        dùng đoán "bật" nghĩa là gì. */
     .mode { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
-    .mode button { padding: 5px 12px; border: 0; border-radius: 0; background: var(--bg); color: var(--muted); font-size: 12.5px; font-weight: 650; cursor: pointer; }
+    .mode button { padding: 4px 12px; border: 0; border-radius: 0; background: var(--bg); color: var(--muted); font-size: 12.5px; font-weight: 500; cursor: pointer; }
     .mode button:hover { color: var(--fg); }
     .mode button[data-on="true"] { background: var(--accent); color: #fff; }
 
     button.ghost { background: transparent; border-color: var(--line); color: var(--muted); font-size: 12.5px; padding: 5px 11px; font-weight: 600; }
     button.ghost:hover { border-color: var(--accent); color: var(--accent); }
 
-    .picks { display: flex; flex-wrap: wrap; gap: 8px; }
+    .picks { display: flex; flex-wrap: wrap; gap: 6px; }
 
     .status { padding: 13px 24px; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid var(--line-soft); }
+    .status[hidden] { display: none; }   /* `display:flex` ở trên thắng [hidden] nếu không khai lại */
     .status.err { color: var(--disc); font-weight: 600; }
     .status.ok { color: var(--good); font-weight: 600; }
     .status select { padding: 5px 8px; }
@@ -126,12 +130,61 @@
     button.sim { padding: 6px 10px; font-size: 12px; border-radius: var(--radius-sm); background: var(--panel); border: 1px solid var(--line); color: var(--fg); cursor: pointer; white-space: nowrap; }
     button.sim:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
+    /* ===== CHỌN NƯỚC: nút gọn + bảng thả xuống có cuộn =====
+       Bản trước trải HẾT chip nước của MỌI sàn đang chọn ra màn hình. Bốn sàn là bốn khối xếp
+       dọc — Shopee 11 nước, Amazon 8, TikTok Shop 8, Temu 5 — tức hơn ba mươi chip cho một
+       lựa chọn mà phần lớn lượt dùng chỉ đụng tới một nước. Nó đẩy bảng kết quả xuống dưới màn
+       hình đầu tiên, và mắt phải quét qua ba mươi ô để tìm một.
+       Nay mỗi sàn là MỘT nút mang sẵn câu trả lời ("Shopee · Việt Nam"), bấm mới mở danh sách.
+       Dáng chép từ `.dd-*` của webtool (tab Keyword) để hai bên là một thứ. */
+    .rgsel { position: relative; display: inline-block; }
+    .rgtrigger {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 5px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+      background: var(--bg); color: var(--fg); font: inherit; font-size: 12.5px; cursor: pointer;
+      transition: border-color .14s var(--ease);
+    }
+    .rgtrigger:hover { border-color: var(--muted); }
+    .rgtrigger[aria-expanded="true"] { border-color: var(--accent); }
+    .rgtrigger .rgname { color: var(--muted); }
+    .rgtrigger .rgval { font-weight: 600; }
+    .rgtrigger i { font-style: normal; font-size: 10px; color: var(--muted); }
+
+    .rgpanel {
+      position: absolute; z-index: 30; top: calc(100% + 5px); left: 0;
+      min-width: 210px; padding: 5px;
+      background: var(--bg); border: 1px solid var(--line-strong, var(--line));
+      border-radius: var(--radius-sm); box-shadow: 0 6px 20px rgba(18,22,29,.10);
+    }
+    /* CUỘN, không trải dài: mười một nước vẫn nằm gọn trong một ô cao 240px. */
+    .rglist { max-height: 240px; overflow-y: auto; }
+    .rgopt {
+      display: flex; align-items: center; gap: 7px; width: 100%;
+      padding: 6px 8px; border: 0; border-radius: var(--radius-sm);
+      background: transparent; color: var(--muted); font: inherit; font-size: 12.5px;
+      text-align: left; cursor: pointer;
+    }
+    .rgopt:hover { background: var(--panel); color: var(--fg); }
+    .rgopt[data-on="1"] { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+    .rgopt .rgflag { flex: none; }
+    .rgopt .rgcty { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rgfoot {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      margin-top: 4px; padding: 6px 8px 2px; border-top: 1px solid var(--line-soft);
+      font-size: 11.5px; color: var(--muted);
+    }
+    .rgdone {
+      padding: 3px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+      background: var(--bg); color: var(--fg); font: inherit; font-size: 11.5px; cursor: pointer;
+    }
+    .rgdone:hover { border-color: var(--accent); color: var(--accent); }
+
     /* Chip chọn sàn / chọn nước — cùng một dáng với `.img-source` của mục Image Search. */
     .rgchip {
-      font: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 12px;
-      border: 1px solid var(--line); border-radius: 999px;
+      font: inherit; font-size: 12.5px; font-weight: 500; padding: 4px 10px;
+      border: 1px solid var(--line); border-radius: 6px;
       background: var(--bg); color: var(--muted); cursor: pointer;
-      display: inline-flex; gap: 7px; align-items: center;
+      display: inline-flex; gap: 6px; align-items: center;
       transition: border-color .15s var(--ease), background-color .15s var(--ease), color .15s var(--ease);
     }
     .rgchip:hover { border-color: var(--accent); color: var(--accent); }
@@ -145,8 +198,8 @@
        ấy đọc thành lỗi vẽ chứ không thành phản hồi. */
     .tick {
       display: inline-flex; align-items: center; justify-content: center; flex: none;
-      width: 15px; height: 15px; border-radius: 999px; border: 1.5px solid var(--line);
-      font-size: 9.5px; line-height: 1; color: transparent;
+      width: 13px; height: 13px; border-radius: 999px; border: 1.5px solid var(--line);
+      font-size: 8.5px; line-height: 1; color: transparent;
     }
     .rgchip[data-on="1"] .tick { border-color: #fff; background: #fff; color: var(--accent); }
 
@@ -158,18 +211,20 @@
 
     /* Region chọn theo TỪNG sàn → gom nhóm theo sàn trong một hộp, tránh lẫn lộn khi chọn
        nhiều sàn có bộ region khác nhau (Shopee 11 nước vs Amazon 8 nước…). */
-    #regions { display: flex; flex-direction: column; gap: 12px; }
-    .rgroup { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-    .rgroup + .rgroup { border-top: 1px solid var(--line-soft); padding-top: 12px; }
+    /* CHẢY NGANG, không xếp dọc. Mỗi sàn giờ là một nút gọn mang sẵn câu trả lời, nên bốn sàn
+       nằm vừa một hàng. `column` là luật của bản cũ, khi mỗi sàn là cả một khối chip và buộc
+       phải chiếm trọn chiều ngang — giữ nó lại thì bốn nút nhỏ vẫn tốn bốn dòng. */
+    #regions { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; }
     /* Nhãn sàn chỉ hiện khi có TỪ HAI sàn trở lên — một sàn thì nó chỉ lặp lại thông tin đã
        thấy ở bước 1. `renderRegions` quyết định có gắn nhãn hay không. */
-    .rglabel { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; width: 100%; }
 
-    .ctrls { padding: 14px 24px 16px; border-bottom: 1px solid var(--line-soft); background: color-mix(in srgb, var(--panel) 55%, transparent); }
+    .ctrls { padding: 12px 24px 10px; border-bottom: 1px solid var(--line); background: var(--bg); }
 
     .cgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
-    .ccard { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--bg); display: flex; flex-direction: column; transition: box-shadow .16s var(--ease), transform .16s var(--ease); }
-    .ccard:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+    .ccard { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg); display: flex; flex-direction: column; transition: border-color .14s var(--ease), background-color .14s var(--ease); }
+    /* Rê chuột đổi VIỀN, không nhấc thẻ lên bằng bóng. Mười lăm thẻ cùng đổ bóng thì cả lưới
+       trông như đang trôi, và mắt không còn biết thẻ nào đang được trỏ. */
+    .ccard:hover { border-color: var(--hairline-strong, #d8dae0); background: var(--panel); }
     .ccard .media { position: relative; aspect-ratio: 1 / 1; background: var(--panel); }
     .ccard .media img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .ccard .play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 30px; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,.7); pointer-events: none; }
@@ -199,8 +254,8 @@
       transition: background-color .14s var(--ease), transform .14s var(--ease);
     }
     .ccard .play-overlay:hover span { background: var(--accent); transform: scale(1.08); }
-    .ccard .cbody { padding: 10px 11px; display: flex; flex-direction: column; gap: 4px; }
-    .ccard .cadv { font-weight: 650; font-size: 13px; }
+    .ccard .cbody { padding: 8px 10px 9px; display: flex; flex-direction: column; gap: 3px; }
+    .ccard .cadv { font-weight: 600; font-size: 12.5px; }
     /* Cắt theo SỐ DÒNG, không theo chiều cao. `max-height: 3.3em` cắt ngang thân chữ ở dòng
        thứ tư — nhìn ra đúng cảnh chữ bị "dính" vào nhau, và không có dấu … nào cho biết
        là còn nữa. `line-clamp` dừng gọn ở hết dòng thứ ba và tự thêm dấu ba chấm. */
@@ -209,8 +264,8 @@
       display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3;
       overflow: hidden;
     }
-    .ccard .cmeta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
-    .ccard a.clink { font-size: 12px; color: var(--accent); text-decoration: none; margin-top: 3px; }
+    .ccard .cmeta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .ccard a.clink { font-size: 11.5px; color: var(--accent); text-decoration: none; margin-top: 2px; }
     .ccard a.clink:hover { text-decoration: underline; }
 
 
@@ -253,7 +308,7 @@
     @keyframes rs-spin { to { transform: rotate(360deg); } }
     .rs-spin { display: inline-block; width: 11px; height: 11px; margin-right: 6px; vertical-align: -1px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: rs-spin .7s linear infinite; }
     button#costAll:disabled { opacity: .8; cursor: progress; }
-    .autotrans { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--muted); white-space: nowrap; cursor: pointer; }
+    .autotrans { display: inline-flex; align-items: center; gap: 6px; padding-top: 4px; font-size: 12.5px; color: var(--muted); white-space: nowrap; cursor: pointer; }
     .autotrans input { margin: 0; }
 
     /* Modal video quảng cáo khớp ảnh */
@@ -344,47 +399,49 @@
   <!-- Lớp bọc còn lại từ thời trang này có ba tab. Giờ chỉ còn một mục nên không ai
        bật/tắt nó nữa; giữ lại vì gỡ ra là thụt lại cả trăm dòng mà không đổi gì. -->
   <div id="tabProduct">
+    <!-- BỎ BA "BƯỚC" ĐÁNH SỐ.
+         Trước đây đây là ba dải ngang, mỗi dải một tiêu đề riêng có số tròn cam: "1 Chọn sàn",
+         "2 Chọn quốc gia", "3 Từ khoá". Ba tiêu đề ấy chiếm gần một nửa chiều cao khối điều
+         khiển mà không nói thêm gì — nhìn vào hàng chip có logo sàn là biết đó là chọn sàn.
+         Đánh số còn ngụ ý một trình tự bắt buộc, trong khi người dùng quay lại đổi nước hoặc
+         đổi từ khoá liên tục.
+         Nay: VIỆC CHÍNH (gõ từ khoá + Research) lên hàng đầu, các lựa chọn thành những hàng
+         nhãn-bên-trái bên dưới — đúng khuôn mà tab Keyword đang dùng, nên hai tab đọc giống
+         nhau thay vì mỗi tab một kiểu. -->
     <div class="ctrls">
-      <div class="step">
-        <div class="step-head">
-          <h3><span class="step-no">1</span> Chọn sàn</h3>
-          <span class="sub">chọn 1 hay nhiều sàn tuỳ ý</span>
-        </div>
+      <div class="controls">
+        <input id="kw" placeholder="Nhập từ khoá — nhiều từ thì cách nhau bằng dấu phẩy" />
+        <select id="count" title="Số lượng crawl mỗi từ khoá / region">
+          <option value="20">20 SP</option>
+          <option value="40">40 SP</option>
+          <option value="60" selected>60 SP</option>
+          <option value="120">120 SP</option>
+        </select>
+        <button id="go" class="primary">Research</button>
+      </div>
+
+      <div class="frow">
+        <span class="flabel">Sàn</span>
         <div id="platforms" class="picks"></div>
       </div>
 
-      <div class="step" id="regionSection">
-        <div class="step-head">
-          <h3><span class="step-no">2</span> Chọn quốc gia</h3>
-          <div class="step-actions">
-            <div class="mode" id="rgMode">
-              <button data-multi="0" data-on="true">Một nước</button>
-              <button data-multi="1" data-on="false">Nhiều nước</button>
-            </div>
-            <button id="refreshLogin" class="ghost">⟳ Kiểm tra đăng nhập</button>
-          </div>
-        </div>
+      <div class="frow" id="regionSection">
+        <span class="flabel">Nước</span>
         <div id="regions"></div>
+        <div class="fend">
+          <div class="mode" id="rgMode">
+            <button data-multi="0" data-on="true">Một nước</button>
+            <button data-multi="1" data-on="false">Nhiều nước</button>
+          </div>
+          <button id="refreshLogin" class="ghost" title="Kiểm tra lại phiên đăng nhập của từng sàn/nước">⟳</button>
+        </div>
       </div>
 
-      <div class="step">
-        <div class="step-head">
-          <h3><span class="step-no">3</span> Từ khoá</h3>
-          <span class="sub">nhiều từ thì cách nhau bằng dấu phẩy</span>
-        </div>
-        <div class="controls">
-          <input id="kw" placeholder="Ví dụ: tai nghe bluetooth, máy sấy tóc" />
-          <select id="count" title="Số lượng crawl mỗi từ khoá / region">
-            <option value="20">20 SP</option>
-            <option value="40">40 SP</option>
-            <option value="60" selected>60 SP</option>
-            <option value="120">120 SP</option>
-          </select>
-          <label class="autotrans" title="Đổi sang sàn nước khác thì tự dịch từ khoá sang ngôn ngữ nước đó (giữ nguyên tên hãng/model). Ví dụ 'tai nghe' ở sàn Philippines → tiếng Phi/Anh.">
-            <input type="checkbox" id="autoTranslate" checked /> 🌐 Tự dịch theo sàn
-          </label>
-          <button id="go" class="primary">Research</button>
-        </div>
+      <div class="frow">
+        <span class="flabel">Khác</span>
+        <label class="autotrans" title="Đổi sang sàn nước khác thì tự dịch từ khoá sang ngôn ngữ nước đó (giữ nguyên tên hãng/model). Ví dụ 'tai nghe' ở sàn Philippines → tiếng Phi/Anh.">
+          <input type="checkbox" id="autoTranslate" checked /> Tự dịch từ khoá theo nước của sàn
+        </label>
       </div>
     </div>
 
@@ -435,7 +492,7 @@
     <div class="vidpanel">
       <div class="vidhead">
         <div>
-          <div class="vk">🎬 Video quảng cáo theo từ khoá (Facebook Ad Library)</div>
+          <div class="vk">Video theo sản phẩm</div>
           <h2 id="vidTitle"></h2>
         </div>
         <label class="vidregion">🌐 TikTok theo nước

@@ -35,7 +35,7 @@
 
 .img-step + .img-step,
 .img-run {
-  padding-top: 18px;
+  padding-top: var(--s-3);
   border-top: 1px solid var(--border);
 }
 
@@ -43,29 +43,24 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--s-3);
   flex-wrap: wrap;
-  margin-bottom: 12px;
+  margin-bottom: var(--s-2);
 }
 
+/* SỐ TRÒN CAM ĐÃ BỎ (cùng lúc với tab Sản phẩm).
+   Nó chiếm chỗ mà không thêm nghĩa — nhìn hàng chip có tên sàn là biết đang chọn sàn — và nó
+   ngụ ý một trình tự bắt buộc, trong khi người dùng đổi sàn/đổi ảnh qua lại liên tục.
+   Tiêu đề bước nay là một NHÃN nhỏ chữ hoa, cùng dáng với `.flabel` của tab Sản phẩm, để hai
+   tab đọc giống nhau. */
 .img-step-head h3 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   margin: 0;
-  font-size: 14px;
-}
-
-.img-step-no {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 999px;
-  background: var(--brand);
-  color: #fff;
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
 }
 
 /* Công tắc hai nấc "Một sàn / Nhiều sàn". */

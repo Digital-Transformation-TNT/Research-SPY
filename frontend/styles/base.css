@@ -39,11 +39,46 @@
   --font-body: 'Instrument Sans', ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
 
-  --radius: 12px;
-  --radius-sm: 8px;
-  --shadow: 0 1px 2px rgba(31, 35, 41, 0.05);
-  --shadow-lift: 0 4px 14px rgba(31, 35, 41, 0.07);
-  --sidebar-w: 268px;
+  /* ---- Thang cách, đơn vị gốc 4px (Linear) --------------------------------
+     Trước đây mỗi khối tự chọn một con số: 3px, 10px, 13px, 20px, 24px… nên hai
+     khối cạnh nhau không bao giờ thẳng hàng, và tổng lại thành cảm giác "lôm côm".
+     Mọi khoảng cách mới phải lấy từ đây, đừng gõ số lẻ. */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-12: 48px;
+
+  /* ---- Thang bo góc (Linear) ----------------------------------------------
+     4 chip/badge · 6 thẻ nhỏ · 8 NÚT và Ô NHẬP · 12 thẻ/panel. Không dùng pill cho
+     nút — pill dành riêng cho chip trạng thái. */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-pill: 9999px;
+  /* Tên cũ, giữ để không phải sửa 2.000 dòng CSS cùng lúc. */
+  --radius: var(--r-lg);
+  --radius-sm: var(--r-md);
+
+  /* ---- Độ sâu: THANG BỀ MẶT + VIỀN TÓC, gần như không dùng bóng ------------
+     Nguyên tắc của Linear: thứ bậc do NỀN và VIỀN 1px gánh, không phải bóng đổ.
+     Bóng làm mọi khối trôi nổi như nhau nên nhìn "bẩn" khi xếp nhiều khối cạnh
+     nhau — đúng cảm giác đang có. Hai biến bóng dưới đây gần như bằng không, giữ
+     tên để CSS cũ không vỡ; chỗ nào cần nổi thì lên một bậc bề mặt.
+     Bậc: --bg (nền trang) → --surface → --surface-2 → --surface-3 */
+  --surface-3: #eef0f4;
+  --hairline: var(--border);
+  --hairline-strong: var(--border-strong);
+  --shadow: none;
+  --shadow-lift: 0 1px 2px rgba(18, 22, 29, 0.04);
+  /* Vòng focus: 2px màu thương hiệu ở 45% — thay cho viền đổi màu, để ô nhập không
+     nhảy kích thước khi được chọn. */
+  --focus-ring: 0 0 0 2px color-mix(in srgb, var(--brand) 45%, transparent);
+
+  --sidebar-w: 232px;
 }
 
 * {

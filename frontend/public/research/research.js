@@ -128,7 +128,7 @@ function rsSend(msg) {
       // Ít nhất phải để lại dấu vết. Trang xử `null` như "không có kết quả", nên nếu không có
       // dòng này thì một lượt hết giờ trông y hệt một lượt trả về rỗng.
       console.warn(`[research] ${msg && msg.type} không có trả lời sau ${RS_TIMEOUT_MS / 1000}s — extension còn sống không?`);
-      resolve(relayFailure(`extension không trả lời ${msg && msg.type} sau ${RS_TIMEOUT_MS / 1000}s.`));
+      resolve(relayFailure(`quá ${RS_TIMEOUT_MS / 1000}s chưa có dữ liệu.`));
     }, RS_TIMEOUT_MS);
 
     function onMessage(event) {
@@ -160,6 +160,11 @@ let RELAY_MODE = false;
 /**
  * Hình dạng "hỏng có nói lý do".
  *
+ * `why` HIỆN LÊN MÀN HÌNH, nên nó nói bằng tiếng của người dùng ("quá 240s chưa có dữ liệu")
+ * chứ không phải tiếng của hệ thống ("extension không trả lời RS_TIKTOK"). Chi tiết kỹ thuật
+ * vẫn còn đủ ở `console.warn` ngay trên — đúng chỗ của người đi sửa, không phải chỗ của người
+ * đang tìm sản phẩm.
+ *
  * Trả `null` là cách chắc chắn làm mất lý do: mọi nơi đọc kết quả đều viết `(x && x.items) || []`,
  * nên một lượt hết giờ trông y hệt một lượt thật sự không có kết quả — người dùng chỉ thấy
  * "Không có video". `blocked` + `error` là đúng hình dạng mà `background.js` dùng khi một nguồn
@@ -183,12 +188,12 @@ async function relaySend(msg) {
     if (j && j.ok) return j.result;
     // 503 = chưa có máy-thợ, 504 = thợ không kịp trả — HAI việc phải đi sửa khác hẳn nhau, nên
     // đừng gộp chúng (và gộp cả với "không có kết quả") thành một dấu lặng.
-    const why = (j && j.error) || `máy-thợ trả HTTP ${r.status}`;
+    const why = (j && j.error) || `không lấy được dữ liệu (HTTP ${r.status})`;
     console.warn(`[research] relay ${msg && msg.type} hỏng:`, why);
     return relayFailure(why);
   } catch (e) {
     console.warn('[research] relay lỗi:', e);
-    return relayFailure(`không gọi được máy-thợ (${e})`);
+    return relayFailure('không kết nối được nguồn dữ liệu');
   }
 }
 
@@ -203,30 +208,15 @@ const chrome = {
       dispatch(msg).then((result) => { if (callback) callback(result); });
     },
   },
-  tabs: {
-    // Mở bằng một thẻ <a> tạm chứ KHÔNG bằng `window.open`, và đây là chỗ đã sai một lần
-    // (2026-08-24) nên ghi lại cho rõ:
-    //
-    //     window.open(url, '_blank', 'noopener')  → trả về null NHƯNG TAB VẪN MỞ
-    //     window.open(url, '_blank')              → trả về Window
-    //
-    // `noopener` theo đúng chuẩn là trả `null`, vì bên mở cố ý không được giữ tham chiếu tới
-    // cửa sổ mới. Bản trước kiểm `if (!win)` rồi kêu "trình duyệt đã chặn cửa sổ bật lên" —
-    // báo động giả MỖI LẦN BẤM, trong khi tab vẫn mở ra ngay sau lưng thông báo đó.
-    //
-    // Thẻ <a target="_blank" rel="noopener"> giữ nguyên phần an toàn (trang mới không với
-    // được `window.opener`), mở ra TAB chứ không phải cửa sổ popup, và không có giá trị trả
-    // về nào để hiểu nhầm. Mọi chỗ gọi đều nằm trong click handler nên không đụng bộ chặn.
-    create({ url }) {
-      const a = document.createElement('a');
-      a.href = url;
-      a.target = '_blank';
-      a.rel = 'noopener';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    },
-  },
+  // `tabs.create` ĐÃ GỠ, 2026-09-08. Nơi gọi duy nhất là chỗ bấm chip nước lúc chưa đăng
+  // nhập — nó đẩy người dùng sang trang sàn giữa chừng, mà dấu ✕ kích hoạt cú đẩy đó thường
+  // là báo động giả. Không còn ai mở tab từ mã nữa; mọi link người dùng bấm đều là thẻ <a>
+  // thật trong bảng kết quả.
+  //
+  // Nếu sau này cần mở tab từ mã, ĐỪNG dùng `window.open(url, '_blank', 'noopener')`: theo
+  // chuẩn nó trả `null` NHƯNG TAB VẪN MỞ, nên `if (!win)` sẽ kêu "trình duyệt đã chặn cửa sổ
+  // bật lên" mỗi lần bấm trong khi tab mở ra ngay sau lưng thông báo đó (đã sập đúng vậy
+  // 2026-08-24). Dùng một thẻ <a target="_blank" rel="noopener"> tạm là xong.
   cookies: {
     // Trang web KHÔNG đọc được cookie đăng nhập của các sàn, kể cả khi cùng miền: chúng đều là
     // HttpOnly. Phải nhờ service worker, nơi duy nhất có quyền `cookies`.
@@ -256,35 +246,29 @@ async function detectMode() {
   // 1) Có extension NGAY TRÊN MÁY NÀY → dùng thẳng, không cần relay.
   if (await rsExtensionReady()) return;
 
-  // 2) Không có extension cục bộ → thử máy-thợ qua relay. Có thợ thì chạy bình thường (im lặng),
-  //    chỉ đổi đường đi ở `dispatch`. User không cần biết crawl chạy ở máy khác.
+  // 2) Đi đường vòng được thì ĐI IM LẶNG.
+  //
+  // Bản trước hiện một băng "Máy này không có extension — đang dùng máy-thợ chung (relay)".
+  // Câu đó nói về ĐƯỜNG ĐI BÊN TRONG của tool, không phải về việc người dùng đang làm: họ gõ
+  // từ khoá và bấm Research, chuyện dữ liệu về bằng lối nào là việc của tool. Nó còn phơi ra
+  // cấu trúc hệ thống cho bất kỳ ai mở trang. Mọi thứ vẫn chạy y hệt, chỉ khác `dispatch`.
   try {
     const r = await fetch('/api/relay/status', { cache: 'no-store' });
     const s = await r.json();
-    if (s && s.workerOnline) {
-      RELAY_MODE = true;
-      const bar2 = document.getElementById('status');
-      const text2 = document.getElementById('statusText');
-      if (bar2 && text2) {
-        bar2.classList.remove('err');
-        text2.textContent = '🔗 Máy này không có extension — đang dùng máy-thợ chung (relay). Bấm Research như bình thường.';
-      }
-      return;
-    }
+    if (s && s.workerOnline) { RELAY_MODE = true; return; }
   } catch (e) {
-    /* backend không phản hồi — rơi xuống thông báo bên dưới */
+    /* không hỏi được — rơi xuống thông báo bên dưới */
   }
 
-  // 3) Không extension, không thợ → nói rõ CẢ HAI đường.
+  // 3) Không đường nào chạy được. Nói ĐÚNG hệ quả người dùng sẽ gặp, và dừng ở đó — cách sửa
+  //    nằm ở phía quản trị, không phải ở người đang ngồi tìm sản phẩm.
   const bar = document.getElementById('status');
   const text = document.getElementById('statusText');
   if (!bar || !text) return;
   bar.classList.add('err');
   text.textContent =
-    'Các sàn cần phiên đăng nhập (Shopee, TikTok Shop, Amazon, Taobao, 1688, Temu) sẽ không chạy: ' +
-    'máy này chưa cài extension, và cũng chưa có máy-thợ nào online. Cách 1: cài extension ở ' +
-    'chrome://extensions → Developer mode → Load unpacked → thư mục extension/. Cách 2: mở trang ' +
-    '/worker trên một máy đã cài extension + đăng nhập sàn để nó làm máy-thợ chung.';
+    'Các sàn cần đăng nhập (Shopee, TikTok Shop, Amazon, Taobao, 1688, Temu) tạm thời chưa dùng ' +
+    'được. Thử lại sau ít phút.';
 }
 
 const DOMAIN = { VN: 'shopee.vn', TH: 'shopee.co.th', PH: 'shopee.ph', MY: 'shopee.com.my', ID: 'shopee.co.id', SG: 'shopee.sg', TW: 'shopee.tw', BR: 'shopee.com.br', MX: 'shopee.com.mx', CO: 'shopee.com.co', CL: 'shopee.cl' };
@@ -310,7 +294,7 @@ const FX_USD = { PHP: 0.017, VND: 0.00004, THB: 0.028, IDR: 0.000062, MYR: 0.22,
 // `frontend/next.config.mjs` chuyển tiếp sang FastAPI. Nhờ vậy đổi tên miền lúc deploy
 // không phải sửa file này — khác hẳn bản cũ trỏ cứng vào localhost:8000.
 const BACKEND = '';
-const PF_LABEL = { etsy: 'Etsy', facebook: 'Facebook', tiktok: 'TikTok', douyin: 'Douyin 抖音' };
+const PF_LABEL = { etsy: 'Etsy', facebook: 'Facebook', tiktok: 'TikTok', douyin: 'Douyin 抖音', youtube: 'YouTube' };
 const PRICE_SCALE = 100000;
 
 // Modal Giá vốn — QUY VỀ ¥ TRUNG: giá bán đối thủ (tiền sàn) → ₫ → ¥, rồi so với giá vốn 1688 (vốn
@@ -413,28 +397,78 @@ function updateRegionSection() {
   renderRegions();
 }
 
-// Check đăng nhập TỨC THÌ qua cookie đặc trưng của sàn (Shopee: SPC_U; TikTok: seller id).
-function checkLogin(pf, code) {
+/**
+ * Check đăng nhập qua cookie đặc trưng của sàn (Shopee: SPC_U; TikTok: seller id).
+ *
+ * BA trạng thái, không phải hai — và đây là chỗ đã sai:
+ *
+ *     true       đọc được cookie, còn hạn  → đã đăng nhập
+ *     false      đọc được, KHÔNG có cookie → chưa đăng nhập
+ *     undefined  KHÔNG ĐỌC ĐƯỢC           → chưa biết
+ *
+ * Bản trước gộp hai cái sau làm một: mọi lỗi đều thành `false`. Mà lượt hỏi này đi qua máy-thợ,
+ * nên chỉ cần thợ bận, hết giờ, hay mạng chớp một cái là nước ấy hiện ✕ — trong khi máy-thợ vẫn
+ * đang đăng nhập shopee.vn bình thường. Người dùng thấy ✕ thì tin là mình chưa đăng nhập, còn
+ * `research()` thì BỎ QUA sàn có `loginStatus === false`, nên một lần chớp mạng thành ra một sàn
+ * không bao giờ chạy.
+ *
+ * `undefined` hiện dấu … và KHÔNG chặn `research()` — chưa biết thì cứ thử, sàn tự báo lại.
+ */
+async function checkLogin(pf, code) {
   const spec = LOGIN[pf];
   const domain = spec && spec.domain[code];
-  if (!domain) return Promise.resolve(undefined);
-  return new Promise((resolve) => {
-    try {
-      chrome.cookies.get({ url: `https://${domain}/`, name: spec.cookie }, (c) => resolve(!!(c && c.value && spec.ok(c.value))));
-    } catch (e) { resolve(false); }
-  });
-}
-async function refreshLogin() {
-  renderRegions();
-  for (const pf of regionPlatforms()) {
-    if (!LOGIN[pf]) continue; // sàn công khai (Amazon) không cần check
-    for (const code of PLATFORMS[pf].regions) {
-      if (!LOGIN[pf].domain[code]) continue;
-      loginStatus[`${pf}:${code}`] = await checkLogin(pf, code);
-      renderRegions();
-    }
+  if (!domain) return undefined;
+  try {
+    const r = await dispatch({ type: 'RS_COOKIE', url: `https://${domain}/`, name: spec.cookie });
+    if (!r || r.ok === false || r.blocked) return undefined; // hỏi không tới nơi
+    const c = r.cookie;
+    return !!(c && c.value && spec.ok(c.value));
+  } catch (e) {
+    return undefined;
   }
 }
+let _dangCheckLogin = false;
+
+async function refreshLogin({ tuDong = false } = {}) {
+  if (_dangCheckLogin) return; // lượt trước chưa xong — chồng lên nhau chỉ làm hàng đợi nghẽn
+  // Lượt TỰ ĐỘNG nhường đường cho lượt Research đang chạy: mỗi lần kiểm là 11-19 lượt hỏi, và
+  // chúng đi chung một hàng đợi với chính cú crawl mà người dùng đang ngồi chờ. Bấm ⟳ tay thì
+  // vẫn chạy — đó là người dùng chủ động đổi ý ưu tiên.
+  if (tuDong && $('go') && $('go').disabled) return;
+  _dangCheckLogin = true;
+  try {
+    renderRegions();
+    for (const pf of regionPlatforms()) {
+      if (!LOGIN[pf]) continue; // sàn công khai (Amazon) không cần check
+      for (const code of PLATFORMS[pf].regions) {
+        if (!LOGIN[pf].domain[code]) continue;
+        loginStatus[`${pf}:${code}`] = await checkLogin(pf, code);
+        renderRegions();
+      }
+    }
+  } finally {
+    _dangCheckLogin = false;
+  }
+}
+
+/*
+ * TỰ KIỂM TRA LẠI, ĐỀU ĐẶN.
+ *
+ * Trạng thái đăng nhập là của MÁY KHÁC (máy-thợ), nên nó đổi mà trang này không hề hay biết:
+ * ai đó đăng nhập lại, phiên hết hạn, thợ vừa online. Trước đây chỉ hỏi đúng một lần lúc mở
+ * trang, nên một dấu ✕ chụp được từ lúc đó nằm lại đấy cả buổi — kể cả sau khi máy-thợ đã đăng
+ * nhập xong. Nút ⟳ có sẵn, nhưng phải biết mà bấm mới dùng được.
+ *
+ * KHÔNG chạy khi tab đang ẩn: mỗi lượt là 11-19 lần hỏi máy-thợ, và một tab để quên trong nền
+ * cả ngày sẽ ăn hết lượt của người đang thật sự dùng. Quay lại tab thì hỏi lại ngay.
+ */
+const LOGIN_RECHECK_MS = 60_000;
+setInterval(() => {
+  if (document.visibilityState === 'visible') void refreshLogin({ tuDong: true });
+}, LOGIN_RECHECK_MS);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') void refreshLogin({ tuDong: true });
+});
 
 // Vẽ nước theo NHÓM sàn, dùng đúng dáng chip của bước 1 — chọn nước và chọn sàn là cùng một
 // thao tác, nên không bắt người dùng học hai kiểu điều khiển.
@@ -442,45 +476,74 @@ async function refreshLogin() {
 // Từng thử ô thả xuống "+ Thêm nước" để đỡ rối khi Shopee có 11 nước. Bỏ, vì nó giấu mất thứ
 // đang có: nhìn vào không biết ngay còn chọn được nước nào, phải mở ra mới thấy. Chip hiện hết
 // thì tốn hai hàng, nhưng đọc một lượt là xong.
+/*
+ * Nước của MỘT sàn = một nút gọn + một bảng thả xuống có cuộn.
+ *
+ * `rgOpen` giữ sàn nào đang mở, và nó phải là BIẾN NGOÀI hàm chứ không phải trạng thái nằm
+ * trong DOM: `refreshLogin` gọi `renderRegions()` lại sau MỖI nước nó kiểm (11-19 lượt, mỗi
+ * lượt một lần vẽ). Nếu trạng thái mở nằm trong DOM thì bảng đang mở sẽ tự đóng giữa chừng
+ * ngay dưới tay người dùng.
+ */
+let rgOpen = null;
+
 function renderRegions() {
   const box = document.getElementById('regions');
   if (!box) return;
   box.innerHTML = '';
   const pfs = regionPlatforms();
+  if (rgOpen && !pfs.includes(rgOpen)) rgOpen = null; // sàn vừa bị bỏ chọn
+
   for (const pf of pfs) {
     const cfg = PLATFORMS[pf];
-    const group = document.createElement('div');
-    group.className = 'rgroup';
+    const chon = cfg.regions.filter((c) => selectedRegions.has(`${pf}:${c}`));
+    const mo = rgOpen === pf;
 
-    // Nhãn sàn chỉ cần khi có TỪ HAI sàn — một sàn thì nó lặp lại đúng thứ vừa đọc ở bước 1.
-    if (pfs.length > 1) {
-      const label = document.createElement('span');
-      label.className = 'rglabel';
-      label.textContent = cfg.label;
-      group.appendChild(label);
-    }
+    // Câu trả lời nằm SẴN trên nút: một nước thì hiện tên nước, nhiều thì đếm. Người dùng
+    // không phải mở ra mới biết mình đang chọn gì.
+    const tomTat = chon.length === 0
+      ? 'chọn nước'
+      : chon.length === 1
+        ? `${FLAG[chon[0]] || ''} ${COUNTRY[chon[0]] || chon[0]}`
+        : `${chon.length} nước`;
+    // Cảnh báo trên nút chỉ tính các nước ĐANG CHỌN — một nước chưa đăng nhập mà không ai
+    // chọn thì không phải việc của người dùng lúc này.
+    const loi = chon.some((c) => LOGIN[pf] && LOGIN[pf].domain[c] && loginStatus[`${pf}:${c}`] === false);
 
-    for (const code of cfg.regions) {
-      const isLoginRegion = !!(LOGIN[pf] && LOGIN[pf].domain[code]); // Shopee/TikTok cần đăng nhập; Amazon công khai
-      const st = loginStatus[`${pf}:${code}`];
-      const on = selectedRegions.has(`${pf}:${code}`);
-      const badge = !isLoginRegion
-        ? '<span class="sub">🌐</span>'
-        : st === true ? '<span class="ok">✓</span>' : st === false ? '<span class="no">✕</span>' : '<span class="sub">…</span>';
-      const chip = document.createElement('button');
-      chip.className = 'rgchip';
-      chip.dataset.pf = pf;
-      chip.dataset.code = code;
-      chip.dataset.on = on ? '1' : '0';
-      chip.innerHTML = `<span class="tick" aria-hidden>✓</span>${FLAG[code] || ''} ${esc(COUNTRY[code] || code)} ${badge}`;
-      chip.title = !isLoginRegion
-        ? `${cfg.label} · ${COUNTRY[code] || code} (${code}) — công khai, không cần đăng nhập`
-        : st === false
-          ? `${cfg.label} · ${COUNTRY[code] || code} (${code}): chưa đăng nhập — bấm để mở trang đăng nhập`
-          : `${cfg.label} · ${COUNTRY[code] || code} (${code})`;
-      group.appendChild(chip);
+    const wrap = document.createElement('div');
+    wrap.className = 'rgsel';
+    wrap.dataset.pf = pf;
+    wrap.innerHTML =
+      `<button class="rgtrigger" data-pf="${pf}" aria-expanded="${mo}" aria-haspopup="listbox">` +
+      `<span class="rgname">${esc(cfg.label)}</span>` +
+      `<span class="rgval">${esc(tomTat)}</span>` +
+      (loi ? '<span class="no" title="Có nước đang chọn chưa đăng nhập">✕</span>' : '') +
+      '<i aria-hidden>▾</i></button>';
+
+    if (mo) {
+      const panel = document.createElement('div');
+      panel.className = 'rgpanel';
+      const list = cfg.regions.map((code) => {
+        const canLogin = !!(LOGIN[pf] && LOGIN[pf].domain[code]);
+        const st = loginStatus[`${pf}:${code}`];
+        const badge = !canLogin
+          ? '<span class="sub" title="Sàn công khai, không cần đăng nhập">🌐</span>'
+          : st === true ? '<span class="ok" title="Đã đăng nhập">✓</span>'
+            : st === false ? '<span class="no" title="Chưa đăng nhập">✕</span>'
+              : '<span class="sub" title="Đang kiểm tra…">…</span>';
+        const on = selectedRegions.has(`${pf}:${code}`);
+        return `<button class="rgopt" role="option" aria-selected="${on}" data-pf="${pf}" data-code="${code}" data-on="${on ? '1' : '0'}">` +
+          `<span class="tick" aria-hidden>✓</span>` +
+          `<span class="rgflag">${FLAG[code] || ''}</span>` +
+          `<span class="rgcty">${esc(COUNTRY[code] || code)}</span>${badge}</button>`;
+      }).join('');
+      panel.innerHTML =
+        `<div class="rglist" role="listbox">${list}</div>` +
+        '<div class="rgfoot">' +
+        `<span>${multiRegion ? 'Chọn nhiều nước' : 'Chọn một nước'}</span>` +
+        '<button class="rgdone">Xong</button></div>';
+      wrap.appendChild(panel);
     }
-    box.appendChild(group);
+    box.appendChild(wrap);
   }
 }
 const PAGE_SIZE = 60;
@@ -493,6 +556,96 @@ function esc(s) { return String(s == null ? '' : s).replace(/</g, '&lt;').replac
 function setStatus(msg, kind) { $('statusText').textContent = msg; $('status').className = 'status' + (kind ? ' ' + kind : ''); }
 function fmtInt(n) { return typeof n === 'number' ? n.toLocaleString('vi-VN') : '—'; }
 function fmtPrice(v, cur) { return v == null ? '—' : v.toLocaleString('vi-VN') + ' ' + cur; }
+
+/**
+ * GIÁ ĐEM RA DÙNG — cận TRÊN khi sàn có trả, không thì con số duy nhất nó cho.
+ *
+ * Sàn nào cũng chỉ đưa MỘT con số lên thẻ tìm kiếm, và con số đó là của biến thể RẺ NHẤT. Một
+ * listing áo có thể kèm biến thể 1-2k (dây buộc, sticker, "mẫu thử") — cố ý, để tụt lên đầu
+ * bảng sắp theo giá; bấm vào chọn đúng cái áo thì 99k.
+ *
+ * Nên khi có cả cặp min/max, cái đáng đọc là MAX: nó gần với giá phải trả cho món hàng thật.
+ *
+ * MỘT hàm cho cả ba chỗ — hiện, sắp xếp, và so với giá vốn. Tách ra ba chỗ tự tính là kiểu lỗi
+ * khó thấy nhất: cột hiện 99k mà sort lại xếp theo 2k, nhìn ra đúng như bảng bị sắp sai.
+ */
+function giaDung(p) {
+  if (p.priceMax != null) return p.priceMax;
+  return p.price != null ? p.price : null;
+}
+
+/**
+ * Ô GIÁ.
+ *
+ *   có cả min/max  →  99.000 VND  +  dòng nhỏ "thấp nhất 2.000 VND"
+ *   chỉ biết là cận dưới  →  "từ 6,7 GBP"   (Etsy `has_variations`, TikTok `recommend_price_low`)
+ *   giá đơn        →  50 USD               (như cũ)
+ *
+ * Giữ lại cận dưới ở dòng nhỏ chứ không vứt: khoảng cách giữa hai đầu chính là dấu hiệu người
+ * bán đang gắn biến thể mồi — 2k↔99k nói nhiều hơn bất kỳ con số đơn nào.
+ */
+/*
+ * BA Ô CHỈ SỐ — mỗi ô tự nói con số của nó là của AI.
+ *
+ * Cùng một cột, các sàn đưa những thứ khác nhau về bản chất. Để chúng nằm cạnh nhau không nhãn
+ * là mời người đọc so sánh sai:
+ *
+ *   Bán/tháng   Shopee/Amazon = số bán thật · Etsy = LƯỢT XEM (sàn giấu số bán theo sản phẩm)
+ *   Tổng bán    Shopee/Temu   = số bán thật · Etsy = số bán của cả SHOP
+ *   Rating      Shopee/Amazon = của sản phẩm · Etsy/1688 = của SHOP
+ *
+ * Một shop 4,9★ vẫn bán được mẫu tệ, và một shop 800 đơn không nói gì về mẫu đang xem — nó có
+ * thể là mẫu ế nhất trong 68 mẫu.
+ */
+function demandCell(p) {
+  if (p.monthly != null) return `<td class="num">${fmtInt(p.monthly)}</td>`;
+  if (p.views != null) {
+    return `<td class="num"><span title="Lượt xem trang sản phẩm — sàn này không công bố số bán theo sản phẩm">${fmtInt(p.views)}</span>` +
+      `<div class="sub">lượt xem</div></td>`;
+  }
+  return '<td class="num">—</td>';
+}
+
+function soldCell(p) {
+  if (p.sold == null) return '<td class="num">—</td>';
+  const nhan = p.soldIsShop ? '<div class="sub" title="Tổng đã bán của cả SHOP, không phải của sản phẩm này">của shop</div>' : '';
+  return `<td class="num">${fmtInt(p.sold)}${nhan}</td>`;
+}
+
+function ratingCell(p) {
+  if (p.rating == null) return '<td class="num">—</td>';
+  const so = p.ratingCount != null ? fmtInt(p.ratingCount) : '';
+  const nhan = p.ratingIsShop
+    ? `<div class="sub" title="Điểm trung bình của SHOP — sàn này không có rating theo từng sản phẩm">${so ? so + ' · ' : ''}shop</div>`
+    : (so ? `<div class="sub">${so}</div>` : '');
+  return `<td class="num">${p.rating.toFixed(1)}★${nhan}</td>`;
+}
+
+function priceCell(p) {
+  const cur = curOf(p);
+  const co = p.priceMax != null;
+  const chinh = co
+    ? fmtPrice(p.priceMax, cur)
+    : p.price == null ? '—' : (p.priceFrom ? 'từ ' : '') + fmtPrice(p.price, cur);
+  // Ô TRỐNG PHẢI TỰ NÓI VÌ SAO. Một dấu "—" trần đọc thành "tool không lấy được", trong khi
+  // phần lớn trường hợp là SÀN không hiện giá: hàng hết, hàng "See options", hoặc — đo được
+  // trên Amazon 2026-09-08 — món đó không giao tới nước mà sàn đang nhận diện. Ở những dòng
+  // ấy không có giá nào để lấy, và điền đại con số gần nhất trên trang là điền giá của một
+  // sản phẩm khác.
+  const tip = co
+    ? 'Giá của biến thể ĐẮT NHẤT — sàn chỉ hiện cái rẻ nhất trên thẻ tìm kiếm.'
+    : p.price == null
+      ? 'Sàn không hiện giá cho sản phẩm này — thường là hết hàng, phải chọn phiên bản, hoặc không giao tới nước đang chọn. Bấm vào tên để xem trên sàn.'
+      : p.priceFrom
+        ? 'Giá của biến thể rẻ nhất — sản phẩm chính thường cao hơn. Bấm vào tên để xem giá thật.'
+        : '';
+  const phu = co && p.price != null && p.price < p.priceMax
+    ? `<div class="sub">thấp nhất ${esc(fmtPrice(p.price, cur))}</div>`
+    : '';
+  const gach = p.strike ? `<div class="sub strike">${fmtInt(p.strike)}</div>` : '';
+  return `<span class="price"${tip ? ` title="${esc(tip)}"` : ''}>${esc(chinh)}</span>${phu}${gach}`;
+}
+
 // 1234 → "1,2K" · 12345 → "12,3K" · 1234567 → "1,2M". Số nhỏ giữ nguyên (dễ đọc).
 function fmtCompact(n) {
   if (typeof n !== 'number' || !isFinite(n) || n < 0) return '';
@@ -545,7 +698,7 @@ function cost1688Cell(p) {
   // Chưa tra (undefined) hoặc đã tra nhưng không ra ('none') → '—'. Chỉ số ¥ mới tính ₫/%.
   if (typeof cny !== 'number') return { html: '<span class="sub" title="Bấm 💰 Giá vốn ở cột Thao tác, hoặc nút Giá vốn hàng loạt">—</span>', cheap: false };
   const thresh = costThresh();
-  const sellCny = sellToCny(curOf(p), p.price); // giá bán đối thủ quy về ¥ (qua ₫)
+  const sellCny = sellToCny(curOf(p), giaDung(p)); // giá bán đối thủ quy về ¥ (qua ₫) — cùng con số cột Giá bán đang hiện
   const ratio = sellCny ? (cny / sellCny) * 100 : null; // % = giá vốn ¥ ÷ giá bán ¥
   const cheap = ratio != null && ratio < thresh;
   const ratioHtml = ratio != null ? `<div class="costratio${cheap ? ' cheap' : ''}">${ratio.toFixed(1)}% giá bán</div>` : '';
@@ -574,7 +727,7 @@ function costValueHtml(cost, price, cur) {
 
 function costCellHtml(p) {
   const c = costCache[p.itemid];
-  if (typeof c === 'number') return costValueHtml(c, p.price, curOf(p)); // giá vốn từ find_similar
+  if (typeof c === 'number') return costValueHtml(c, giaDung(p), curOf(p)); // giá vốn từ find_similar — so với đúng số cột Giá bán đang hiện
   if (c === 'none') return '<span class="sub">—</span>';
   return '<span class="sub">…</span>'; // đang/chờ batch tính
 }
@@ -641,6 +794,19 @@ function parseItem(it, region, domain) {
   const dp = idata.item_card_display_price || asset.display_price || {};
   const rawPrice = dp.price ?? basic.price;
   const price = typeof rawPrice === 'number' && rawPrice > 0 ? rawPrice / PRICE_SCALE : null;
+  // GIÁ TRÊN THẺ LÀ GIÁ CỦA BIẾN THỂ RẺ NHẤT.
+  //
+  // Một listing áo có thể kèm một biến thể 1-2k (dây, sticker, "mẫu thử") — cố ý, để tụt lên
+  // đầu bảng sắp theo giá. Thẻ tìm kiếm chỉ hiện con số ấy, còn bấm vào chọn đúng cái áo thì
+  // lên 99k. Cột giá của tool đọc y hệt thẻ, nên nó chép lại đúng cái bẫy đó.
+  //
+  // Shopee có kèm cận trên hay không thì TÙY response, nên đọc theo kiểu "có thì dùng": tìm cặp
+  // min/max ở cả `item_basic` lẫn khối giá của thẻ. Không có thì mọi thứ giữ nguyên như cũ —
+  // thêm chỗ này không làm hỏng lượt nào đang chạy được.
+  const soGia = (v) => (typeof v === 'number' && v > 0 ? v / PRICE_SCALE : null);
+  const min = soGia(basic.price_min ?? dp.price_min);
+  const max = soGia(basic.price_max ?? dp.price_max);
+  const priceMax = max != null && min != null && max > min ? max : null;
   const rawStrike = dp.strikethrough_price;
   const strike = typeof rawStrike === 'number' && rawStrike > 0 ? rawStrike / PRICE_SCALE : null;
   let discount = typeof dp.discount === 'number' ? dp.discount : null;
@@ -661,7 +827,7 @@ function parseItem(it, region, domain) {
     itemid: String(itemid), shopid: String(shopid), catid,
     name: asset.name || basic.name || '',
     image: imageUrl(region, asset.image || (Array.isArray(asset.images) ? asset.images[0] : '') || basic.image),
-    price, strike, discount, monthly, sold, rating, ratingCount,
+    price, priceMax, priceFrom: priceMax != null, strike, discount, monthly, sold, rating, ratingCount,
     videoUrl: shopeeVideoUrl(it), // video sản phẩm Shopee (video_info_list) nếu SP có ▶
     shop: (idata.shop_data || {}).shop_name || asset.shop_location || '',
     isAd: !!it.adsid,
@@ -740,8 +906,8 @@ async function fetchKeyword(keyword, region, count) {
     if (nav.products.length || nav.blocked) return nav;
   }
   const notice = rawItemCount > 0
-    ? `Shopee: có ${rawItemCount} item thô nhưng parse ra 0 — Shopee đổi tên field, báo dev.`
-    : 'Shopee: chưa lấy được sản phẩm — kiểm tra đăng nhập shopee.vn rồi thử lại.';
+    ? `Shopee: có ${rawItemCount} item thô nhưng parse ra 0 — Shopee vừa đổi cấu trúc dữ liệu.`
+    : `Shopee: chưa lấy được sản phẩm — kiểm tra đăng nhập ${DOMAIN[region] || 'shopee.vn'} rồi thử lại.`;
   return { products: [], blocked: false, notice };
 }
 
@@ -750,7 +916,7 @@ async function fetchKeyword(keyword, region, count) {
 async function fetchKeywordNav(keyword, region, count) {
   const domain = DOMAIN[region];
   const res = await new Promise((r) => chrome.runtime.sendMessage({ type: 'RS_SHOPEE', keyword, domain }, (x) => r(x)));
-  if (!res || !res.ok) return { products: [], blocked: false, notice: 'Shopee: extension không phản hồi' };
+  if (!res || !res.ok) return { products: [], blocked: false, notice: 'Shopee: không lấy được dữ liệu — thử lại.' };
   if (res.blocked) return { products: [], blocked: true, notice: `Shopee: ${res.error || 'bị chặn / chưa đăng nhập'}` };
   const videoMap = {};
   for (const v of (res.videoItems || [])) videoMap[String(v.itemid)] = v.url;
@@ -776,10 +942,34 @@ async function fetchKeywordNav(keyword, region, count) {
   let notice;
   if (!products.length) {
     notice = rawItemCount > 0
-      ? `Shopee: có ${rawItemCount} item thô nhưng parse ra 0 — Shopee đổi tên field, báo dev.`
+      ? `Shopee: có ${rawItemCount} item thô nhưng parse ra 0 — Shopee vừa đổi cấu trúc dữ liệu.`
       : (res.error || 'Shopee: chưa lấy được sản phẩm — thử lại (để tab shopee tự cuộn, đừng rời).');
   }
   return { products, blocked: false, notice };
+}
+
+/**
+ * Ký hiệu/mã tiền trên thẻ → mã ISO. `null` nếu không nhận ra (nơi gọi giữ mặc định của nước).
+ *
+ * Cần vì Amazon đổi tiền theo địa chỉ giao hàng nó đoán từ IP, không theo tên miền. Máy-thợ
+ * ngồi ở Việt Nam nên amazon.com trả "VND 693,173" — xem ghi chú ở `background.js`.
+ */
+const CUR_KY_HIEU = [
+  [/(^|[^A-Z])VND([^A-Z]|$)|₫/i, 'VND'], [/(^|[^A-Z])USD([^A-Z]|$)/i, 'USD'],
+  [/(^|[^A-Z])GBP([^A-Z]|$)|£/i, 'GBP'], [/(^|[^A-Z])EUR([^A-Z]|$)|€/i, 'EUR'],
+  [/(^|[^A-Z])JPY([^A-Z]|$)|￥/i, 'JPY'], [/(^|[^A-Z])CAD([^A-Z]|$)|CA\$|(^|[^A-Z])C\$/i, 'CAD'],
+  [/(^|[^A-Z])AUD([^A-Z]|$)|(^|[^A-Z])A\$/i, 'AUD'], [/(^|[^A-Z])SGD([^A-Z]|$)|(^|[^A-Z])S\$/i, 'SGD'],
+  [/(^|[^A-Z])THB([^A-Z]|$)|฿/i, 'THB'], [/(^|[^A-Z])PHP([^A-Z]|$)|₱/i, 'PHP'],
+  [/(^|[^A-Z])IDR([^A-Z]|$)|Rp/i, 'IDR'], [/(^|[^A-Z])MYR([^A-Z]|$)|RM/i, 'MYR'],
+  [/(^|[^A-Z])TWD([^A-Z]|$)|NT\$/i, 'TWD'], [/(^|[^A-Z])BRL([^A-Z]|$)|(^|[^A-Z])R\$/i, 'BRL'],
+  [/(^|[^A-Z])MXN([^A-Z]|$)/i, 'MXN'], [/¥/, 'CNY'],
+  [/\$/, 'USD'], // để CUỐI: mọi ký hiệu có '$' ở trên đã bắt trước
+];
+function curTuChu(text) {
+  const t = String(text || '');
+  if (!t) return null;
+  for (const [re, ma] of CUR_KY_HIEU) if (re.test(t)) return ma;
+  return null;
 }
 
 // --- Amazon (công khai, không login) — background điều hướng tab tới trang search, đọc DOM ---
@@ -791,10 +981,10 @@ async function fetchAmazon(keyword, region, count) {
   const res = await new Promise((r) => chrome.runtime.sendMessage({ type: 'RS_AMAZON', domain, url }, (x) => r(x)));
   if (!res || !res.ok || res.blocked) return { products: [], blocked: true };
   const products = (res.items || []).slice(0, count).map((it) => ({
-    platform: 'Amazon', region, currency: cur,
+    platform: 'Amazon', region, currency: curTuChu(it.priceText) || cur,
     itemid: it.asin, shopid: '', catid: null,
     name: it.name, image: it.image,
-    price: it.price, strike: it.strike,
+    price: it.price, priceMax: it.priceMax || null, priceFrom: !!it.priceMax, strike: it.strike,
     discount: it.strike && it.price && it.strike > it.price ? Math.round((1 - it.price / it.strike) * 100) : null,
     monthly: it.monthly, sold: null, rating: it.rating, ratingCount: it.ratingCount, // cầu: "bought/tháng" nếu có, không thì số review
     shop: '', isAd: it.isAd,
@@ -812,7 +1002,7 @@ async function fetchBackend(platform, keyword, region, count) {
   try {
     const r = await fetch(`${BACKEND}/api/ads/search?${params.toString()}`);
     data = await r.json();
-    if (!r.ok) return { products: [], blocked: false, notice: (data && data.error) || `backend HTTP ${r.status}` };
+    if (!r.ok) return { products: [], blocked: false, notice: (data && data.error) || 'Chưa lấy được dữ liệu — thử lại sau ít phút.' };
   } catch (e) {
     return { products: [], blocked: false, backendDown: true };
   }
@@ -824,9 +1014,13 @@ async function fetchBackend(platform, keyword, region, count) {
       itemid: ad.id, shopid: '', catid: null,
       name: ad.title || ad.body || '',
       image: imgRaw ? `${BACKEND}/api/media?url=${encodeURIComponent(imgRaw)}` : '',
-      price: ad.price ?? null, strike: null, discount: null,
-      monthly: ad.monthlySold ?? null, sold: ad.soldCount ?? null,
-      rating: ad.rating ?? null, ratingCount: ad.ratingCount ?? null,
+      price: ad.price ?? null, priceFrom: !!ad.priceIsFrom, strike: null, discount: null,
+      // Sàn nào không cho số bán theo sản phẩm (Etsy) thì cột "cầu" là LƯỢT XEM. Giữ ở một
+      // trường riêng chứ không nhét vào `monthly`, để ô còn biết mình đang hiện cái gì mà ghi
+      // đúng nhãn — chép lượt xem vào ô "bán/tháng" là đúng cái lỗi vừa đi sửa ở Amazon.
+      monthly: ad.monthlySold ?? null, views: ad.viewCount ?? null,
+      sold: ad.soldCount ?? null, soldIsShop: !!ad.soldIsShop,
+      rating: ad.rating ?? null, ratingCount: ad.ratingCount ?? null, ratingIsShop: !!ad.ratingIsShop,
       daysActive: ad.daysActive ?? null, // cho tab Content (FB: đời quảng cáo)
       shop: ad.advertiser || '', isAd: false,
       link: ad.permalink || '#', similarUrl: ad.permalink || '#',
@@ -858,7 +1052,9 @@ function parseTiktokItem(it, region) {
     itemid: String(it.lead_id || ''), shopid: '', catid: null,
     name: it.lead_name || '',
     image: Array.isArray(pics) ? (pics[0] || '') : '',
-    price: ttNum(it.recommend_price_low), strike: null, discount: null,
+    // `recommend_price_low` — tên trường nói thẳng đây là CẬN DƯỚI, không phải giá bán. TikTok
+    // không trả cận trên ở endpoint này, nên chỉ ghi được "từ X" chứ chưa hiện được khoảng.
+    price: ttNum(it.recommend_price_low), priceFrom: true, strike: null, discount: null,
     monthly: ttNum(it.l30d_sales_volume), sold: null, // cầu = bán 30 ngày (TikTok không cho tổng luỹ kế)
     rating: null, ratingCount: null,                   // product opportunity không có rating
     gmv: ttNum(it.gmv_l30d || it.gmv),                 // doanh thu 30 ngày → dùng làm "chất" thay rating
@@ -895,14 +1091,16 @@ async function fetchTiktok(keyword, region, count) {
 // --- 1688 (giá sỉ Trung, công khai) — background gọi API mtop JSON trong tab h5api. Không region ---
 async function fetch1688(keyword, count) {
   const res = await new Promise((r) => chrome.runtime.sendMessage({ type: 'RS_1688', keyword, count }, (x) => r(x)));
-  if (!res || !res.ok) return { products: [], blocked: false, notice: '1688: extension không phản hồi' };
+  if (!res || !res.ok) return { products: [], blocked: false, notice: '1688: không lấy được dữ liệu — thử lại.' };
   if (res.blocked) return { products: [], blocked: true, notice: `1688: bị chặn tạm (${res.error || 'rate-limit'}) — thử lại sau` };
   const products = (res.items || []).slice(0, count).map((it) => ({
     platform: '1688', region: '', currency: 'CNY',
     itemid: String(it.id), shopid: '', catid: null,
     name: it.name, image: it.image,
     price: it.price, strike: null, discount: null, // giá sỉ (giá vốn); 1688 không công khai giảm giá
-    monthly: it.monthly, sold: it.sold, rating: it.rating, ratingCount: null, repurchase: it.repurchase, // sort GMV 30d lộ số bán; rating=điểm shop
+    // `rating` ở 1688 là điểm dịch vụ của SHOP (`tradeService`), không phải của sản phẩm —
+    // 1688 không có rating theo sản phẩm. Gắn cờ để ô rating gọi đúng tên nó.
+    monthly: it.monthly, sold: it.sold, rating: it.rating, ratingCount: null, ratingIsShop: true, repurchase: it.repurchase,
     videoUrl: it.videoUrl || '', // video sản phẩm nếu response search có
     shop: it.shop, isAd: false,
     link: `https://detail.1688.com/offer/${it.id}.html`,
@@ -916,7 +1114,7 @@ async function fetch1688(keyword, count) {
 // --- Taobao (Cách A "ký sinh": trang tự gọi h5search đã ký + x5sec, extension chộp response). Không region ---
 async function fetchTaobao(keyword, count) {
   const res = await new Promise((r) => chrome.runtime.sendMessage({ type: 'RS_TAOBAO', keyword, count }, (x) => r(x)));
-  if (!res || !res.ok) return { products: [], blocked: false, notice: 'Taobao: extension không phản hồi' };
+  if (!res || !res.ok) return { products: [], blocked: false, notice: 'Taobao: không lấy được dữ liệu — thử lại.' };
   if (res.blocked) return { products: [], blocked: true, notice: `Taobao: ${res.error || 'bị chặn'}` };
   if (res.raw) { console.log('[RS] Taobao raw (chưa map được field):', res.raw); return { products: [], blocked: false, notice: 'Taobao: bắt được response nhưng chưa khớp field — xem Console (F12) gửi dev' }; }
   const products = (res.items || []).slice(0, count).map((it) => ({
@@ -937,7 +1135,7 @@ async function fetchTaobao(keyword, count) {
 const TEMU_CUR = { US: 'USD', GB: 'GBP', DE: 'EUR', FR: 'EUR', JP: 'JPY' };
 async function fetchTemu(keyword, region, count) {
   const res = await new Promise((r) => chrome.runtime.sendMessage({ type: 'RS_TEMU', keyword, count }, (x) => r(x)));
-  if (!res || !res.ok) return { products: [], blocked: false, notice: 'Temu: extension không phản hồi' };
+  if (!res || !res.ok) return { products: [], blocked: false, notice: 'Temu: không lấy được dữ liệu — thử lại.' };
   if (res.blocked) return { products: [], blocked: true, notice: `Temu: ${res.error || 'bị chặn'}` };
   if (res.raw) { console.log('[RS] Temu raw (chưa map được field):', res.raw); return { products: [], blocked: false, notice: 'Temu: bắt được response nhưng chưa khớp field — xem Console (F12) gửi dev' }; }
   const products = (res.items || []).slice(0, count).map((it) => ({
@@ -1040,12 +1238,17 @@ async function research() {
   for (const { j, r } of groups.flat()) {
     if (r.backendDown) backendDown = true;
     if (r.notice) notices.push(r.notice);
-    if (r.blocked && LOGIN[j.pf]) loginStatus[`${j.pf}:${j.region}`] = false;
+    // Sàn chặn lượt crawl KHÔNG chứng minh được là chưa đăng nhập — nó cũng có thể là chống
+    // bot, là mạng chớp, là thợ bận. Ghi thẳng `false` như bản trước là dán một dấu ✕ sai lên
+    // nước đó, và vì `research()` bỏ qua sàn có `false`, cái ✕ ấy tự khoá luôn sàn cho các lượt
+    // sau. Hạ về "chưa biết" rồi đi hỏi lại cho chắc.
+    if (r.blocked && LOGIN[j.pf]) loginStatus[`${j.pf}:${j.region}`] = undefined;
     for (const p of r.products) { p.keyword = j.kwLabel || j.kw; if (!p.score) p.score = score(p); }
     all.push(...r.products);
   }
   $('go').disabled = false;
   renderRegions();
+  void refreshLogin(); // vừa có sàn bị chặn → hỏi lại trạng thái thật thay vì đoán (crawl đã xong)
 
   if (!all.length) {
     // Câu cuối cùng phải nói về ĐÚNG những sàn vừa chạy. Bản trước ghi cứng "Shopee: kiểm tra
@@ -1090,7 +1293,7 @@ function render() {
     switch (sortKey) {
       case 'name': return a.name.localeCompare(b.name);
       case 'platform': return a.platform.localeCompare(b.platform);
-      case 'price': return (b.price || 0) - (a.price || 0);
+      case 'price': return (giaDung(b) || 0) - (giaDung(a) || 0); // theo đúng số đang hiện
       case 'discount': return (b.discount || 0) - (a.discount || 0);
       case 'rating': return (b.rating || 0) - (a.rating || 0);
       case 'monthly': return (b.monthly || 0) - (a.monthly || 0);
@@ -1112,13 +1315,16 @@ function render() {
     `<div><a class="name" href="${p.link}" target="_blank" rel="noreferrer">${esc(p.name)}${p.isAd ? '<span class="adtag">Ad</span>' : ''}</a>` +
     `${p.videoUrl ? ` <a class="hasvid" href="${esc(p.videoUrl)}" target="_blank" rel="noreferrer" title="Sản phẩm có video — bấm để xem">▶</a>` : ''}` +
     `<div class="shop">${esc(p.shop)}</div></div></div></td>` +
-    `<td><span class="pill">${esc(p.platform)} ${FLAG[p.region] || ''}${p.region ? ' ' + esc(p.region) : ''}</span></td>` +
-    `<td class="num">${fmtInt(p.monthly)}</td>` +
-    `<td class="num">${fmtInt(p.sold)}</td>` +
-    `<td class="num">${p.rating != null ? p.rating.toFixed(1) + '★' : '—'}${p.ratingCount != null ? `<div class="sub">${fmtInt(p.ratingCount)}</div>` : ''}</td>` +
-    `<td class="num"><span class="price">${fmtPrice(p.price, curOf(p))}</span>${p.strike ? `<div class="sub strike">${fmtInt(p.strike)}</div>` : ''}</td>` +
+    // NƯỚC NÓI MỘT LẦN. Trước đây ô này in cả cờ LẪN mã nước: `Amazon 🇺🇸 US`. Windows không
+    // vẽ được emoji cờ (nó dựng từ hai chữ cái vùng), nên trên đúng cái máy người dùng đang
+    // ngồi nó tụt xuống thành hai chữ thường và ô đọc ra "Amazon us US" — nhìn như lỗi dữ liệu.
+    // Chỗ khác dùng cờ thì nó đi kèm TÊN nước ("🇻🇳 Việt Nam") nên không trùng; riêng ô này
+    // trùng ở mọi hệ điều hành, chỉ là Windows làm nó lộ ra.
+    `<td><span class="pill">${esc(p.platform)}${p.region ? ' · ' + esc(p.region) : ''}</span></td>` +
+    `${demandCell(p)}${soldCell(p)}${ratingCell(p)}` +
+    `<td class="num">${priceCell(p)}</td>` +
     cost1688Td(p) +
-    `<td><button class="sim cost" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-price="${p.price != null ? p.price : ''}" data-cur="${esc(curOf(p))}">💰 Giá vốn</button> ` +
+    `<td><button class="sim cost" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-price="${giaDung(p) != null ? giaDung(p) : ''}" data-cur="${esc(curOf(p))}">💰 Giá vốn</button> ` +
     `<button class="sim vid" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-region="${esc(p.region || '')}">🎬 Video</button></td>` +
     `</tr>`
   ).join('');
@@ -1170,7 +1376,15 @@ let costToken = 0; // chống race: mỗi lần mở gắn token, chỉ render k
 let costOffers = [];      // các chào hàng 1688 đã lấy (mỗi cái là một nguồn nhập)
 let costSell = null;      // giá bán đối thủ (VND) của dòng đang xét — mẫu số của %
 let costCur = 'VND';      // tiền tệ của giá bán; chỉ tính % khi = VND (tỉ giá là ¥→₫)
-function setCostStatus(msg, kind) { $('costStatusText').textContent = msg || ''; $('costStatus').className = 'status' + (kind ? ' ' + kind : ''); }
+// Không có gì để nói thì ẨN HẲN cái thanh, đừng để lại một dải trống.
+// `.status` có padding 13px và một đường kẻ dưới, nên rỗng mà vẫn hiện thì trông như thanh
+// đang tải dở — đúng cảm giác "trang bị lỗi" mà nó sinh ra để tránh.
+function setCostStatus(msg, kind) {
+  const bar = $('costStatus');
+  $('costStatusText').textContent = msg || '';
+  bar.className = 'status' + (kind ? ' ' + kind : '');
+  bar.hidden = !msg;
+}
 function closeCostModal() {
   $('costModal').classList.remove('on');
   $('costGrid').innerHTML = '';
@@ -1202,7 +1416,7 @@ async function fetch1688Offers(imgUrl, nameHint) {
     form.append('sources', '1688');
     const r = await fetch(`${BACKEND}/api/imagesearch`, { method: 'POST', body: form });
     data = await r.json().catch(() => ({}));
-    if (!r.ok) return { offers: [], min: null, error: (data && data.error) || `backend HTTP ${r.status}` };
+    if (!r.ok) return { offers: [], min: null, error: (data && data.error) || 'Chưa lấy được dữ liệu — thử lại sau ít phút.' };
   } catch (e) { return { offers: [], min: null, error: 'Lỗi gọi tìm-bằng-ảnh: ' + e.message }; }
 
   let offers = (data.sourcing || [])
@@ -1257,12 +1471,19 @@ async function openCostModal(p) {
   if (p.img != null && min.priceValue != null) { cost1688[p.img] = min.priceValue; render(); }
   $('costHeadline').innerHTML = `Giá vốn nhỏ nhất <b>${esc(min.price || ('¥' + min.priceValue))}</b>`;
   const cy = cnyVnd();
+  // DÒNG TRẠNG THÁI KHI CHẠY XONG: ĐỂ TRỐNG.
+  //
+  // Bản trước ghi cả một dòng phép tính — "12 chào hàng 1688. ¥→₫ = 3.900 · giá bán 980.000
+  // VND ≈ ¥251.3 · % = giá vốn ÷ giá bán". Mọi mẩu trong đó đều đã có mặt ngay trên màn hình:
+  // số chào hàng = số thẻ đang hiện, hai tỉ giá là hai ô nhập ngay bên cạnh (sửa được), giá
+  // bán là cột người dùng vừa bấm vào. Nó chỉ đọc lại thành tiếng cái đang thấy, bằng giọng
+  // của công thức.
+  //
+  // Giữ lại ĐÚNG một câu, và chỉ khi nó giải thích một chỗ TRỐNG: dòng thiếu giá bán thì cột %
+  // không có gì, im lặng ở đó đọc thành "tool hỏng".
   const sellCny = sellToCny(costCur, costSell); // giá bán đối thủ quy về ¥
-  const sellNote = (costSell != null && sellCny)
-    ? ` · giá bán ${fmtPrice(costSell, costCur)} ≈ ¥${sellCny.toFixed(1)} · % = giá vốn ÷ giá bán`
-    : ' · dòng này thiếu giá bán nên không tính %';
-  const curNote = costCur !== 'VND' ? ` · ${costCur}→₫ = ${fmtInt(curVnd(costCur))}` : '';
-  setCostStatus(`${offers.length} chào hàng 1688${res.cached ? ' (cache)' : ''}. ¥→₫ = ${fmtInt(cy)}${curNote}${sellNote}`, 'ok');
+  if (costSell != null && sellCny) setCostStatus('');
+  else setCostStatus('Dòng này không có giá bán nên chưa tính được %.');
 
   // Nạp 2 ô tỉ giá: ¥→₫ (chung) + [nước]→₫ (ẩn nếu sàn VN vì =1). Rồi ngưỡng, hiện controls, dựng card.
   $('costRate').value = cy;
@@ -1435,26 +1656,55 @@ document.querySelectorAll('th[data-k]').forEach((th) => {
 $('go').addEventListener('click', research);
 $('kw').addEventListener('keydown', (e) => { if (e.key === 'Enter') research(); });
 $('kwfilter').addEventListener('change', render);
-$('refreshLogin').addEventListener('click', refreshLogin);
+$('refreshLogin').addEventListener('click', () => void refreshLogin());
 $('regions').addEventListener('click', (e) => {
-  const chip = e.target.closest('.rgchip');
-  if (!chip) return;
-  const pf = chip.dataset.pf, code = chip.dataset.code;
-  // Chưa đăng nhập (Shopee/TikTok) → mở tab đăng nhập đúng sàn+nước đó, không đổi lựa chọn.
-  const spec = LOGIN[pf];
-  if (spec && spec.domain[code] && loginStatus[`${pf}:${code}`] === false) { chrome.tabs.create({ url: `https://${spec.domain[code]}/` }); return; }
+  // CHẶN NỔI BỌT, và đây là một cái bẫy đã sập chứ không phải đề phòng suông.
+  //
+  // Bộ lắng nghe "bấm ra ngoài thì đóng" nằm ở `document`, tức là chạy SAU chỗ này. Nhưng chỗ
+  // này vẽ lại toàn bộ `#regions`, nên tới lượt nó thì `e.target` đã bị gỡ khỏi tài liệu —
+  // `closest('#regions')` trên một node mồ côi trả về `null`, và nó kết luận là bấm ra ngoài.
+  // Kết quả: bảng mở ra rồi đóng lại ngay trong cùng một cú bấm, nhìn như nút không ăn.
+  e.stopPropagation();
+
+  // --- mở / đóng bảng của một sàn ---
+  const trigger = e.target.closest('.rgtrigger');
+  if (trigger) {
+    const pf = trigger.dataset.pf;
+    rgOpen = rgOpen === pf ? null : pf; // bấm lại chính nó = đóng
+    renderRegions();
+    return;
+  }
+  if (e.target.closest('.rgdone')) { rgOpen = null; renderRegions(); return; }
+
+  const opt = e.target.closest('.rgopt');
+  if (!opt) return;
+  const pf = opt.dataset.pf, code = opt.dataset.code;
+  // BẤM CHỈ ĐỂ CHỌN NƯỚC. Trước đây nước nào đang ✕ thì bấm vào sẽ mở thẳng trang sàn —
+  // người dùng định chọn Thái Lan lại bị đẩy sang shopee.vn, mà lựa chọn thì không đổi.
   const key = `${pf}:${code}`;
   if (multiRegion) {
     if (selectedRegions.has(key)) {
-      // Không để một sàn trống hết nước — muốn bỏ hẳn sàn thì bỏ chọn nó ở bước 1.
+      // Không để một sàn trống hết nước — muốn bỏ hẳn sàn thì bỏ chọn nó ở hàng SÀN.
       if (PLATFORMS[pf].regions.some((c) => c !== code && selectedRegions.has(`${pf}:${c}`))) selectedRegions.delete(key);
     } else selectedRegions.add(key);
+    // Chọn nhiều thì GIỮ BẢNG MỞ — người dùng còn đang tick tiếp.
   } else {
-    // Chọn-một: thay thế nước đang chọn CỦA CHÍNH SÀN ĐÓ, không đụng tới sàn khác.
     for (const c of PLATFORMS[pf].regions) selectedRegions.delete(`${pf}:${c}`);
     selectedRegions.add(key);
+    // Chọn một thì xong việc ngay khi bấm → ĐÓNG LUÔN. Bắt bấm thêm "Xong" cho một thao tác
+    // đã kết thúc là một cú bấm thừa ở đúng chỗ hay dùng nhất.
+    rgOpen = null;
   }
   renderRegions();
+});
+
+// Bấm ra ngoài hoặc Esc thì đóng — hai lối thoát mà người dùng thử theo phản xạ, và nếu không
+// có thì bảng nằm lì che mất phần bên dưới.
+document.addEventListener('click', (e) => {
+  if (rgOpen && !e.target.closest('#regions')) { rgOpen = null; renderRegions(); }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && rgOpen) { rgOpen = null; renderRegions(); }
 });
 // Hai chế độ, cho cả SÀN lẫn NƯỚC. Mặc định chọn-một: bấm cái nào thì THAY THẾ hẳn cái đang
 // chọn, như một nhóm nút radio. Chuyển sang "Nhiều" thì quay lại kiểu cộng dồn — cần khi muốn
@@ -1562,10 +1812,22 @@ async function openVideoModal(p) {
 
   // Gửi TIÊU ĐỀ sản phẩm (p.name): backend gọi Gemini rút thành từ khoá ĐÚNG LOẠI + mã model
   // (vd "tai nghe gaming chụp tai B39") rồi mới search FB. SP không có tên → rơi về ô tìm kiếm.
-  // CHỈ Facebook: TikTok Creative Center không search được theo từ khoá nếu thiếu TIKTOK_COOKIE
-  // → trả top-ads ngẫu nhiên (rác, không liên quan SP). Bật lại 'facebook,tiktok' sau khi khai cookie.
+  //
+  // BA NGUỒN, TẤT CẢ CHẠY Ở SERVER. Trước đây chỗ này chỉ xin `facebook`, nên khi máy-thợ hỏng
+  // là cửa sổ trống trơn — và nó đã hỏng im lặng suốt (máy-thợ ngồi đợi `/api/graphql` mà trang
+  // Ad Library không còn gọi nữa). Hai nguồn thêm vào đây không cần extension, không cần
+  // máy-thợ, không cần đăng nhập:
+  //
+  //   youtube      đọc trang kết quả YouTube — đo 2026-09-08 từ VPS: 40 video, đủ ảnh bìa + view
+  //   tiktokvideo  video TikTok thật, tìm qua Bing — đo: 77 video cho "tai nghe bluetooth"
+  //   douyinvideo  Douyin qua Bing, hỏi bằng cụm TIẾNG TRUNG — đo: 20 video
+  //   etsy         video SẢN PHẨM do người bán quay (Etsy trả thẳng file .mp4)
+  //
+  // TikTok Creative Center (`tiktok`) VẪN ĐỨNG NGOÀI: không có TIKTOK_COOKIE thì nó không search
+  // được theo từ khoá và trả top-ads cả nước, tức là rác không liên quan sản phẩm.
   const params = new URLSearchParams({
-    platforms: 'facebook', countries: region, limit: '24', videoOnly: 'true',
+    platforms: 'facebook,youtube,tiktokvideo,douyinvideo,etsy',
+    countries: region, limit: '60', videoOnly: 'true',
   });
   if (p.name) params.set('title', p.name);
   else params.set('keyword', ($('kw') && $('kw').value || '').trim());
@@ -1575,23 +1837,39 @@ async function openVideoModal(p) {
     const r = await fetch(`${BACKEND}/api/ads/search?${params.toString()}`);
     data = await r.json();
     if (my !== vidToken) return; // đã mở modal khác → bỏ kết quả cũ
-    if (!r.ok) { setVidStatus((data && data.error) || `backend HTTP ${r.status}`, 'err'); return; }
+    if (!r.ok) { setVidStatus((data && data.error) || 'Chưa lấy được dữ liệu — thử lại sau ít phút.', 'err'); return; }
   } catch (e) {
     if (my !== vidToken) return;
-    setVidStatus('Không gọi được backend — cần nó để lấy video quảng cáo. Kiểm cửa sổ backend rồi thử lại.', 'err');
+    setVidStatus('Chưa lấy được video quảng cáo — thử lại sau ít phút.', 'err');
     return;
   }
 
-  const fbAds = data.ads || [];
+  // `tiktokvideo`/`douyinvideo` LÀ TikTok và Douyin, chỉ khác đường tìm. Đổi tên nguồn NGAY TẠI
+  // ĐÂY để mọi thứ phía sau — chip lọc, `vidMerge`, player nhúng — thấy đúng một nền tảng.
+  // Quan trọng nhất là `vidMerge`: nó bỏ trùng theo `platform:id`, nên để nguyên tên riêng thì
+  // cùng một video tìm được bằng hai đường (Bing và máy-thợ) sẽ hiện thành hai thẻ.
+  const DOI_TEN = { tiktokvideo: 'tiktok', douyinvideo: 'douyin' };
+  const server = (data.ads || []).map((a) => (
+    a && DOI_TEN[a.platform] ? { ...a, platform: DOI_TEN[a.platform], viaBing: true } : a
+  ));
+  const fbAds = server.filter((a) => a && a.platform === 'facebook');
+  const ytAds = server.filter((a) => a && a.platform === 'youtube');
+  const bingTk = server.filter((a) => a && a.viaBing && a.platform === 'tiktok');
+  const bingDy = server.filter((a) => a && a.viaBing && a.platform === 'douyin');
+  // Video SẢN PHẨM do chính người bán quay. Chip "Sàn" trước đây chỉ lấy được từ `rows` — tức
+  // là chỉ có khi người dùng đã chạy một lượt tìm sản phẩm trước đó, và chỉ với sàn nào chở
+  // sẵn `videoUrl`. Nên nó gần như luôn bằng 0. Nguồn này đi thẳng từ TỪ KHOÁ.
+  const sanAds = server.filter((a) => a && !a.viaBing && a.platform !== 'facebook' && a.platform !== 'youtube');
   const usedKw = data.keyword || '(từ khoá)';
 
-  // LÝ DO Facebook rỗng, lấy từ `statuses` mà backend vẫn trả kèm nhưng cửa sổ này chưa từng đọc.
-  // Facebook đi qua máy-thợ (Chrome thật) vì playwright trên VPS bị soft-block, nên nó rỗng vì
-  // nhiều lý do khác nhau — thợ offline, thợ chưa nạp job, thợ không kịp trả — và mỗi lý do phải
-  // đi sửa một chỗ khác. Hiện trần "Facebook 0" là bắt người dùng đoán.
-  const fbNote = (data.statuses || [])
-    .filter((st) => st && st.platform === 'facebook' && st.message && !st.count)
-    .map((st) => ' · FB: ' + st.message)
+  // LÝ DO MỘT NGUỒN RỖNG, lấy từ `statuses` mà backend vẫn trả kèm nhưng cửa sổ này chưa từng
+  // đọc. Không giới hạn ở Facebook nữa: giờ có ba nguồn server, và mỗi cái rỗng vì một lý do
+  // phải đi sửa một chỗ khác (trình duyệt không mở được, Bing đổi bố cục, YouTube chặn IP…).
+  // Hiện trần "YouTube 0" là bắt người dùng đoán, đúng cái bẫy mà chỗ này sinh ra để chống.
+  const NHAN = { facebook: 'FB', youtube: 'YouTube', tiktokvideo: 'TikTok' };
+  const srvNote = (data.statuses || [])
+    .filter((st) => st && st.message && !st.count)
+    .map((st) => ` · ${NHAN[st.platform] || st.platform}: ${st.message}`)
     .join('');
 
   // Video SẢN PHẨM từ SÀN TMĐT: lấy thẳng từ list đã search (rows) — SP nào có videoUrl (Shopee/
@@ -1612,7 +1890,7 @@ async function openVideoModal(p) {
 
   // Lưu FB + Sàn + region GỐC (của SP) để đổi NƯỚC TikTok chỉ tải lại phần TikTok. `homeRegion`
   // dùng để quyết định mode: chọn khác nước SP → auto hashtag-only (đỡ cá nhân hoá theo account/IP).
-  vidState = { p, usedKw, fbAds, marketAds, homeRegion: region, fbNote };
+  vidState = { p, usedKw, fbAds, ytAds, bingTk, bingDy, sanAds, marketAds, homeRegion: region, srvNote };
 
   // VẼ NGAY PHẦN ĐÃ CÓ, đừng chờ TikTok.
   //
@@ -1620,8 +1898,13 @@ async function openVideoModal(p) {
   // một lượt lấy thống kê nữa phía sau. Chờ đủ cả hai rồi mới vẽ nghĩa là người dùng nhìn màn
   // hình trống suốt quãng ấy, trong khi thứ họ hỏi ("có ai đang chạy quảng cáo món này không")
   // thì Facebook đã trả lời xong rồi.
-  renderVideos(fbAds.concat(marketAds));
-  setVidStatus(`Facebook ${fbAds.length} · Sàn ${marketAds.length}${fbNote} — đang lấy TikTok…`, fbNote ? 'err' : '');
+  const san = sanAds.concat(marketAds);
+  renderVideos(vidMerge(fbAds, bingTk, bingDy, ytAds, san));
+  setVidStatus(
+    `Facebook ${fbAds.length} · TikTok ${bingTk.length} · YouTube ${ytAds.length}` +
+    ` · Douyin ${bingDy.length} · Sàn ${san.length}${srvNote} — đang tìm thêm TikTok…`,
+    srvNote ? 'err' : '',
+  );
 
   await loadModalTiktok(region);
 }
@@ -1688,7 +1971,7 @@ async function fetchGoogleVideos(site, keyword, region) {
     const note = (g && g.error) ? ' · Google: ' + g.error : '';
     return { ads, note };
   } catch (e) {
-    return { ads: [], note: ' · Google: extension chưa sẵn sàng' };
+    return { ads: [], note: ' · Google: chưa lấy được' };
   }
 }
 
@@ -1738,14 +2021,14 @@ async function loadModalTiktok(region) {
   const flag = FLAG[region] || '', country = COUNTRY[region] || region;
 
   // BƯỚC 1 — GOOGLE. Vài giây, không đăng nhập, không cá nhân hoá. Vẽ ngay khi có.
-  setVidStatus(`FB ${st.fbAds.length} · Sàn ${st.marketAds.length} · đang hỏi Google “${tkTerm}”…`);
+  setVidStatus(`FB ${st.fbAds.length} · TikTok ${(st.bingTk || []).length} · YouTube ${(st.ytAds || []).length} · Douyin ${(st.bingDy || []).length} · Sàn ${(st.sanAds || []).length + st.marketAds.length} · đang hỏi Google “${tkTerm}”…`);
   const g = await fetchGoogleVideos('tiktok', tkTerm, region);
   if (!alive()) return;
   st.gAds = g.ads;
   if (g.ads.length) {
     // MỘT danh sách dùng cho cả hai việc: `fillTiktokStats` vẽ lại lưới bằng đúng mảng nó nhận,
     // nên đưa nó mỗi phần Google là xoá mất Facebook và Sàn đang hiện.
-    const som = vidMerge(st.fbAds, g.ads, st.marketAds);
+    const som = vidMerge(st.fbAds, st.bingTk || [], g.ads, st.bingDy || [], st.ytAds || [], st.sanAds || [], st.marketAds);
     renderVideos(som);
     void fillTiktokStats(som, my); // tim/xem/ngày đăng lấy từ backend, không cần extension
   }
@@ -1761,7 +2044,7 @@ async function loadModalTiktok(region) {
     tkCounts = (tk && tk.counts) || null;
     tkMode = (tk && tk.mode) || 'mixed';
     if (tk && tk.blocked && tk.error) tkNote = ' · TikTok: ' + tk.error;
-  } catch (e) { tkNote = ' · TikTok: extension chưa sẵn sàng'; }
+  } catch (e) { tkNote = ' · TikTok: chưa lấy được'; }
 
   // Chuẩn hoá item TikTok về dạng "ad" để render chung; permalink = LINK VIDEO THẬT.
   // langMatch chuyển sang creative để renderVideos gắn badge (không đổi thứ tự — đã sort ở background).
@@ -1793,12 +2076,12 @@ async function loadModalTiktok(region) {
   st.ccAds = ccAds;
   // CC lên đầu (country filter thật) → TikTok tìm thật → Google → Douyin → sàn. Thẻ của lượt
   // tìm thật đứng trước thẻ Google vì nó chở sẵn tim/lượt xem; `vidMerge` bỏ phần trùng.
-  const all = vidMerge(st.fbAds, ccAds, tkAds, st.gAds || [], st.dyAds || [], st.marketAds);
+  const all = vidMerge(st.fbAds, ccAds, tkAds, st.bingTk || [], st.gAds || [], st.dyAds || [], st.bingDy || [], st.ytAds || [], st.sanAds || [], st.marketAds);
   if (!all.length) {
-    // Rỗng vì HỎNG và rỗng vì THẬT SỰ KHÔNG CÓ là hai câu trả lời khác nhau. `tkNote`/`fbNote`
+    // Rỗng vì HỎNG và rỗng vì THẬT SỰ KHÔNG CÓ là hai câu trả lời khác nhau. `tkNote`/`srvNote`
     // có chữ nghĩa là đã hỏng ở đâu đó — đừng khuyên "thử nước khác", đổi nước không sửa được
     // một máy-thợ đang offline.
-    const why = `${st.fbNote || ''}${g.note}${tkNote}`;
+    const why = `${st.srvNote || ''}${g.note}${tkNote}`;
     setVidStatus(
       why
         ? `Không lấy được video cho "${usedKw}" ${flag} ${country}:${why}`
@@ -1812,7 +2095,7 @@ async function loadModalTiktok(region) {
     ? ` (khớp ${flag} ${tkCounts.match} · trung tính ${tkCounts.neutral} · khác ngôn ngữ ${tkCounts.other})`
     : '';
   const ccBreak = ccAds.length ? ` · CC ${flag}${ccAds.length}` : '';
-  setVidStatus(`${all.length} video · "${usedKw}" · Google ${(st.gAds || []).length} · TikTok ${flag}${country} ${tkItems.length} · ${tkMode || modeLabel}${langBreak}${ccBreak} · FB ${st.fbAds.length} · Sàn ${st.marketAds.length}${st.fbNote || ''}${g.note}${tkNote}`, 'ok');
+  setVidStatus(`${all.length} video · "${usedKw}" · Google ${(st.gAds || []).length} · Bing ${(st.bingTk || []).length} · TikTok ${flag}${country} ${tkItems.length} · ${tkMode || modeLabel}${langBreak}${ccBreak} · FB ${st.fbAds.length} · YouTube ${(st.ytAds || []).length} · Douyin ${(st.bingDy || []).length} · Sàn ${(st.sanAds || []).length + st.marketAds.length}${st.srvNote || ''}${g.note}${tkNote}`, 'ok');
   renderVideos(all);
   // Vẽ xong rồi mới đi lấy tim/bình luận/lượt xem — xem ghi chú ở `fillTiktokStats`. Không
   // `await`: lưới đã dùng được ngay, số điền vào sau.
@@ -1845,7 +2128,7 @@ async function fillTiktokStats(ads, token) {
   } catch (e) {
     // Không có số thì thôi, nhưng NÓI RA. Một hàng thống kê trống mà không lời giải đọc thành
     // "video này không ai xem" — sai, và sai theo hướng làm người dùng bỏ qua video tốt.
-    if (token === vidToken) setVidStatus($('vidStatusText').textContent + ' · chưa lấy được lượt tim (backend không trả lời)', 'err');
+    if (token === vidToken) setVidStatus($('vidStatusText').textContent + ' · chưa lấy được lượt tim', 'err');
     return;
   }
   if (token !== vidToken) return; // lượt tìm khác đã chen vào — bỏ kết quả cũ
@@ -1875,7 +2158,7 @@ async function fillTiktokStats(ads, token) {
  */
 function vidSource(ad) {
   const pf = String(ad.platform || '').toLowerCase();
-  if (pf === 'facebook' || pf === 'tiktok' || pf === 'douyin') return pf;
+  if (pf === 'facebook' || pf === 'tiktok' || pf === 'douyin' || pf === 'youtube') return pf;
   return 'market';
 }
 
@@ -1883,9 +2166,27 @@ const VID_SOURCES = [
   { id: 'all', label: 'Tất cả' },
   { id: 'facebook', label: 'Facebook' },
   { id: 'tiktok', label: 'TikTok' },
+  { id: 'youtube', label: 'YouTube' },
   { id: 'douyin', label: 'Douyin' },
   { id: 'market', label: 'Sàn' },
 ];
+
+/**
+ * Link player NHÚNG của một thẻ, hoặc '' nếu nguồn đó không có player công khai.
+ *
+ * Thay cho phép thử `ad.platform === 'tiktok'` rải khắp nơi. Cái đó đúng khi cửa sổ chỉ có
+ * đúng một nguồn xem-được; giờ YouTube cũng nhúng được, mà nó lại là nguồn ĐÔNG video nhất —
+ * để nguyên thì thẻ YouTube chỉ còn là ảnh bìa tĩnh, xem được duy nhất bằng cách mở tab mới.
+ *
+ * Douyin CỐ Ý không có ở đây: nó không mở player cho người ngoài, nên thẻ Douyin vẫn là ảnh
+ * bìa kèm link, đúng như trước.
+ */
+function vidEmbed(ad) {
+  if (!ad || !ad.id) return '';
+  if (ad.platform === 'tiktok') return `https://www.tiktok.com/embed/v2/${encodeURIComponent(ad.id)}`;
+  if (ad.platform === 'youtube') return `https://www.youtube.com/embed/${encodeURIComponent(ad.id)}`;
+  return '';
+}
 
 let vidAll = [];       // toàn bộ thẻ đang có, chưa lọc
 let vidShown = [];     // phần đang hiện — cũng là danh sách để bấm ‹ › trong lớp phủ
@@ -1962,12 +2263,15 @@ function vidCard(ad, idx) {
     ? `<span class="mbadge langoff" title="Mô tả không phải tiếng ${COUNTRY[ad.regionTag] || ad.regionTag} — TikTok trả theo account/IP của bạn">⚠ khác ngôn ngữ</span>`
     : '';
 
-  const isTk = ad.platform === 'tiktok' && ad.id;
+  const nhan = PF_LABEL[ad.platform] || ad.platform || 'video';
+  const nhung = vidEmbed(ad);
   let media;
-  if (isTk) {
+  if (nhung) {
+    // Chỗ giữ khi CHƯA có ảnh bìa để trống chữ: tên nguồn đã nằm ở `.pill` dưới thân thẻ rồi,
+    // in thêm một lần nữa ngay trên ảnh là nói hai lần cùng một thứ trên một thẻ ba dòng.
     media =
-      (poster ? `<img src="${esc(poster)}" loading="lazy" alt="" referrerpolicy="no-referrer">` : `<div class="tk-ph">TikTok</div>`) +
-      `<button class="play-overlay" data-idx="${idx}" aria-label="Phát video TikTok"><span>▶</span></button>`;
+      (poster ? `<img src="${esc(poster)}" loading="lazy" alt="" referrerpolicy="no-referrer">` : '<div class="tk-ph"></div>') +
+      `<button class="play-overlay" data-idx="${idx}" aria-label="Phát video ${esc(nhan)}"><span>▶</span></button>`;
   } else if (video) {
     media = `<video controls preload="none" ${poster ? `poster="${esc(proxyMedia(poster))}"` : ''} src="${esc(proxyMedia(video.url))}"></video>`;
   } else {
@@ -1983,7 +2287,7 @@ function vidCard(ad, idx) {
     `<div class="ccopy">${esc(ad.title || ad.body || '')}</div>` +
     ((stats || fbFollow) ? `<div class="cstats">${stats}${fbFollow}</div>` : '') +
     `<div class="cmeta"><span class="pill">${esc(PF_LABEL[ad.platform] || ad.platform)}</span>${posted}${days}</div>` +
-    (ad.permalink ? `<a class="clink" href="${esc(ad.permalink)}" target="_blank" rel="noreferrer">${isTk ? 'Mở trên TikTok ↗' : 'Xem quảng cáo ↗'}</a>` : '') +
+    (ad.permalink ? `<a class="clink" href="${esc(ad.permalink)}" target="_blank" rel="noreferrer">${nhung ? `Mở trên ${esc(nhan)} ↗` : 'Xem quảng cáo ↗'}</a>` : '') +
     `</div>`;
   return el;
 }
@@ -2044,27 +2348,28 @@ function tkInfoHTML(ad) {
     (stats ? `<div class="cstats">${stats}</div>` : '') +
     `<div class="desc">${esc(ad.title || ad.body || '')}</div>` +
     (ad.startedAt ? `<div class="sub">📅 ${fmtRelDate(ad.startedAt)}</div>` : '') +
-    (ad.permalink ? `<a href="${esc(ad.permalink)}" target="_blank" rel="noreferrer">Mở trên TikTok ↗</a>` : '')
+    (ad.permalink ? `<a href="${esc(ad.permalink)}" target="_blank" rel="noreferrer">Mở trên ${esc(PF_LABEL[ad.platform] || ad.platform || 'nguồn')} ↗</a>` : '')
   );
 }
 
 function openTkPlayer(idx) {
   const ad = vidShown[idx];
-  if (!ad || !ad.id) return;
+  const src = vidEmbed(ad);
+  if (!src) return;
   tkAt = idx;
   const khung = $('tkFrame');
   khung.innerHTML = '';
   const f = document.createElement('iframe');
-  f.src = `https://www.tiktok.com/embed/v2/${encodeURIComponent(ad.id)}`;
+  f.src = src;
   f.allow = 'autoplay; encrypted-media; fullscreen';
   f.setAttribute('scrolling', 'no');
   khung.appendChild(f);
   $('tkInfo').innerHTML = tkInfoHTML(ad);
 
-  // Chỉ đi tới video TikTok khác — thẻ Facebook/Sàn không có player để nhảy sang.
+  // Chỉ đi tới thẻ NHÚNG ĐƯỢC khác — thẻ Facebook/Sàn/Douyin không có player để nhảy sang.
   const co = (d) => {
     for (let i = idx + d; i >= 0 && i < vidShown.length; i += d) {
-      if (vidShown[i] && vidShown[i].platform === 'tiktok' && vidShown[i].id) return i;
+      if (vidEmbed(vidShown[i])) return i;
     }
     return -1;
   };
@@ -2075,7 +2380,7 @@ function openTkPlayer(idx) {
 
 function tkStep(d) {
   for (let i = tkAt + d; i >= 0 && i < vidShown.length; i += d) {
-    if (vidShown[i] && vidShown[i].platform === 'tiktok' && vidShown[i].id) { openTkPlayer(i); return; }
+    if (vidEmbed(vidShown[i])) { openTkPlayer(i); return; }
   }
 }
 
@@ -2149,7 +2454,7 @@ async function loadModalDouyin() {
     if (!alive()) return;
     dyItems = (dy && dy.items) || [];
     if (dy && dy.blocked && dy.error) dyNote = ' · Douyin: ' + dy.error;
-  } catch (e) { dyNote = ' · Douyin: extension chưa sẵn sàng'; }
+  } catch (e) { dyNote = ' · Douyin: chưa lấy được'; }
 
   // Chuẩn hoá Douyin item về "ad" — Douyin video KHÔNG có player embed public như TikTok, nên chỉ
   // hiện poster + link mở trên Douyin. platform='douyin' để card không dính nhánh play-overlay TikTok.

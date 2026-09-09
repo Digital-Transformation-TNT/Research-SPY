@@ -186,10 +186,11 @@ export default function Sidebar() {
               return (
                 <Link key={item.href} href={item.href} className="nav-item" data-active={active} title={item.hint}>
                   <span className="nav-icon">{icons[item.icon]}</span>
-                  <span className="nav-text">
-                    {item.label}
-                    <small>{item.hint}</small>
-                  </span>
+                  {/* MỘT DÒNG cho mỗi mục. Câu mô tả vẫn còn nguyên ở `title` phía trên,
+                      nên nó hiện khi rê chuột — không mất thông tin nào, chỉ là không bắt
+                      người ta đọc năm đoạn văn mỗi lần liếc sang thanh bên. Năm mục × ba
+                      dòng là thứ làm cột trái dài gấp ba lần cần thiết. */}
+                  <span className="nav-text">{item.label}</span>
                 </Link>
               )
             })}
