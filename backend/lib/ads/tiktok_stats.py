@@ -26,7 +26,7 @@ from __future__ import annotations
 import asyncio
 import re
 
-from lib.core.browser import launch_browser
+from lib.core.browser import browser_lane
 
 #: Trần số video mỗi lượt. Mỗi video là một lượt tải trang thật, nên đây là trần THỜI GIAN
 #: chứ không phải trần tài nguyên: hai chục video là hơn một phút chờ.
@@ -98,8 +98,7 @@ async def fetch_stats(ids: list[str]) -> dict[str, dict[str, int]]:
     deadline = loop.time() + BUDGET_S
     out: dict[str, dict[str, int]] = {}
 
-    browser = await launch_browser()
-    try:
+    async with browser_lane() as browser:
         context = await browser.new_context(locale="vi-VN")
         sem = asyncio.Semaphore(LANES)
 
@@ -112,9 +111,4 @@ async def fetch_stats(ids: list[str]) -> dict[str, dict[str, int]]:
                     out[vid] = stats
 
         await asyncio.gather(*(chay(v) for v in danh))
-    finally:
-        try:
-            await browser.close()
-        except Exception:
-            pass
     return out

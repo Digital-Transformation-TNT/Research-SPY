@@ -18,9 +18,9 @@ from __future__ import annotations
 import asyncio
 import sys
 import time
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, AsyncIterator, Callable
 
 from playwright.async_api import Browser, BrowserContext, Page, Playwright, Request, async_playwright
 
@@ -107,6 +107,20 @@ _DEAD_DRIVER_MARKERS = (
 )
 
 
+def _noi(dòng: str) -> None:
+    """
+    `print` an toàn với console cp1252 của Windows service.
+
+    Không có lớp này thì một dòng thông báo tiếng Việt tự nó ném `UnicodeEncodeError` — và vì
+    nó nằm trong nhánh xử lý lỗi, cái ném ra sẽ THAY THẾ lỗi thật. Đã thấy đúng vậy: nguồn Bing
+    báo về "'charmap' codec can't encode character 'ở'" thay vì "không mở được trình duyệt".
+    """
+    try:
+        print(dòng)
+    except UnicodeEncodeError:
+        print(dòng.encode("ascii", "replace").decode("ascii"))
+
+
 def _driver_is_dead(error: BaseException) -> bool:
     return any(marker in str(error).lower() for marker in _DEAD_DRIVER_MARKERS)
 
@@ -124,7 +138,7 @@ async def _reset_playwright() -> None:
             pass  # nó đã chết rồi; đây chỉ là dọn cho sạch
 
 
-async def launch_browser(headless: bool | None = None) -> Browser:
+async def launch_browser(headless: bool | None = None, prefer_bundled: bool = False) -> Browser:
     """
     Mở CHROME THẬT CỦA MÁY theo đúng cấu hình chung. Nơi gọi tự chịu trách nhiệm đóng lại.
 
@@ -152,6 +166,15 @@ async def launch_browser(headless: bool | None = None) -> Browser:
     dính chuyện Google phân biệt, nên với chúng bản nào cũng chạy. Thà chạy được một phần còn
     hơn không mở nổi trình duyệt.
 
+    `prefer_bundled=True` LẬT NGƯỢC lựa chọn ấy, và cũng vì một phép đo chứ không phải sở thích.
+    Bing phục vụ hai bố cục khác nhau cho hai bản trình duyệt — đo 2026-09-08, cùng truy vấn
+    `site:tiktok.com tai nghe bluetooth`, cùng máy, cùng locale, lật ba trang:
+
+        Chrome thật                → 30 thẻ mỗi trang, và `first=31/61` trả LẠI ĐÚNG 30 thẻ ấy
+        Chromium đi kèm Playwright → 50 → 70 → 70 thẻ, luỹ kế 112 video khác nhau
+
+    Tức là với Chrome thật thì phân trang không tồn tại. Xem `lib/ads/platforms/tiktokvideo.py`.
+
     Dựng lại driver và thử LẠI MỘT LẦN khi driver chết. Không phải chuyện hiếm: mục Từ khoá
     mở trình duyệt gần một chục lần cho mỗi lượt tìm, và chỉ cần một lần driver gãy là mọi
     thứ cần trình duyệt hỏng cho tới khi restart server — tức là cả mục Quảng cáo cũng chết
@@ -167,16 +190,101 @@ async def launch_browser(headless: bool | None = None) -> Browser:
     for attempt in (1, 2):
         pw = await get_playwright()
         try:
+            if prefer_bundled:
+                return await pw.chromium.launch(**options)
             return await pw.chromium.launch(channel="chrome", **options)
         except Exception as error:
             if _driver_is_dead(error) and attempt == 1:
                 await _reset_playwright()
                 continue
-            # Không phải driver chết ⇒ nhiều khả năng máy không cài Chrome. Nói ra một lần
-            # rồi chạy tiếp bằng bản đi kèm, thay vì làm hỏng cả server vì một tuỳ chọn.
-            print(f"  (không mở được Chrome của máy — dùng Chromium đi kèm: {error})")
+            # Không phải driver chết ⇒ máy thiếu đúng bản vừa xin. Đổi sang bản kia thay vì
+            # làm hỏng cả lượt tìm vì một tuỳ chọn: bản nào cũng còn hơn không mở được.
+            #
+            # Cả hai chiều đều xảy ra thật. Thiếu Chrome là chuyện của máy dev; còn thiếu bản
+            # đi kèm là chuyện của PRODUCTION — service chạy dưới LocalSystem, mà `playwright
+            # install` lại cài Chromium vào hồ sơ của người đã chạy lệnh đó, nên tài khoản
+            # service không thấy nó. Bỏ qua nhánh này thì nguồn Bing chết hẳn trên VPS.
+            _noi(f"  (không mở được {'Chromium đi kèm' if prefer_bundled else 'Chrome của máy'} — đổi bản: {error})")
+            if prefer_bundled:
+                return await pw.chromium.launch(channel="chrome", **options)
             return await pw.chromium.launch(**options)
     raise RuntimeError("Không mở được trình duyệt")  # không tới được; giữ cho kiểu trả về kín
+
+
+# ---------------------------------------------------------------------------
+# HÀNG ĐỢI: bao nhiêu trình duyệt "dùng một lần" được chạy CÙNG LÚC
+# ---------------------------------------------------------------------------
+#
+# `launch_browser` trước đây không có trần nào. Mỗi lượt bấm 🎬 Video mở tới BA nguồn song
+# song, mỗi nguồn lại có nhánh thử-lại riêng — tính ra một request có thể mở tới tám lượt
+# trình duyệt, và ba lượt cùng lúc ở đỉnh. Hai người bấm cùng lúc là sáu Chrome, ba người là
+# chín. Trên VPS này mỗi Chrome ngốn vài trăm MB, nên cái vỡ trước không phải RAM mà là ĐỘ TRỄ:
+# trang về chậm hơn mốc chờ, nguồn đọc ra rỗng, và người dùng đọc thành "không có video".
+#
+# Đo được đúng triệu chứng đó 2026-09-08: nguồn TikTok trả 0 trong lượt chạy chung ba nguồn,
+# trong khi chạy riêng thì 4/4 lượt ra 30 thẻ.
+#
+# `asyncio.Semaphore` đánh thức người chờ theo THỨ TỰ, nên đây đúng nghĩa là một hàng đợi:
+# request thứ tư xếp hàng chờ, thay vì cùng lao vào rồi cả bốn cùng chậm.
+#
+# 3 lane là con số vừa đủ cho ba nguồn của một request chạy song song — tức là một người dùng
+# vẫn nhanh y như cũ, còn người thứ hai thì xếp hàng chứ không làm hỏng lượt của người thứ nhất.
+_LANES = max(1, int(env_number("BROWSER_LANES", 3)))
+
+#: Semaphore phải thuộc về ĐÚNG event loop đang chạy. Server chỉ có một loop, nhưng script và
+#: test thì gọi `asyncio.run` nhiều lần — mỗi lần là một loop mới, và dùng lại semaphore của
+#: loop cũ sẽ ném lỗi ở chỗ không liên quan gì tới nguyên nhân.
+_lane_sem: asyncio.Semaphore | None = None
+_lane_loop: asyncio.AbstractEventLoop | None = None
+_lane_dang_cho = 0
+_lane_dang_chay = 0
+
+
+def _lanes() -> asyncio.Semaphore:
+    global _lane_sem, _lane_loop
+    loop = asyncio.get_running_loop()
+    if _lane_sem is None or _lane_loop is not loop:
+        _lane_sem = asyncio.Semaphore(_LANES)
+        _lane_loop = loop
+    return _lane_sem
+
+
+def lane_stats() -> dict[str, int]:
+    """Cho `/api/ads/health` thấy hàng đợi đang tắc hay không — số chờ > 0 kéo dài là tắc."""
+    return {"lanes": _LANES, "running": _lane_dang_chay, "waiting": _lane_dang_cho}
+
+
+@asynccontextmanager
+async def browser_lane(
+    headless: bool | None = None, prefer_bundled: bool = False
+) -> AsyncIterator[Browser]:
+    """
+    Mượn một lane, mở trình duyệt, và ĐÓNG CHẮC CHẮN khi ra khỏi khối `async with`.
+
+    Dùng thay cho `launch_browser` ở mọi nơi mở trình duyệt dùng-một-lần. Lane chỉ được nhả
+    khi trình duyệt đã đóng — nhả sớm hơn thì trần này vô nghĩa, vì cái tốn tài nguyên là
+    tiến trình Chrome đang sống chứ không phải lời gọi launch.
+    """
+    global _lane_dang_cho, _lane_dang_chay
+    sem = _lanes()
+    _lane_dang_cho += 1
+    try:
+        await sem.acquire()
+    except BaseException:
+        _lane_dang_cho -= 1
+        raise
+    _lane_dang_cho -= 1
+    _lane_dang_chay += 1
+
+    browser: Browser | None = None
+    try:
+        browser = await launch_browser(headless, prefer_bundled)
+        yield browser
+    finally:
+        _lane_dang_chay -= 1
+        if browser is not None:
+            await _close_quietly(browser)
+        sem.release()
 
 
 @dataclass

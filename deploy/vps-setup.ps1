@@ -57,6 +57,13 @@ Push-Location $backend
 & $py -m pip install --upgrade pip
 & $py -m pip install -r requirements.txt
 if ($LASTEXITCODE -ne 0) { Pop-Location; Die "pip install thất bại." }
+# ĐẶT BROWSER Ở CHỖ DÙNG CHUNG, không phải hồ sơ người đang chạy script này.
+#
+# Mặc định `playwright install` cất Chromium vào %LOCALAPPDATA% của tài khoản chạy lệnh — tức
+# là Administrator. Nhưng service lại chạy dưới LocalSystem, và tài khoản đó KHÔNG thấy thư
+# mục ấy. Hậu quả im lặng: mọi nguồn cần bản Chromium đi kèm (video TikTok qua Bing) hỏng riêng
+# trên production, trong khi chạy tay ở cùng máy thì tốt — kiểu lệch khó tìm nhất.
+$env:PLAYWRIGHT_BROWSERS_PATH = "C:\ms-playwright"
 & $py -m playwright install chromium
 Pop-Location
 Ok "Backend sẵn sàng."
@@ -101,6 +108,8 @@ function Reinstall-Service($name, $app, $args, $dir) {
   & $nssm set $name Start SERVICE_AUTO_START
   & $nssm set $name AppStdout (Join-Path $dir "service.out.log")
   & $nssm set $name AppStderr (Join-Path $dir "service.err.log")
+  # Cùng đường dẫn với bước cài ở trên — xem ghi chú ở đó.
+  & $nssm set $name AppEnvironmentExtra "PLAYWRIGHT_BROWSERS_PATH=C:\ms-playwright"
 }
 
 Info "Tạo service backend (uvicorn 127.0.0.1:8000)..."

@@ -58,7 +58,7 @@ from lib.core.auth import (
     reward_session,
     session_paths,
 )
-from lib.core.browser import describe_browser_error, launch_browser
+from lib.core.browser import browser_lane, describe_browser_error
 from lib.core.config import config, env_number, env_string
 from lib.core.jscompat import average, jround, strip_diacritics
 from lib.core.rate_limit import schedule
@@ -323,12 +323,15 @@ async def _with_page(
     Nơi gọi phải tự kiểm tra phiên trước — ẩn danh thì /explore dừng ở màn hình mời đăng nhập
     và không phát RPC nào, nên chạy tiếp chỉ tốn một lần mở trình duyệt để nhận về rỗng.
     """
-    browser = None
-    try:
-        # Đi qua `launch_browser` chứ không tự gọi `chromium.launch`: đó là chỗ duy nhất biết
-        # dựng lại driver Playwright khi nó chết, mà đường này mở trình duyệt gần chục lần mỗi
-        # lượt tìm nên nó chính là nơi hay gặp nhất.
-        browser = await launch_browser()
+    # `browser_lane` chứ không phải `launch_browser` trần: nó vẫn đi qua đúng chỗ biết dựng lại
+    # driver Playwright khi nó chết (nơi đường này hay gặp nhất, vì mỗi lượt tìm mở gần chục
+    # lần), nhưng thêm một trần số trình duyệt chạy CÙNG LÚC cho toàn server.
+    #
+    # Cần chung trần với mục Quảng cáo vì hai mục dùng chung một cái máy: người này tìm từ khoá
+    # trong khi người kia bấm 🎬 Video thì trước đây cả hai cùng mở trình duyệt tới khi máy nghẹt,
+    # rồi cả hai cùng đọc ra rỗng. Lane vẫn được nhả sau MỖI lượt mở nên vòng lặp ở đây không
+    # giữ chỗ của ai — xem `browser_lane` trong `lib/core/browser.py`.
+    async with browser_lane() as browser:
         stored = pick_session(GOOGLE_SESSION)
         context = await browser.new_context(
             user_agent=config.user_agent,
@@ -347,12 +350,6 @@ async def _with_page(
         if keep_session(result) and stored is not None:
             await _persist_session(context, stored.path)
         return result
-    finally:
-        if browser is not None:
-            try:
-                await browser.close()
-            except Exception:
-                pass
 
 
 #: Dấu hiệu /explore đang chặn bằng màn hình mời đăng nhập thay vì hiện dữ liệu.

@@ -17,7 +17,7 @@ import json
 import math
 import time
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Awaitable, Callable, Mapping
 
 from lib.core.cache import cache_get, cache_set
 from lib.core.jscompat import or_default, to_number
@@ -145,7 +145,17 @@ def _cache_key(params: AdSearchParams, fetch_size: int, platform_ids: list[str])
     return json.dumps(
         # `relax_keyword` đổi TẬP được lấy về (nới vs chặt lọc từ khoá) nên phải nằm trong key —
         # nếu không, bản cache của search thường (chặt) có thể trả nhầm cho match-image (nới).
-        ["ads", params.keyword.lower(), sorted(params.countries), fetch_size, params.relax_keyword, options],
+        # `keyword_by_platform` PHẢI có mặt: thiếu nó, một lượt tìm cụm broad và một lượt tìm
+        # cụm specific có cùng key, nên lượt sau ăn phải kết quả của lượt trước.
+        [
+            "ads",
+            params.keyword.lower(),
+            sorted((k, v.lower()) for k, v in params.keyword_by_platform.items()),
+            sorted(params.countries),
+            fetch_size,
+            params.relax_keyword,
+            options,
+        ],
         ensure_ascii=False,
         separators=(",", ":"),
     )
@@ -305,6 +315,35 @@ def _sizes(params: AdSearchParams) -> tuple[int, int]:
     return fetch_size, per_job_limit
 
 
+#: Các lượt lấy dữ liệu ĐANG BAY, theo cache key.
+_dang_bay: dict[str, "asyncio.Task[_CachedFetch]"] = {}
+
+
+async def _gop_luot_trung(key: str, lam: Callable[[], Awaitable["_CachedFetch"]]) -> "_CachedFetch":
+    """
+    Hai request GIỐNG HỆT nhau đến cùng lúc thì chỉ đi lấy MỘT lần; người đến sau chờ ké.
+
+    Cache chỉ chặn được lượt thứ hai khi lượt đầu ĐÃ XONG. Mà ở đây một lượt kéo dài 30-40
+    giây và mở tới ba trình duyệt, nên khoảng "đang chạy, chưa có gì để cache" mới là khoảng
+    dài nhất — và đó đúng là lúc người dùng hay bấm lại vì tưởng máy treo. Không có chỗ này
+    thì mỗi lần bấm lại là thêm ba trình duyệt nữa cho CÙNG một câu hỏi.
+
+    `shield` để người chờ ké bỏ đi (đóng tab, huỷ request) KHÔNG kéo theo lượt đang chạy —
+    nếu không, người bấm đầu tiên rời đi là những người còn lại mất trắng.
+    """
+    task = _dang_bay.get(key)
+    if task is None or task.done():
+        task = asyncio.create_task(lam())
+        _dang_bay[key] = task
+
+        def don(xong: "asyncio.Task[_CachedFetch]") -> None:
+            if _dang_bay.get(key) is xong:
+                del _dang_bay[key]
+
+        task.add_done_callback(don)
+    return await asyncio.shield(task)
+
+
 async def run_ad_search(params: AdSearchParams, skip_cache: bool = False) -> AdSearchResult:
     """
     Pha 1. Nguồn server tự fetch tại đây; nguồn client_fetch chỉ được dựng lệnh (`pending`)
@@ -338,7 +377,8 @@ async def run_ad_search(params: AdSearchParams, skip_cache: bool = False) -> AdS
                     options = platform.parse_options(params.platform_options.get(platform_id, {}))
                     outcome = await platform.search(
                         PlatformSearchInput(
-                            keyword=params.keyword, country=country, limit=per_job_limit, options=options,
+                            keyword=params.keyword_by_platform.get(platform_id, params.keyword),
+                            country=country, limit=per_job_limit, options=options,
                             relax_keyword=params.relax_keyword,
                         )
                     )
@@ -358,14 +398,19 @@ async def run_ad_search(params: AdSearchParams, skip_cache: bool = False) -> AdS
                         took_ms=round((time.monotonic() - started_at) * 1000),
                     )
 
-            settled = await asyncio.gather(*(run_job(pid, c) for pid, c in jobs))
-            server_fetched = _CachedFetch(
-                ads=_merge_by_identity([ad for job_ads, _ in settled for ad in job_ads]),
-                statuses=[status for _, status in settled],
-            )
-            # Chỉ cache khi có ít nhất một nguồn chạy được, để sự cố tạm thời không bị đóng băng.
-            if any(status.ok for status in server_fetched.statuses):
-                cache_set(key, server_fetched)
+            async def lay_het() -> _CachedFetch:
+                settled = await asyncio.gather(*(run_job(pid, c) for pid, c in jobs))
+                gom = _CachedFetch(
+                    ads=_merge_by_identity([ad for job_ads, _ in settled for ad in job_ads]),
+                    statuses=[status for _, status in settled],
+                )
+                # Chỉ cache khi có ít nhất một nguồn chạy được, để sự cố tạm thời không bị
+                # đóng băng.
+                if any(status.ok for status in gom.statuses):
+                    cache_set(key, gom)
+                return gom
+
+            server_fetched = await _gop_luot_trung(key, lay_het)
             ads.extend(server_fetched.ads)
             statuses.extend(server_fetched.statuses)
 
