@@ -539,7 +539,7 @@ function renderRegions() {
       panel.innerHTML =
         `<div class="rglist" role="listbox">${list}</div>` +
         '<div class="rgfoot">' +
-        `<span>${multiRegion ? 'Chọn nhiều nước' : 'Chọn một nước'}</span>` +
+        '<span>Tick nước muốn chạy</span>' +
         '<button class="rgdone">Xong</button></div>';
       wrap.appendChild(panel);
     }
@@ -1682,19 +1682,15 @@ $('regions').addEventListener('click', (e) => {
   // BẤM CHỈ ĐỂ CHỌN NƯỚC. Trước đây nước nào đang ✕ thì bấm vào sẽ mở thẳng trang sàn —
   // người dùng định chọn Thái Lan lại bị đẩy sang shopee.vn, mà lựa chọn thì không đổi.
   const key = `${pf}:${code}`;
-  if (multiRegion) {
-    if (selectedRegions.has(key)) {
-      // Không để một sàn trống hết nước — muốn bỏ hẳn sàn thì bỏ chọn nó ở hàng SÀN.
-      if (PLATFORMS[pf].regions.some((c) => c !== code && selectedRegions.has(`${pf}:${c}`))) selectedRegions.delete(key);
-    } else selectedRegions.add(key);
-    // Chọn nhiều thì GIỮ BẢNG MỞ — người dùng còn đang tick tiếp.
+  // TICK LÀ BẬT/TẮT, không có chế độ nào cả. Tick một nước ra một, tick mấy nước ra mấy.
+  if (selectedRegions.has(key)) {
+    // Không để một sàn trống hết nước — muốn bỏ hẳn sàn thì bỏ chọn nó ở hàng SÀN.
+    if (PLATFORMS[pf].regions.some((c) => c !== code && selectedRegions.has(`${pf}:${c}`))) selectedRegions.delete(key);
   } else {
-    for (const c of PLATFORMS[pf].regions) selectedRegions.delete(`${pf}:${c}`);
     selectedRegions.add(key);
-    // Chọn một thì xong việc ngay khi bấm → ĐÓNG LUÔN. Bắt bấm thêm "Xong" cho một thao tác
-    // đã kết thúc là một cú bấm thừa ở đúng chỗ hay dùng nhất.
-    rgOpen = null;
   }
+  // GIỮ BẢNG MỞ: không biết được người dùng đã tick xong hay còn tick tiếp, nên đừng đoán.
+  // Đóng bằng bấm ra ngoài / Esc / "Xong" — ba lối đó đều có sẵn.
   renderRegions();
 });
 
@@ -1706,36 +1702,6 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && rgOpen) { rgOpen = null; renderRegions(); }
 });
-// Hai chế độ, cho cả SÀN lẫn NƯỚC. Mặc định chọn-một: bấm cái nào thì THAY THẾ hẳn cái đang
-// chọn, như một nhóm nút radio. Chuyển sang "Nhiều" thì quay lại kiểu cộng dồn — cần khi muốn
-// xếp Shopee cạnh TikTok Shop, hay so Việt Nam với Thái Lan trong cùng một bảng.
-// Sàn: không còn công tắc "Một/Nhiều" — luôn chọn tự do (xem handler #platforms). Nước vẫn có
-// hai chế độ vì region gom theo sàn và đổi-một-nước bằng một bấm là thao tác thường dùng.
-let multiRegion = false;
-
-/** Gắn một nút hai nấc vào một biến chế độ. Trả về hàm để đọc lại trạng thái khi cần vẽ lại. */
-function bindMode(id, onChange) {
-  const box = $(id);
-  box.addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-multi]');
-    if (!btn || btn.dataset.on === 'true') return;
-    for (const b of box.querySelectorAll('button[data-multi]')) b.dataset.on = String(b === btn);
-    onChange(btn.dataset.multi === '1');
-  });
-}
-
-bindMode('rgMode', (multi) => {
-  multiRegion = multi;
-  if (!multi) {
-    // Mỗi sàn giữ đúng MỘT nước — nước đầu tiên đang chọn của chính sàn đó.
-    for (const pf of regionPlatforms()) {
-      const dangChon = PLATFORMS[pf].regions.filter((c) => selectedRegions.has(`${pf}:${c}`));
-      for (const c of dangChon.slice(1)) selectedRegions.delete(`${pf}:${c}`);
-    }
-  }
-  renderRegions();
-});
-
 $('platforms').addEventListener('click', (e) => {
   const chip = e.target.closest('.rgchip');
   if (!chip) return;

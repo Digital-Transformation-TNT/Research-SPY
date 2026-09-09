@@ -78,10 +78,6 @@
 
     /* Nút HAI NẤC. Rõ hơn công tắc gạt vì nó nói thẳng cả hai lựa chọn, thay vì bắt người
        dùng đoán "bật" nghĩa là gì. */
-    .mode { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
-    .mode button { padding: 4px 12px; border: 0; border-radius: 0; background: var(--bg); color: var(--muted); font-size: 12.5px; font-weight: 500; cursor: pointer; }
-    .mode button:hover { color: var(--fg); }
-    .mode button[data-on="true"] { background: var(--accent); color: #fff; }
 
     button.ghost { background: transparent; border-color: var(--line); color: var(--muted); font-size: 12.5px; padding: 5px 11px; font-weight: 600; }
     button.ghost:hover { border-color: var(--accent); color: var(--accent); }
@@ -428,11 +424,12 @@
       <div class="frow" id="regionSection">
         <span class="flabel">Nước</span>
         <div id="regions"></div>
+        <!-- CÔNG TẮC "Một nước / Nhiều nước" ĐÃ BỎ. Tick một nước thì ra một, tick mấy nước
+             thì ra mấy — không có gì để người dùng phải khai báo trước. Cái công tắc ấy sinh
+             ra từ thời mỗi sàn là một hàng chip trải ngang, khi bấm-để-thay-thế đỡ được vài
+             cú bấm; giờ danh sách nằm trong bảng thả xuống nên nó chỉ còn là một trạng thái
+             thừa mà người dùng phải nhớ. -->
         <div class="fend">
-          <div class="mode" id="rgMode">
-            <button data-multi="0" data-on="true">Một nước</button>
-            <button data-multi="1" data-on="false">Nhiều nước</button>
-          </div>
           <button id="refreshLogin" class="ghost" title="Kiểm tra lại phiên đăng nhập của từng sàn/nước">⟳</button>
         </div>
       </div>

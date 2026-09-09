@@ -90,11 +90,16 @@ Dáng chép từ `.dd-*` của webtool (tab Keyword) để hai bên là một th
 
 ### Đóng lại thế nào
 
+**Không còn công tắc "Một nước / Nhiều nước".** Tick một nước ra một, tick mấy nước ra mấy —
+không có gì để người dùng phải khai báo trước. Công tắc ấy sinh ra từ thời mỗi sàn là một hàng
+chip trải ngang, khi bấm-để-thay-thế đỡ được vài cú bấm; từ lúc danh sách nằm trong bảng thả
+xuống thì nó chỉ còn là một trạng thái thừa mà người dùng phải nhớ.
+
 | Việc | Hành vi | Vì sao |
 |---|---|---|
-| Chế độ **một nước**, bấm một nước | **đóng ngay** | việc đã xong; bắt bấm thêm "Xong" là một cú bấm thừa ở chỗ hay dùng nhất |
-| Chế độ **nhiều nước**, tick | **giữ mở** | người dùng còn đang tick tiếp |
+| Tick / bỏ tick | **giữ bảng mở** | không đoán được người ta đã xong hay còn tick tiếp, nên đừng đoán |
 | Bấm ra ngoài · Esc · nút "Xong" | đóng | ba lối thoát người ta thử theo phản xạ |
+| Bỏ tick nước CUỐI của một sàn | từ chối | sàn không còn nước nào thì không chạy được; muốn bỏ hẳn thì bỏ chọn sàn ở hàng SÀN |
 
 Nhãn trên nút tự đổi theo: một nước thì hiện tên nước, nhiều thì đếm ("3 nước"). Dấu ✕ chỉ hiện
 khi **nước ĐANG CHỌN** chưa đăng nhập — một nước chưa đăng nhập mà không ai chọn thì không phải
