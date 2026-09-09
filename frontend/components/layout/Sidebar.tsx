@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { withBase } from '@/lib/basePath'
 import { useEffect, useState } from 'react'
 
 /** SVG nội tuyến để trang tự chứa — không phụ thuộc thư viện icon, không gọi ra ngoài. */
@@ -146,7 +147,7 @@ export default function Sidebar() {
     // Sidebar chỉ render trong layout (dashboard) bọc /ads,/keywords,... — không bọc /login
     // (route (auth) riêng) → không sợ vòng lặp redirect.
     if (!token && !email) {
-      window.location.replace('/login')
+      window.location.replace(withBase('/login'))
       return
     }
     // Đã qua cổng gate = ĐANG đăng nhập → luôn cho hiện chân sidebar (nút Đăng xuất). Không phụ
@@ -161,7 +162,7 @@ export default function Sidebar() {
     ;['rs_token', 'rs_email', 'rs_role', 'rs_user_id', 'rs_display', 'rs_username', 'rs_loginAt'].forEach((k) =>
       localStorage.removeItem(k),
     )
-    window.location.replace('/login')
+    window.location.replace(withBase('/login'))
   }
 
   // Admin thấy thêm nhóm Quản trị. Chỉ ghép sau khi mounted để không nháy nhóm này với user thường.
@@ -218,7 +219,7 @@ export default function Sidebar() {
           <span className="org-cap">Một sản phẩm của</span>
           <img
             className="org-logo"
-            src="/brand/tnt-group.png"
+            src={withBase('/brand/tnt-group.png')}
             alt="TNT Group"
             onError={() => setOrgLogoOk(false)}
           />

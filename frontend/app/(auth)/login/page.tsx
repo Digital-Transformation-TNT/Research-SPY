@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { withBase } from '@/lib/basePath'
 import s from './login.module.css'
 
 /**
@@ -19,7 +20,7 @@ import s from './login.module.css'
  * Sidebar để phần còn lại của app đọc được y như trước.
  */
 
-const ENTER_URL = '/ads'
+const ENTER_URL = withBase('/ads')
 const POLL_MS = 4000
 const DOMAIN_HINT = '@tntecom.com'
 
@@ -201,7 +202,7 @@ export default function LoginPage() {
         <div className={s.brandLock}>
           {orgLogoOk ? (
             <span className={s.brandLogo}>
-              <img src="/brand/tnt-group.png" alt="TNT Group" onError={() => setOrgLogoOk(false)} />
+              <img src={withBase('/brand/tnt-group.png')} alt="TNT Group" onError={() => setOrgLogoOk(false)} />
             </span>
           ) : null}
           <div>
@@ -339,7 +340,7 @@ export default function LoginPage() {
           {orgLogoOk ? (
             <div className={s.orgMark}>
               <span>Nội bộ</span>
-              <img src="/brand/tnt-group.png" alt="TNT Group" onError={() => setOrgLogoOk(false)} />
+              <img src={withBase('/brand/tnt-group.png')} alt="TNT Group" onError={() => setOrgLogoOk(false)} />
             </div>
           ) : null}
           </div>

@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 
+import { withBase } from '@/lib/basePath'
+
 export const metadata: Metadata = {
   title: 'Research — Research SPY',
 }
@@ -37,7 +39,8 @@ export default async function ResearchPage({
   // Lấy phần tử đầu khi Next trả về mảng (`?keyword=a&keyword=b`) — ô tìm kiếm chỉ có một.
   const { keyword } = await searchParams
   const seed = (Array.isArray(keyword) ? keyword[0] : keyword)?.trim()
-  const src = seed ? `/research/index.html?kw=${encodeURIComponent(seed)}` : '/research/index.html'
+  const page = withBase('/research/index.html')
+  const src = seed ? `${page}?kw=${encodeURIComponent(seed)}` : page
 
   return <iframe src={src} className="research-frame" title="Research đa sàn" />
 }

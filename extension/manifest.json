@@ -54,7 +54,8 @@
     "http://localhost:8000/*",
     "http://127.0.0.1:8000/*",
     "http://157.66.101.73:3000/*",
-    "http://157.66.101.73:8000/*"
+    "http://157.66.101.73:8000/*",
+    "https://tntecom.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -73,7 +74,9 @@
         "http://localhost:3001/*",
         "http://localhost:3010/*",
         "http://localhost:3013/*",
-        "http://157.66.101.73:3000/*"
+        "http://157.66.101.73:3000/*",
+        "https://tntecom.com/research",
+        "https://tntecom.com/research/*"
       ],
       "js": [
         "content.js"

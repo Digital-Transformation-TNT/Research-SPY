@@ -1,0 +1,66 @@
+# Reverse proxy đưa Research SPY ra tên miền công khai.
+#
+# Trước đây webtool chỉ ra ngoài bằng http://157.66.101.73:3000 — IP trần, cổng lạ, không
+# HTTPS. Caddy ngồi ở cổng 80/443, nhận tên miền, rồi chuyển về `next start` đang chạy ở
+# 127.0.0.1:3000 (service ResearchSpyFrontend).
+#
+# Backend vẫn kín trong máy và Caddy KHÔNG cần biết nó tồn tại: Next tự rewrite `/api/*` sang
+# uvicorn 127.0.0.1:8000 (xem frontend/next.config.mjs). Giữ đúng một tầng proxy như vậy để
+# `<video src="/api/media?...">` vẫn cùng origin, Range và cache đi qua bình thường.
+#
+# Chứng chỉ HTTPS do Caddy tự xin Let's Encrypt và tự gia hạn, không phải làm gì mỗi 90 ngày.
+# Hai điều kiện, thiếu cái nào cũng hỏng lặng lẽ:
+#   1. Bản ghi A của `tntecom.com` phải trỏ về IP máy này TRƯỚC khi Caddy chạy.
+#   2. Cổng 80 phải vào được từ Internet — Let's Encrypt gọi ngược về đó để xác minh.
+# Chưa đủ thì Caddy cứ thử lại theo chu kỳ, xem lý do bằng:
+#   Get-Content C:\Caddy\caddy.err.log -Tail 40
+
+tntecom.com {
+	# TÊN MIỀN NÀY SẼ CÓ NHIỀU WEBTOOL, mỗi cái một tiền tố đường dẫn. Vì vậy ở đây lọc theo
+	# đường thay vì đẩy tất cả về cổng 3000 — nếu đẩy tất cả, Research SPY chiếm sạch tên miền
+	# và webtool thứ hai không còn chỗ nào để nhận request.
+	#
+	# `/api` nằm trong danh sách của Research SPY vì API của nó CỐ Ý ở lại gốc, không đi theo
+	# `/research` — lý do chép trong frontend/next.config.mjs. Hệ quả cần nhớ khi thêm webtool
+	# mới: `/api` ở gốc ĐÃ BỊ CHIẾM, tool sau phải dùng tiền tố riêng của nó (`/tool2/api`).
+	#
+	# Khai cả `/research` lẫn `/research/*`: matcher `path` khớp chính xác, nên `/research/*`
+	# một mình KHÔNG khớp `/research` trơn — mà đó lại đúng là địa chỉ trang chủ webtool.
+	@researchspy path /research /research/* /api /api/*
+	handle @researchspy {
+		reverse_proxy 127.0.0.1:3000 {
+			# PHẢI nới trần thời gian. Mặc định của Caddy là không giới hạn, nhưng đặt tường minh
+			# ở đây để khớp với PROXY_TIMEOUT_MS = 300_000 trong frontend/next.config.mjs: nhiều
+			# đường của backend vượt 30 giây một cách bình thường chứ không phải do hỏng
+			# (`/api/keywords` chờ Google Trends tới 60 giây). Nếu tầng nào cắt sớm hơn Next,
+			# người dùng thấy 502 trong khi backend vẫn đang chạy và vài giây sau trả kết quả
+			# đúng — lỗi trông như server chết mà thật ra không.
+			transport http {
+				dial_timeout 10s
+				response_header_timeout 300s
+				read_timeout 300s
+				write_timeout 300s
+			}
+		}
+	}
+
+	# THÊM WEBTOOL MỚI: chép khối dưới đây, đổi tiền tố và cổng.
+	#
+	#   @tool2 path /tool2 /tool2/*
+	#   handle @tool2 {
+	#   	reverse_proxy 127.0.0.1:3100
+	#   }
+	#
+	# Nhớ đặt `basePath` tương ứng bên app đó, nếu không mọi đường dẫn của nó sẽ trỏ về gốc.
+
+	# Mọi đường còn lại, kể cả gốc `tntecom.com`. Chưa có gì ở đây — chủ đích để trống cho
+	# website công ty hoặc webtool sau. Trả lời rõ ràng thay vì để trắng, để người gõ thiếu
+	# `/research` biết mình gõ thiếu chứ không tưởng server chết.
+	handle {
+		respond "tntecom.com — chưa có gì ở địa chỉ này. Research SPY nằm ở /research" 404
+	}
+}
+
+# KHÔNG bật `encode gzip` ở đây. Next đã tự nén (compress: true là mặc định của next start),
+# nén chồng nén chỉ tốn CPU; và với `/api/media` — đường phát video theo Range — một tầng nén
+# ở giữa dễ làm hỏng chính cái Range đó.

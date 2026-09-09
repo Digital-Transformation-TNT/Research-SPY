@@ -25,6 +25,24 @@
  */
 (function () {
 /*
+ * ĐƯỜNG VỀ TRANG LOGIN, TỰ SUY RA — không gõ cứng.
+ *
+ * Webtool sống ở `tntecom.com/research`, nên trang login là `/research/login` chứ không phải
+ * `/login`. File này là JavaScript thường, không qua bundler, nên KHÔNG import được `withBase()`
+ * của lib/basePath.ts. Gõ cứng `/research/login` thì thành bản sao thứ hai của giá trị cấu hình,
+ * và lần nào đó ai đổi `basePath` trong next.config.mjs sẽ không ai nhớ tới dòng này.
+ *
+ * Thay vào đó suy ra từ chính địa chỉ của iframe. Trang này luôn được nhúng ở
+ * `<base>/research/index.html` (xem app/(dashboard)/ads/page.tsx), nên đi ngược lên một cấp
+ * rồi rẽ sang `login` là ra đúng đích, ở MỌI base path — kể cả khi không có base path nào:
+ *
+ *   /research/research/index.html  →  ../login  →  /research/login
+ *   /research/index.html           →  ../login  →  /login
+ *
+ * Dùng `window.top` chứ không phải `window`: cần đá cả khung ngoài về login, không chỉ iframe.
+ */
+const LOGIN_URL = new URL('../login', location.href).pathname;
+/*
  * ===========================================================================
  * AUTH GATE — chưa đăng nhập thì đá về /login/.
  *
@@ -34,7 +52,7 @@
  * ===========================================================================
  */
 if (!localStorage.getItem('rs_token') && !localStorage.getItem('rs_email')) {
-  window.top.location.replace('/login');
+  window.top.location.replace(LOGIN_URL);
   return;
 }
 
@@ -51,7 +69,7 @@ window.rsAuthFetch = async function (url, options = {}) {
   // 401 = token hết hạn hoặc sai → về login.
   if (r.status === 401) {
     ['rs_token', 'rs_email', 'rs_display', 'rs_role', 'rs_user_id', 'rs_username'].forEach((k) => localStorage.removeItem(k));
-    window.top.location.replace('/login');
+    window.top.location.replace(LOGIN_URL);
     throw new Error('Phiên đã hết hạn');
   }
   return r;

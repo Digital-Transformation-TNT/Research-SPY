@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { withBase } from '@/lib/basePath'
 import s from './admin.module.css'
 
 /**
@@ -37,7 +38,7 @@ type Stats = { current: any; previous: any; trends: any }
 
 function clearAuthAndLogin() {
   AUTH_KEYS.forEach((k) => localStorage.removeItem(k))
-  window.location.replace('/login')
+  window.location.replace(withBase('/login'))
 }
 
 /** fetch có JWT; 401 → dọn phiên và về /login. */
@@ -118,8 +119,8 @@ export default function AdminPage() {
     const token = localStorage.getItem('rs_token')
     const role = localStorage.getItem('rs_role') || 'user'
     const uname = localStorage.getItem('rs_display') || localStorage.getItem('rs_email') || ''
-    if (!token && !uname) return void window.location.replace('/login')
-    if (role !== 'admin') return void window.location.replace('/ads')
+    if (!token && !uname) return void window.location.replace(withBase('/login'))
+    if (role !== 'admin') return void window.location.replace(withBase('/ads'))
     setReady(true)
   }, [])
 

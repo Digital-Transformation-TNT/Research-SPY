@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 
+import { withBase } from '@/lib/basePath'
+
 export const metadata: Metadata = {
   title: 'Trend Signal Hub — Research SPY',
 }
@@ -19,5 +21,5 @@ export const metadata: Metadata = {
  * có dữ liệu mẫu; mục nào không đọc được thì nói ra là nó không đọc được.
  */
 export default function TrendSignalPage() {
-  return <iframe src="/hub/trend-signal-hub.html" className="research-frame" title="Trend Signal Hub" />
+  return <iframe src={withBase('/hub/trend-signal-hub.html')} className="research-frame" title="Trend Signal Hub" />
 }

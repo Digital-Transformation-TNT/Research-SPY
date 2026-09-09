@@ -122,7 +122,10 @@
   </div>
 
   <script>
-    const ENTER_URL = '/ads';           // trang chính sau khi đăng nhập
+    // Suy ra từ địa chỉ của chính trang này (`<base>/login/index.html`) thay vì gõ cứng `/ads`,
+    // vì webtool sống ở `tntecom.com/research` — xem ghi chú dài trong public/research/research.js.
+    // LƯU Ý: file này đã bị app/(auth)/login/page.tsx thay thế và không còn đường nào dẫn tới.
+    const ENTER_URL = new URL('../ads', location.href).pathname;  // trang chính sau khi đăng nhập
     const POLL_MS = 4000;               // chu kỳ hỏi lại xem đã duyệt chưa (login là DB lookup rẻ ~1ms)
 
     // Đã có token → vào thẳng.

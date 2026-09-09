@@ -14,6 +14,25 @@
 const BACKEND_URL = process.env.BACKEND_URL ?? 'http://127.0.0.1:8000'
 
 /**
+ * Tiền tố đường dẫn của cả webtool. Rỗng = chạy ở gốc tên miền.
+ *
+ * Đặt `/research` vì webtool ở chung tên miền với những thứ khác của công ty: nó phải sống ở
+ * `tntecom.com/research`, không được chiếm gốc `tntecom.com`.
+ *
+ * Next tự ghép tiền tố này vào `<Link href>`, `router.push()`, `next/image`, file trong
+ * `public/`, và cả `source` của `rewrites()`/`headers()` bên dưới — nên ĐỪNG tự gõ `/research`
+ * vào những chỗ đó nữa, sẽ thành `/research/research`. Ba loại Next KHÔNG lo được
+ * (`window.location`, `<img src>`, `<iframe src>`) thì bọc bằng `withBase()` — xem lib/basePath.ts.
+ *
+ * `usePathname()` trả về đường ĐÃ CẮT tiền tố, nên so khớp menu đang mở trong Sidebar vẫn viết
+ * `/ads` như cũ, không phải sửa.
+ *
+ * Đổi được bằng `NEXT_PUBLIC_BASE_PATH`, kể cả về rỗng để chạy ở gốc:
+ *   NEXT_PUBLIC_BASE_PATH= npm run build
+ */
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '/research'
+
+/**
  * Trần thời gian một request được phép nằm trong proxy rewrite, tính bằng mili giây.
  *
  * PHẢI đặt tường minh. Mặc định của Next là 30 giây (`server/lib/router-utils/proxy-request.js`),
@@ -45,6 +64,11 @@ const DIST_DIR = process.env.NEXT_DIST_DIR ?? '.next'
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   distDir: DIST_DIR,
+  basePath: BASE_PATH,
+  // Đưa base path sang phía trình duyệt cho `withBase()`. Phải đi qua đây chứ không đọc thẳng
+  // `basePath` được: giá trị đó chỉ sống trong tiến trình server, code chạy trong trình duyệt
+  // không thấy. Next thay thế `process.env.NEXT_PUBLIC_BASE_PATH` bằng chuỗi thật lúc build.
+  env: { NEXT_PUBLIC_BASE_PATH: BASE_PATH },
   eslint: { ignoreDuringBuilds: true },
   // Tắt huy hiệu "N" của Next ở góc màn hình lúc chạy dev — nó đè lên chân sidebar. Chỉ hiện ở
   // dev, bản production build vốn không có; tắt cho gọn khi demo/dev.
@@ -52,7 +76,18 @@ const nextConfig = {
   experimental: { proxyTimeout: PROXY_TIMEOUT_MS },
   async rewrites() {
     return [
-      { source: '/api/:path*', destination: `${BACKEND_URL}/api/:path*` },
+      // `basePath: false` — ĐƯỜNG API Ở LẠI GỐC TÊN MIỀN, cố ý, không phải sót.
+      //
+      // Mặc định Next ghép tiền tố vào `source`, tức API sẽ chuyển sang `/research/api/*`. Làm
+      // vậy thì mọi nơi gọi API đều phải sửa, và trong số đó có những chỗ KHÔNG sửa nổi bằng
+      // build: `public/research/research.js` và `public/hub/*` là JavaScript thường, không qua
+      // bundler, không thấy `withBase()`. Hơn mười lời gọi `/api/...` nằm rải trong đó; sót một
+      // cái là một tính năng chết lặng lẽ.
+      //
+      // Giữ API ở gốc thì `fetch('/api/…')` trong lib/api.ts, trong các component, và trong đám
+      // file tĩnh kia đều chạy nguyên như cũ — không sửa một dòng nào. Đánh đổi: `/api` bị chiếm
+      // ở gốc `tntecom.com`, nên sau này đặt app khác lên gốc thì phải nhớ điều đó.
+      { source: '/api/:path*', destination: `${BACKEND_URL}/api/:path*`, basePath: false },
       // `/login` và `/admin` giờ đều là route Next thật (app/(auth)/login, app/(dashboard)/admin)
       // nên KHÔNG còn rewrite tới HTML tĩnh nữa.
     ]
@@ -62,6 +97,9 @@ const nextConfig = {
     // ?v= mỗi lần đổi. Vấn đề: trình duyệt cache index.html cũ → vẫn xin ?v= cũ → user phải Ctrl+F5.
     // Đặt no-cache buộc trình duyệt LUÔN revalidate index.html (304 nếu chưa đổi, 200 nếu đổi) →
     // hễ deploy bản mới là tự thấy ?v= mới → nạp JS mới, không cần refresh cứng.
+    //
+    // `source` dưới đây được Next tự ghép BASE_PATH, nên `/research/:path*` khớp đúng địa chỉ
+    // thật của trang là `/research/research/:path*`. Đừng tự gõ thêm tiền tố vào đây.
     return [
       {
         source: '/research/:path*',

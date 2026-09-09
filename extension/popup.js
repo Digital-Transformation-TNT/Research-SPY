@@ -15,8 +15,15 @@ const PRICE_SCALE = 100000;
 // Địa chỉ webtool. Nút "Research đầy đủ" mở trang Research ở đây chứ không mở trang trong
 // extension nữa — trang đó đã chuyển hẳn sang webtool để chỉ còn MỘT bản, không phải hai bản
 // trôi dạt khỏi nhau. Đổi khi deploy lên server thật.
-// Deploy: trỏ về VPS. Dev cục bộ: đổi lại thành 'http://localhost:3000'.
-const WEBAPP = 'http://157.66.101.73:3000';
+// Deploy: trỏ về tên miền. Dev cục bộ: đổi lại thành 'http://localhost:3000'.
+//
+// PHẢI kèm cả '/research'. Webtool không nằm ở gốc tên miền mà ở `tntecom.com/research`
+// (`basePath` trong frontend/next.config.mjs), nên bỏ phần đuôi này thì `${WEBAPP}/ads` bên
+// dưới thành `tntecom.com/ads` — một địa chỉ 404, không phải trang Research.
+//
+// Địa chỉ cũ `http://157.66.101.73:3000` vẫn chạy song song và vẫn được khai trong
+// manifest.json, nên bản extension này dùng được ở cả hai nơi trong lúc chuyển.
+const WEBAPP = 'https://tntecom.com/research';
 
 function searchUrl(domain, keyword) {
   const q = new URLSearchParams({

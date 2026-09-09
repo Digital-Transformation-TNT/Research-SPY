@@ -24,6 +24,7 @@ chuyển sang Redis; hiện chưa cần.
 from __future__ import annotations
 
 import asyncio
+import os
 import secrets
 import time
 from dataclasses import dataclass, field
@@ -36,6 +37,19 @@ SUBMIT_TIMEOUT_S = 45.0
 #: Worker giữ long-poll ngần này rồi được trả rỗng để nó poll lại — đủ ngắn để bắt job mới
 #: nhanh, đủ dài để không quay vòng tốn CPU.
 NEXT_TIMEOUT_S = 25.0
+
+#: Đường dẫn trang máy-thợ, dùng trong câu báo lỗi khi không có thợ nào online.
+#:
+#: PHẢI KHỚP với `basePath` trong `frontend/next.config.mjs`. Backend không có cách nào tự biết
+#: giá trị đó: nó chỉ phục vụ `/api/*`, còn trang worker là file tĩnh do Next phục vụ, ở một
+#: tiền tố mà backend không nhìn thấy.
+#:
+#: Ngày 09/09/2026 webtool chuyển từ `157.66.101.73:3000` sang `tntecom.com/research`, và câu
+#: báo lỗi bên dưới — vốn ghi cứng `/worker` — thành ra chỉ người vận hành tới một địa chỉ 404.
+#: Đổi `basePath` mà quên dòng này là lặp lại đúng lỗi đó, nên nó nằm ở đây, có tên, thay vì
+#: nấp trong một chuỗi giữa hàm.
+WORKER_PAGE_PATH = os.getenv("WORKER_PAGE_PATH", "/research/worker/index.html")
+
 
 #: Coi worker là "còn sống" nếu nó có gọi `/next` trong khoảng này. Dùng để báo sớm "chưa có
 #: worker" thay vì bắt người gọi chờ hết `SUBMIT_TIMEOUT_S` rồi mới biết.
@@ -217,7 +231,7 @@ async def run_on_worker(
         raise ValueError(f"type không hợp lệ: {job_type!r}")
     if not worker_online():
         raise WorkerOffline(
-            "Chưa có máy-thợ nào online. Mở trang /worker trên máy đã cài extension."
+            f"Chưa có máy-thợ nào online. Mở trang {WORKER_PAGE_PATH} trên máy đã cài extension."
         )
 
     job = Job(id=secrets.token_hex(8), type=job_type, payload=payload)
