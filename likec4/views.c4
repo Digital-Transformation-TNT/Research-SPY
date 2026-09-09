@@ -27,11 +27,12 @@ views {
   //  3) CONTAINERS — bốn khối chạy: extension, frontend, backend, hub
   // --------------------------------------------------------------------------
   view containers of spy {
-    title 'Các container — trình duyệt (extension + Next.js) · FastAPI · Hub'
+    title 'Các container — Caddy · trình duyệt (extension + Next.js) · FastAPI · Hub · máy-thợ'
     include *
-    // gộp các nguồn ngoài lại cho gọn ở tầng container
-    include extShopee, extTtShop, extAmazon, ext1688, extTaobao, extTemu, extDouyin
-    include extFacebook, extTiktokCC, extYoutube, extEtsy, extGoogle, extMtop, extGemini, extSupabase
+    // BỎ HẲN nguồn ngoài khỏi tầng này. Đã thử để lại: 16 hộp ngoài xếp thành một hàng
+    // ngang làm ảnh rộng 17.000px và chữ bên trong nhỏ tới mức không đọc nổi. Ai cần nhìn
+    // nguồn ngoài thì xem view `index` hoặc `context` — chúng sinh ra để làm đúng việc đó.
+    exclude element.kind = external
     autoLayout TopBottom
   }
 
@@ -121,6 +122,78 @@ views {
     spy.worker.wkPage -> spy.be.beRelay 'POST /api/relay/result'
     spy.be.beRelay -> spy.fe.feBridge 'đánh thức /submit → trả kết quả đúng user'
     spy.fe.feBridge -> spy.fe.feDash 'kết quả (giống hệt đường extension cục bộ)'
+
+    autoLayout TopBottom
+  }
+
+  // --------------------------------------------------------------------------
+  //  9) ĐƯỜNG RA NGOÀI — tên miền, HTTPS, và chỗ dành cho webtool thứ hai
+  //     Trước: http://157.66.101.73:3000 (IP trần, cổng lạ, không HTTPS)
+  //     Sau:   https://tntecom.com/research   (Caddy 80/443 → Next 3000)
+  // --------------------------------------------------------------------------
+  view delivery {
+    title 'Đường ra ngoài — tntecom.com/research qua Caddy'
+    include staff, admin
+    include spy.edge, spy.fe, spy.fe.feDash, spy.fe.feBase, spy.fe.feProxy, spy.be, spy.be.beApi, spy.be.beMedia
+    autoLayout LeftRight
+  }
+
+  // --------------------------------------------------------------------------
+  //  10) DYNAMIC — video theo sản phẩm: BỐN nguồn chạy thẳng ở server
+  //      Không cần máy-thợ, không cần đăng nhập, chạy được ở MỌI máy.
+  // --------------------------------------------------------------------------
+  dynamic view videoFlow {
+    title 'Video theo sản phẩm — bốn nguồn chạy thẳng ở server (không cần máy-thợ)'
+
+    staff -> spy.fe.feDash 'mở modal Video của một sản phẩm'
+    spy.fe.feDash -> spy.fe.feProxy 'GET /api/ads/video-keywords'
+    spy.fe.feProxy -> spy.be.beApi 'chuyển tiếp'
+    spy.be.beApi -> spy.be.beVideo 'cụm từ khoá theo tiếng của từng sàn'
+    spy.be.beVideo -> extGemini 'dịch tiêu đề sang tiếng sàn (Douyin: tiếng Trung)'
+
+    spy.be.beVideo -> extYoutube 'YouTube Data API'
+    spy.be.beVideo -> spy.be.beBrowser 'mở Bing Videos qua browser pool'
+    spy.be.beBrowser -> extBing 'site:tiktok.com <cụm> · mkt theo nước'
+    spy.be.beBrowser -> extBing 'site:douyin.com <cụm tiếng Trung> · mkt=zh-CN'
+    extBing -> spy.be.beVideo 'thẻ video: tiêu đề · kênh · ảnh bìa · lượt xem'
+
+    spy.be.beVideo -> spy.fe.feDash 'danh sách video (TikTok nhúng player, Douyin ảnh bìa + link)'
+
+    staff -> spy.fe.feDash 'bấm xem tương tác của một video Douyin'
+    spy.fe.feDash -> spy.be.beDyStats 'GET /api/ads/douyin-stats'
+    spy.be.beDyStats -> extDouyinPlayer 'mở open.douyin.com/player?vid=<aweme_id>'
+    extDouyinPlayer -> spy.be.beDyStats '.digg · .comment · .collect'
+    spy.be.beDyStats -> spy.fe.feDash 'tim · bình luận · lưu'
+
+    autoLayout TopBottom
+  }
+
+  // --------------------------------------------------------------------------
+  //  11) DYNAMIC — lịch đêm nuôi Trend Signal Hub
+  //      Không ai bấm gì: 8 job nối nhau, mỗi job ghi vào một bảng.
+  // --------------------------------------------------------------------------
+  dynamic view nightly {
+    title 'Lịch đêm — 8 job nuôi Trend Signal Hub'
+
+    spy.hub.hubScheduler -> spy.hub.hubIngestion '02:00 discover → discovered_keywords'
+    spy.hub.hubIngestion -> extGoogle 'quét keyword mới từ Google Trends'
+    spy.hub.hubScheduler -> spy.hub.hubIngestion '02:40 listings → raw_listings'
+    spy.hub.hubIngestion -> extEtsy 'cào Etsy / Amazon'
+    spy.hub.hubScheduler -> spy.hub.hubIngestion '03:30 trends → trends_cache'
+    spy.hub.hubScheduler -> spy.hub.hubEngines '03:50 unify · 04:00 report'
+    spy.hub.hubEngines -> spy.hubDb 'listings_unified · reports'
+
+    spy.hub.hubScheduler -> spy.hub.hubIngestion '05:00 sigtrends → trends_daily (①)'
+    spy.hub.hubIngestion -> extGoogle 'hai truy vấn: grain ngày + grain tuần, có anchor'
+    spy.hub.hubScheduler -> spy.hub.hubIngestion '05:40 sigsnap · 06:00 sigcat → listings_snapshot (②)'
+    spy.hub.hubIngestion -> extShopee 'cây danh mục cấp 1 + top 100 mỗi danh mục'
+    spy.hub.hubIngestion -> spy.hubDb 'append-only, một dòng = một listing × một ngày'
+
+    staff -> spy.fe.feDash 'sáng hôm sau mở /trend-signal'
+    spy.fe.feDash -> spy.hub.hubRoutes '/signal/trends · /signal/top10'
+    spy.hub.hubRoutes -> spy.hub.hubSignal 'tính ① L·M_ngắn·M_bền·YoY và ② rank_score·spike%'
+    spy.hub.hubSignal -> spy.hubDb 'đọc trends_daily + listings_snapshot'
+    spy.hub.hubSignal -> spy.fe.feDash 'Top 10 chính · Top 10 nổi bật · nhãn tín hiệu'
 
     autoLayout TopBottom
   }

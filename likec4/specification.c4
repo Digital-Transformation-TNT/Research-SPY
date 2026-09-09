@@ -62,4 +62,6 @@ specification {
   tag llm            // gọi mô hình ngôn ngữ
   tag feature        // một trong bốn mục lớn
   tag infra          // hạ tầng dùng chung
+  tag nightly        // chạy theo lịch đêm, không do người bấm
+  tag edge           // tầng ngoài cùng: tên miền, HTTPS, định tuyến
 }

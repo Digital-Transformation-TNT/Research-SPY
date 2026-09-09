@@ -24,6 +24,15 @@ model {
     description 'Tầng dữ liệu + giao diện cho nghiên cứu quảng cáo, từ khoá, ảnh và cơ hội thị trường.'
 
     // ------------------------------------------------------------------------
+    //  CONTAINER 0 — Caddy (tầng ngoài cùng: tên miền + HTTPS + định tuyến)
+    // ------------------------------------------------------------------------
+    edge = container 'Caddy (reverse proxy)' {
+      #edge
+      description 'Đưa webtool ra tntecom.com/research thay cho IP trần 157.66.101.73:3000, kèm HTTPS tự xin & tự gia hạn (Let’s Encrypt). Lọc theo ĐƯỜNG DẪN chứ không nuốt cả tên miền, để còn chỗ cho webtool thứ hai. /api CỐ Ý ở lại gốc nên <video src="/api/media"> vẫn cùng origin, Range đi qua bình thường. Giữ đúng MỘT tầng proxy; timeout 300s khớp Next, cắt sớm hơn thì user thấy 502 trong khi backend vẫn đang chạy.'
+      technology 'Caddy · cổng 80/443 · Windows service'
+    }
+
+    // ------------------------------------------------------------------------
     //  CONTAINER 1 — Extension Chrome (chạy trong trình duyệt người dùng)
     // ------------------------------------------------------------------------
     ext = container 'Chrome Extension (MV3)' {
@@ -49,10 +58,14 @@ model {
     // ------------------------------------------------------------------------
     fe = container 'Frontend (Next.js)' {
       description 'Chỉ giao diện, không có logic nghiệp vụ. Trình duyệt chỉ nói chuyện với cổng này.'
-      technology 'TypeScript · Next.js · cổng 3000'
+      technology 'TypeScript · Next.js · cổng 3000 · basePath /research'
 
       feDash = component 'Trang Dashboard' {
         description 'Các trang: /ads /keywords /image /opportunity /trend-signal /admin /guide + đăng nhập.'
+      }
+      feBase = component 'basePath (lib/basePath.ts)' {
+        #infra
+        description 'Next tự ghép tiền tố cho Link/router/next-image, nhưng KHÔNG đụng ba loại: location.replace, src của img/iframe, và chuỗi đường dẫn dựng tay — withBase() bọc đúng ba loại đó. Bỏ sót thì không lỗi lúc build mà 404 (hoặc vòng lặp chuyển hướng) lúc chạy. KHÔNG dùng cho /api/*.'
       }
       feResearch = component 'Trang Research (HTML/JS thuần)' {
         description 'public/research — chuyển từ extension sang, nhúng nguyên vào /ads. Cố ý KHÔNG viết lại thành React.'
@@ -93,6 +106,15 @@ model {
       beImg = component 'Mục Tìm bằng ảnh (lib/imagesearch)' {
         #feature
         description 'Một ảnh → nguồn hàng & sáu tầng giá ở năm sàn (1688, Alibaba, AliExpress, Taobao, Lens).'
+      }
+      beVideo = component 'Video theo sản phẩm (lib/ads/bingvideo · *video)' {
+        #feature
+        #server-fetch
+        description 'BỐN nguồn chạy THẲNG Ở SERVER, không cần máy-thợ. Đi vòng qua Bing Videos (site:<sàn> <cụm>) vì đo trên VPS 08/09/2026: tiktok.com/search 0 link video, douyin.com/search 0 link, Google trả captcha MỌI truy vấn. Douyin PHẢI hỏi bằng tiếng Trung và ép mkt=zh-CN — hỏi bằng tiếng Việt thì Bing trả toàn YouTube. Là CHỈ MỤC của Bing chứ không phải bảng xếp hạng của sàn, nên không thay đường tìm thật trong tab máy-thợ.'
+      }
+      beDyStats = component 'Tương tác video (douyin_stats · tiktok_stats · humancount)' {
+        #server-fetch
+        description 'Tim/bình luận/lưu của Douyin đọc từ PLAYER NHÚNG open.douyin.com/player — ba đường kia đều tắc: thẻ Bing zh-CN chỉ có tên kênh + ngày đăng, còn douyin.com/video/<id> đá sang feed gợi ý (trả về một video KHÁC). humancount đọc số viết cho NGƯỜI: "77.882" là 77 nghìn nhưng "1.2M" là 1,2 triệu.'
       }
       beOpp = component 'Mục Cơ hội (lib/opportunity)' {
         #feature
@@ -144,7 +166,15 @@ model {
         description 'scoring, analysis, market, catalogue, learning — chấm điểm & tổng hợp insight.'
       }
       hubIngestion = component 'Ingestion + Workers' {
-        description 'seedgen, trends_browser — sinh seed và nạp Google Trends nền.'
+        description 'seedgen · trends_browser · trends_daily (chuỗi ngày+tuần; hai truy vấn chứ không một, và KHÔNG trộn grain vì mỗi truy vấn chuẩn hoá 0–100 riêng) · market_snapshot (một dòng = một listing × một ngày, append-only) · categories (cây danh mục cấp 1, cache trên đĩa vì hỏng thì hỏng cả mẻ).'
+      }
+      hubSignal = component 'Trend Signal ①②③ (hub/signal)' {
+        #feature
+        description '① trendsig: L · M_ngắn · M_bền · YoY tính từ trends_daily. ② top10: Top 10 CHÍNH (rank_score) và Top 10 NỔI BẬT (spike% của bán/ngày) — mọi phép tính chạy trong MỘT partition (sàn, nước), nên không phải quy đổi tiền ở đâu cả. ③ ask: một ô hỏi đáp cho cả Hub, chèn tóm tắt tín hiệu vào ĐẦU hội thoại rồi đối chiếu NGƯỢC từng món với trends_daily; không khớp thì để "chưa đo" chứ không suy ra số.'
+      }
+      hubScheduler = component 'Lịch đêm (hub/scheduler)' {
+        #nightly
+        description '02:00 discover · 02:40 listings · 03:30 trends · 03:50 unify · 04:00 report · 05:00 sigtrends (①) · 05:40 sigsnap (②) · 06:00 sigcat (②). Tắt bằng SCHEDULER_ENABLED=0; chạy tay bằng POST /api/scheduler/run?job=all.'
       }
     }
 
@@ -165,7 +195,7 @@ model {
     //  KHO DỮ LIỆU
     // ------------------------------------------------------------------------
     hubDb = store 'Hub DB (SQLite)' {
-      description 'raw_listings, crawl_runs, reports, trends_cache, discovered_keywords, events.'
+      description 'raw_listings · crawl_runs · reports · trends_cache · discovered_keywords · events · trends_daily (①) · listings_snapshot (②, append-only) · signal_config.'
       technology 'SQLite'
     }
     memState = store 'Trạng thái trong bộ nhớ' {
@@ -195,13 +225,21 @@ model {
     #server-fetch
     description 'Sản phẩm Etsy (cần ETSY_*).'
   }
-  extGoogle = external 'Google (Suggest · Trends · Lens)' {
+  extGoogle = external 'Google (Trends · Lens)' {
     #server-fetch
-    description 'Gợi ý từ khoá, xu hướng tìm kiếm, tìm bằng ảnh.'
+    description 'Xu hướng tìm kiếm và tìm bằng ảnh. KHÔNG còn Google Suggest — nguồn đó đã bị gỡ khỏi sổ đăng ký từ khoá vì nó chỉ hoàn thiện tiền tố ("quần jeans là gì"), không đẻ ra được cụm nằm ngoài tiền tố. Cả hai đường còn lại đều ĐÒI PHIÊN GOOGLE ĐÃ ĐĂNG NHẬP (kho phiên phía server, không phải tài khoản người dùng): ẩn danh thì Trends trả 200 kèm danh sách RỖNG, im lặng.'
   }
   extMtop = external 'Alibaba MTOP gateway' {
     #server-fetch
     description '1688 · Taobao · Tmall · AliExpress — API mtop JSON ẩn danh.'
+  }
+  extBing = external 'Bing Videos' {
+    #server-fetch
+    description 'Công cụ tìm DUY NHẤT còn chạy được từ IP của VPS cho site:tiktok.com / site:douyin.com — Google trả /sorry/index (captcha) mọi truy vấn, Baidu và Sogou chặn antispider.'
+  }
+  extDouyinPlayer = external 'Douyin embed player (open.douyin.com)' {
+    #server-fetch
+    description 'Bản nhúng công khai Douyin làm cho người khác gắn lên trang của họ: không đòi đăng nhập, không đá đi đâu, và nhận đúng aweme_id mình đang có. Số nằm trong .digg / .comment / .collect — số 0 ở đây là số THẬT.'
   }
   extGemini = external 'Google Gemini' {
     #llm
@@ -213,7 +251,7 @@ model {
   }
 
   // --- Nguồn gọi QUA EXTENSION (trong phiên đăng nhập của người dùng) ---
-  extShopee  = external 'Shopee'        { #client-fetch; description 'Trả 403 cho server ẩn danh → phải fetch client.' }
+  extShopee  = external 'Shopee'        { #client-fetch; #server-fetch; description 'HAI CỬA, đừng nhớ nhầm thành một: cửa TÌM KIẾM trả 403 cho server ẩn danh nên phải fetch client trong phiên người dùng; còn get_category_tree lại là endpoint CÔNG KHAI, server gọi thẳng được và Hub dùng nó để cào top bán chạy mỗi đêm.' }
   extTtShop  = external 'TikTok Shop'   { #client-fetch; description 'Fetch client trong phiên người dùng.' }
   extAmazon  = external 'Amazon'        { #client-fetch; description 'Fetch client trong phiên người dùng.' }
   ext1688    = external '1688 (web)'    { #client-fetch; description 'Giá vốn / tìm bằng ảnh trong phiên người dùng.' }
@@ -226,9 +264,11 @@ model {
   //  QUAN HỆ
   // ==========================================================================
 
-  // --- Người dùng ---
-  staff -> spy.fe.feDash 'Dùng công cụ qua trình duyệt' 'HTTPS'
-  admin -> spy.fe.feDash 'Quản lý user & xem thống kê' 'HTTPS'
+  // --- Người dùng vào bằng TÊN MIỀN, qua Caddy ---
+  staff -> spy.edge 'Dùng công cụ tại tntecom.com/research' 'HTTPS'
+  admin -> spy.edge 'Quản lý user & xem thống kê' 'HTTPS'
+  spy.edge -> spy.fe.feDash 'reverse_proxy /research + /api → 127.0.0.1:3000' 'HTTP · timeout 300s'
+  spy.fe.feDash -> spy.fe.feBase 'withBase() cho location.replace · src của img/iframe'
   staff -> spy.ext 'Cài & đăng nhập sẵn tab sàn'
 
   // --- Trong trình duyệt: web app ↔ extension ---
@@ -251,6 +291,8 @@ model {
   spy.be.beApi -> spy.be.beKw 'expand / trends / gloss / bridge'
   spy.be.beApi -> spy.be.beImg 'một ảnh → năm sàn'
   spy.be.beApi -> spy.be.beOpp 'ask'
+  spy.be.beApi -> spy.be.beVideo 'video-keywords · video theo sản phẩm'
+  spy.be.beApi -> spy.be.beDyStats 'tiktok-stats · douyin-stats'
   spy.be.beApi -> spy.be.beMedia 'proxy video'
   spy.be.beApi -> spy.be.beRelay 'submit / next / result'
   spy.be.beApi -> spy.be.beCost 'rank offer 1688'
@@ -278,6 +320,11 @@ model {
   spy.be.beApi -> spy.hub.hubRoutes 'Trend Signal Hub' { style { line dotted } }
   spy.hub.hubRoutes -> spy.hub.hubEngines 'chấm điểm & tổng hợp'
   spy.hub.hubRoutes -> spy.hub.hubIngestion 'nạp seed & trends'
+  spy.hub.hubRoutes -> spy.hub.hubSignal '/signal/trends · /signal/top10 · /signal/ask'
+  spy.hub.hubSignal -> spy.hubDb 'đọc trends_daily · listings_snapshot · signal_config'
+  spy.hub.hubSignal -> extGemini 'one-shot AI cho cả Hub' { style { line dashed } }
+  spy.hub.hubScheduler -> spy.hub.hubIngestion 'gọi 8 job theo lịch đêm' { style { line dashed } }
+  spy.hub.hubScheduler -> spy.hub.hubEngines 'unify · report' { style { line dashed } }
   spy.hub.hubEngines -> spy.hubDb 'đọc/ghi'
   spy.hub.hubIngestion -> spy.hubDb 'ghi listing / trends'
 
@@ -286,11 +333,18 @@ model {
   spy.be.beAds -> extTiktokCC 'fetch top ads'
   spy.be.beAds -> extYoutube 'API video'
   spy.be.beAds -> extEtsy 'API sản phẩm'
-  spy.be.beKw  -> extGoogle 'Suggest · Trends'
+  spy.be.beVideo -> extBing 'site:tiktok.com · site:douyin.com (mkt theo tiếng)'
+  spy.be.beVideo -> extYoutube 'API video'
+  spy.be.beVideo -> spy.be.beBrowser 'lật trang & chờ thẻ vẽ xong'
+  spy.be.beVideo -> extGemini 'dịch cụm từ khoá sang tiếng của sàn' { style { line dashed } }
+  spy.be.beDyStats -> extDouyinPlayer 'đọc .digg / .comment / .collect'
+  spy.be.beDyStats -> spy.be.beBrowser 'mở player nhúng'
+  spy.be.beKw  -> extGoogle 'Trends: truy vấn liên quan (cần phiên đăng nhập)'
   spy.be.beImg -> extGoogle 'Google Lens'
   spy.be.beImg -> extMtop 'giá sỉ 1688/Taobao/AliExpress'
   spy.be.beKw  -> extMtop '1688 / Amazon suggest'
-  spy.hub.hubIngestion -> extGoogle 'Google Trends nền'
+  spy.hub.hubIngestion -> extGoogle 'Google Trends nền · chuỗi ngày + tuần cho ①'
+  spy.hub.hubIngestion -> extShopee 'cây danh mục + top bán chạy cho ② — endpoint công khai, không cần đăng nhập'
 
   // --- LLM (Gemini) ---
   spy.be.beAds -> extGemini 'trích từ khoá tiêu đề' { style { line dashed } }
