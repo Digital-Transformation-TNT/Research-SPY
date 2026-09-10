@@ -188,13 +188,28 @@ async def crawl_market(market: str, dry_run: bool = False) -> dict:
     for t in targets(market):
         nhan = f'{t["cat_id"]} {t["cat_name"]}'
         bat_dau = datetime.now(timezone.utc).isoformat()
-        try:
-            out = await fetch_category_queries(t["cat_id"], ctx)
-        except Exception as e:                # noqa: BLE001 — báo rồi chạy tiếp danh mục sau
-            hong[nhan] = str(e)[:200]
+        # THỬ HAI LƯỢT TRƯỚC KHI KẾT LUẬN RỖNG. Đo 2026-09-10 trên vn: `271 Thiết bị Gia dụng`
+        # trả rỗng ở lượt đầu rồi ra đủ 50 cụm ở lượt sau, trong khi bốn danh mục khác rỗng ở
+        # cả hai lượt. Không thử lại thì mỗi đêm có vài ngành bị ghi thành "Trends không có dữ
+        # liệu" trong khi thực ra chỉ là một lượt hỏng — đúng kiểu nhầm lẫn mà `crawl_log` sinh
+        # ra để chặn, chỉ khác là lần này nó tự tạo ra sự nhầm lẫn ấy.
+        out, loi = None, None
+        for luot in (1, 2):
+            try:
+                out = await fetch_category_queries(t["cat_id"], ctx)
+            except Exception as e:            # noqa: BLE001 — báo rồi chạy tiếp danh mục sau
+                loi = str(e)[:200]
+                out = None
+            if out is not None and out.queries:
+                break
+            # Phiên hết hạn thì lượt hai cũng hỏng y hệt — đừng tốn thêm một lần mở trình duyệt.
+            if out is not None and out.needs_login:
+                break
+        if out is None:
+            hong[nhan] = loi or "không rõ"
             if not dry_run:
                 store.log_crawl("trends", market, str(t["cat_id"]), day, "error",
-                                0, str(e), bat_dau)
+                                0, loi, bat_dau)
             continue
 
         if not out.queries:
