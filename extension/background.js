@@ -2441,8 +2441,18 @@ async function shopeeCapture(domain, pageUrl, param, want, mustHave, clickSort) 
     // So khớp bằng MÃ trong đường dẫn chứ không bằng cả URL: Shopee tự viết lại slug và thêm
     // tham số theo dõi sau khi tải, nên so nguyên văn sẽ không bao giờ khớp.
     if (clickSort && /[?&]sortBy=sales/.test(pageUrl)) {
-      try {
-        await chrome.scripting.executeScript({
+      // ĐUA VỚI ĐỒNG HỒ, KHÔNG ĐƯỢC `await` TRẦN.
+      //
+      // `executeScript` với một `func` trả Promise sẽ chờ Promise ấy settle. Nếu tab điều
+      // hướng giữa chừng thì ngữ cảnh trang bị huỷ và Promise KHÔNG BAO GIỜ settle — lời gọi
+      // treo vĩnh viễn, và `try/catch` không đỡ được vì chẳng có lỗi nào được ném. Cả handler
+      // đứng im cho tới khi trang máy-thợ hết giờ, rồi báo "extension chưa trả lời" — một câu
+      // không hề chỉ về phía thủ phạm.
+      //
+      // Đo 2026-09-10: bước này chạy đúng ở danh mục ĐẦU TIÊN (tab còn ở trang chủ, không có
+      // điều hướng nào chen vào) rồi treo ở mọi danh mục sau. Đúng kiểu lỗi mà phép thử một
+      // danh mục không bao giờ bắt được.
+      const doiThanhSapXep = chrome.scripting.executeScript({
           target: { tabId: tab.id }, world: 'MAIN', args: [String(want)],
           func: (maCanCo) => {
             const NHAN = ['top sales', 'bán chạy', 'ban chay'];
@@ -2468,11 +2478,11 @@ async function shopeeCapture(domain, pageUrl, param, want, mustHave, clickSort) 
               }, 250);
             });
           },
-        });
-      } catch (e) {
-        // Không chạy được thì vẫn đi tiếp bằng tham số URL — đây là lớp bảo hiểm, không phải
-        // điều kiện bắt buộc.
-      }
+      }).catch(() => null);   // tab đóng / không tiêm được: đi tiếp bằng tham số URL
+
+      // 12s = 9s ngân sách của script + 3s bù cho lúc tiêm. Hết giờ thì BỎ QUA nó và chộp
+      // tiếp: đây là lớp bảo hiểm cho thứ tự sắp xếp, không phải điều kiện bắt buộc.
+      await Promise.race([doiThanhSapXep, new Promise((r) => setTimeout(r, 12000))]);
     }
 
     // 60s, KHÔNG phải 22s — và con số này là của MÁY CHẠY, không phải của Shopee.
