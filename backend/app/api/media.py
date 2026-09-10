@@ -50,6 +50,17 @@ ALLOWED += [
     # dòng này thì proxy trả 403 và cả lưới video Google hiện ra toàn ảnh vỡ, trong khi link
     # video vẫn đúng: một kiểu hỏng trông như "nguồn không có ảnh" chứ không như một lỗi chặn.
     _Allowed(suffix="gstatic.com", referer="https://www.google.com/"),
+    # AMAZON và TEMU chạy qua extension nên KHÔNG có mặt trong sổ đăng ký nguồn, và vì thế ảnh
+    # của chúng không tự vào được danh sách dựng ở trên. Điều đó không sao với BẢNG kết quả —
+    # thẻ Amazon/Temu hiện ảnh thẳng từ CDN, không qua proxy. Nhưng "Giá vốn theo ảnh" thì BẮT
+    # BUỘC đi qua đây (`research.js::fetch1688Offers` tải ảnh về rồi mới gửi lên 1688), nên
+    # bấm 💰 trên một dòng Amazon/Temu trả về đúng câu "Không tải được ảnh: HTTP 403".
+    #
+    # Đo 2026-09-10 qua proxy production: `m.media-amazon.com` 403, `img.kwcdn.com` 403, trong
+    # khi Shopee/Etsy/1688/Taobao đều qua. Tức là tính năng giá vốn chỉ hỏng ở đúng hai sàn ấy.
+    _Allowed(suffix="media-amazon.com", referer="https://www.amazon.com/"),
+    _Allowed(suffix="ssl-images-amazon.com", referer="https://www.amazon.com/"),
+    _Allowed(suffix="kwcdn.com", referer="https://www.temu.com/"),
 ]
 
 #: Header cần giữ nguyên để trình phát biết cách đọc dòng byte. `content-encoding` không có

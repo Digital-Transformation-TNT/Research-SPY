@@ -329,6 +329,14 @@ const COST_THRESH_DEFAULT = 30;
 function cnyVnd() { try { const v = parseFloat(localStorage.getItem('rs_cost_cny_vnd')); if (v > 0) return v; } catch (e) {} return CNY_VND_DEFAULT; }
 function curVnd(cur) {
   cur = cur || 'VND';
+  // ¥ VÀ CNY LÀ CÙNG MỘT ĐỒNG TIỀN — nhân dân tệ. `cnyVnd()` đã giữ tỉ giá của nó rồi, nên
+  // trả về đúng con số ấy thay vì đi tra `CUR_VND_DEFAULTS`.
+  //
+  // Thiếu dòng này là một lỗi im lặng và rất to: `CUR_VND_DEFAULTS` KHÔNG có khoá 'CNY', nên
+  // nó rơi xuống mặc định 1 — tức là ¥1 = ₫1. Hậu quả ở `sellToCny`: giá bán của một dòng
+  // 1688/Taobao bị chia cho 3.900 lần nữa, và cột "% giá bán" phồng lên gần bốn nghìn lần.
+  // Bảng vẫn đẹp, vẫn có số, chỉ là không dòng 1688/Taobao nào còn xanh nổi.
+  if (cur === 'CNY') return cnyVnd();
   try { const v = parseFloat(localStorage.getItem('rs_cost_curvnd_' + cur)); if (v > 0) return v; } catch (e) {}
   return CUR_VND_DEFAULTS[cur] != null ? CUR_VND_DEFAULTS[cur] : 1;
 }
@@ -376,13 +384,22 @@ const PLATFORMS = {
   // Facebook ẩn khỏi chọn sàn tìm sản phẩm (theo yêu cầu) — luồng video FB (VID_SOURCES) vẫn giữ.
   // facebook: { label: 'Facebook', active: true, backend: true, regions: ['VN', 'US', 'GB', 'DE', 'FR', 'BR'] },
   amazon: { label: 'Amazon', active: true, regions: ['US', 'GB', 'DE', 'JP', 'FR', 'IT', 'ES', 'CA'] },
-  etsy: { label: 'Etsy', active: true, backend: true, regions: [] },
-  taobao: { label: 'Taobao', active: true, experimental: true, regions: [] },
+  // `searchMarket` = NƯỚC dùng để DỊCH từ khoá, cho sàn không có cột nước.
+  //
+  // Không có nước KHÔNG có nghĩa là không có ngôn ngữ, mà bản trước lại suy ra đúng như thế:
+  // region '_' bị loại khỏi danh sách dịch, nên ô "Tự dịch từ khoá" tuy vẫn tích nhưng KHÔNG
+  // làm gì cho ba sàn này — đúng ba sàn cần dịch nhất, vì không sàn nào nói tiếng Việt.
+  //
+  // Đo 2026-09-10 qua API production:
+  //     etsy    "tai nghe" → 0 kết quả  ·  "earphones" → 5
+  //     ali1688 "tai nghe" → 1 kết quả  ·  "蓝牙耳机"    → 10
+  etsy: { label: 'Etsy', active: true, backend: true, regions: [], searchMarket: 'US' },
+  taobao: { label: 'Taobao', active: true, experimental: true, regions: [], searchMarket: 'CN' },
   // 1688 chạy Ở SERVER (`backend/lib/ads/platforms/ali1688.py`), không qua tab: đo 2026-09-09
   // từ VPS, 15/15 lượt, trung vị ~1s. Nhờ vậy nó thoát hàng đợi tab dùng chung và chạy được cả
   // khi KHÔNG có máy-thợ nào online. Đường extension vẫn còn, làm DỰ PHÒNG — xem `fetch1688`.
   // Taobao thì KHÔNG port được: cổng h5search trả Baxia (RGV587) 100% lượt từ IP datacenter.
-  ali1688: { label: '1688 (giá sỉ)', active: true, backend: true, regions: [] },
+  ali1688: { label: '1688 (giá sỉ)', active: true, backend: true, regions: [], searchMarket: 'CN' },
   temu: { label: 'Temu', active: true, experimental: true, regions: ['US', 'GB', 'DE', 'FR', 'JP'] }, // gõ-search-trong-tab để bắn API rồi chộp
 };
 
@@ -1286,10 +1303,14 @@ async function research() {
   if (!combos.length) { setStatus('Không có (sàn × region) hợp lệ. Sàn có region thì phải chọn region của nó.', 'err'); return; }
 
   // TỰ DỊCH keyword theo ngôn ngữ của từng region (giữ tên hãng/model). SEARCH bằng bản dịch,
-  // nhưng NHÃN (nhóm/lọc) giữ keyword GỐC. Region '_' (sàn không nước, vd 1688/Etsy) không dịch.
+  // nhưng NHÃN (nhóm/lọc) giữ keyword GỐC.
+  //
+  // Sàn KHÔNG có cột nước (region '_') vẫn có ngôn ngữ riêng, lấy từ `PLATFORMS[pf].searchMarket`
+  // — xem ghi chú ở đó để biết bản trước đã bỏ sót gì.
   $('go').disabled = true;
   const wantTranslate = $('autoTranslate') && $('autoTranslate').checked;
-  const regionSet = [...new Set(combos.map((c) => c.region).filter((r) => r && r !== '_'))];
+  const marketOf = (pf, region) => (region && region !== '_' ? region : (PLATFORMS[pf].searchMarket || ''));
+  const regionSet = [...new Set(combos.map((c) => marketOf(c.pf, c.region)).filter(Boolean))];
   const trans = {}; // kw gốc -> { region: từ khoá đã dịch }
   let translatedAny = false;
   if (wantTranslate && regionSet.length) {
@@ -1303,7 +1324,8 @@ async function research() {
   const jobs = [];
   for (const { pf, region } of combos) {
     for (const kw of keywords) {
-      const searchKw = (region !== '_' && trans[kw] && trans[kw][region]) ? trans[kw][region] : kw;
+      const thiTruong = marketOf(pf, region);
+      const searchKw = (thiTruong && trans[kw] && trans[kw][thiTruong]) ? trans[kw][thiTruong] : kw;
       jobs.push({ pf, region, kw: searchKw, kwLabel: kw });
     }
   }
@@ -1577,7 +1599,10 @@ async function openCostModal(p) {
   // Nạp 2 ô tỉ giá: ¥→₫ (chung) + [nước]→₫ (ẩn nếu sàn VN vì =1). Rồi ngưỡng, hiện controls, dựng card.
   $('costRate').value = cy;
   const curWrap = $('costCurRateWrap');
-  if (costCur === 'VND') {
+  // Ẩn với VND (=1) và với CNY (ô "¥→₫" ngay trên CHÍNH LÀ nó — xem `curVnd`). Hiện cả hai ô
+  // cho một dòng tính bằng ¥ là bày ra hai tỉ giá cho cùng một đồng tiền, và người dùng sẽ
+  // sửa nhầm ô không có tác dụng.
+  if (costCur === 'VND' || costCur === 'CNY') {
     curWrap.hidden = true;
   } else {
     curWrap.hidden = false;
