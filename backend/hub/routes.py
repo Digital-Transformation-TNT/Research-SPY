@@ -1011,4 +1011,5 @@ async def signal_snapshot_categories(payload: dict):
     from .ingestion import market_snapshot
     p = payload or {}
     only = [c for c in (p.get("only") or []) if isinstance(c, (int, str))]
-    return await market_snapshot.snapshot_categories(p.get("market") or "ph", only or None)
+    return await market_snapshot.snapshot_categories(
+        p.get("market") or "ph", only or None, redo=bool(p.get("redo")))

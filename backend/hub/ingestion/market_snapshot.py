@@ -214,7 +214,8 @@ async def _shopee_category(cat_id: str | int, cat_name: str, market: str,
     return rows
 
 
-async def snapshot_categories(market: str = "ph", only: list[int | str] | None = None) -> dict:
+async def snapshot_categories(market: str = "ph", only: list[int | str] | None = None,
+                              redo: bool = False) -> dict:
     """
     Chụp TOP BÁN CHẠY theo từng danh mục — nguồn chính của bảng Top 10.
 
@@ -233,7 +234,16 @@ async def snapshot_categories(market: str = "ph", only: list[int | str] | None =
 
     Mỗi ngành ghi MỘT dòng `crawl_log`, kể cả khi hỏng. Không có nó thì một sản phẩm vắng mặt
     hôm nay có hai cách đọc trái ngược nhau — rớt khỏi top thật, hay hôm đó không cào được.
+
+    CHẠY TIẾP ĐƯỢC. Mặc định bỏ qua ngành đã `ok` trong ngày, nên đứt giữa chừng thì gọi lại
+    là làm nốt phần thiếu chứ không làm lại từ đầu. Với nhịp đo được trên VPS này — 98 giây
+    một ngành, tức 5,6 tiếng cho 206 ngành vn — làm lại từ đầu sau một lần đứt là mất cả buổi.
+    `redo=True` để ép cào lại tất cả.
+
+    Ngành `error` thì KHÔNG bỏ qua: hỏng là thứ cần thử lại, và `crawl_log` ghi REPLACE nên
+    lần chạy sau đè lên lần hỏng trước.
     """
+    from .. import db
     from . import shopee_categories
 
     cats = shopee_categories.active(market)
@@ -248,6 +258,16 @@ async def snapshot_categories(market: str = "ph", only: list[int | str] | None =
                 "trace": {}}
 
     day = _today()
+    if not redo:
+        with db.connect() as c:
+            done = {r["category_code"] for r in c.execute(
+                "SELECT category_code FROM crawl_log"
+                " WHERE source='shopee' AND market_code=? AND day=? AND status='ok'",
+                (market, day))}
+        cats = [c for c in cats if c["sub_id"] not in done]
+    else:
+        done = set()
+
     total, failures, trace = 0, {}, {}
     for cat in cats:
         # Khoá có cả mã lẫn tên: 197 ngành của ph có nhiều ngành trùng tên "Others" nằm dưới
@@ -274,6 +294,7 @@ async def snapshot_categories(market: str = "ph", only: list[int | str] | None =
 
     return {"platform": "shopee", "market": market, "day": day,
             "categories": len(cats), "rows": total,
+            "skipped_done": len(done),
             "source": "shopee_categories",
             "health": store.crawl_health("shopee", market, day),
             "failures": failures, "trace": trace}
