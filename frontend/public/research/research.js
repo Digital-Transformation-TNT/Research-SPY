@@ -2277,8 +2277,10 @@ const VID_SOURCES = [
  * MỘT THẺ CÓ ▶ LÀ MỘT LỜI HỨA. Chỉ trả về link nhúng cho nguồn ĐÃ XEM TẬN MẮT là phát được;
  * nguồn nào chưa kiểm thì để rơi xuống ảnh bìa + link, vì một nút ▶ mở ra "Video currently
  * unavailable" còn tệ hơn một tấm ảnh tĩnh — người dùng mất một cú bấm mới biết là không có gì.
- * Video CHẾT thì đã bị chặn từ phía server (`lib/ads/bingvideo.py::_loc_con_song`), chứ không
- * lọc ở đây: lọc ở đây thì thẻ vẫn được đếm vào chip lọc rồi mới biến mất.
+ *
+ * Hàm này chỉ trả lời "SÀN NÀY có player nhúng không". Còn "VIDEO NÀY còn phát được không" là
+ * câu khác, do backend hỏi và trả về ở `ad.playable` — xem chỗ dùng trong `vidCard`. Thẻ chết
+ * KHÔNG bị loại khỏi lưới, nó chỉ mất nút ▶ và được dán nhãn.
  */
 function vidEmbed(ad) {
   if (!ad || !ad.id) return '';
@@ -2374,7 +2376,16 @@ function vidCard(ad, idx) {
     : '';
 
   const nhan = PF_LABEL[ad.platform] || ad.platform || 'video';
-  const nhung = vidEmbed(ad);
+  // `playable === false` = sàn ĐÃ TRẢ LỜI rằng video không còn (backend hỏi oEmbed —
+  // `lib/ads/bingvideo.py`). `undefined`/`null` là CHƯA KIỂM, và phải đối xử như phát được:
+  // nguồn nào không có cách kiểm (Douyin) mà bị coi là chết thì cả lưới mất nút ▶.
+  //
+  // THẺ VẪN Ở LẠI. Ảnh bìa do chính Bing phục vụ nên nó sống lâu hơn video — đo 2026-09-10:
+  // video trả oEmbed 400 mà `ts1.mm.bing.net` vẫn trả 200 image/jpeg. Ảnh bìa + tiêu đề +
+  // tài khoản + lượt xem vẫn trả lời được câu "có ai đang bán món này không", nên bỏ thẻ đi
+  // là vứt dữ liệu research thật chỉ vì một nút bấm không dùng được.
+  const chetRoi = ad.playable === false;
+  const nhung = chetRoi ? '' : vidEmbed(ad);
   let media;
   if (nhung) {
     // Chỗ giữ khi CHƯA có ảnh bìa để trống chữ: tên nguồn đã nằm ở `.pill` dưới thân thẻ rồi,
@@ -2382,10 +2393,15 @@ function vidCard(ad, idx) {
     media =
       (poster ? `<img src="${esc(poster)}" loading="lazy" alt="" referrerpolicy="no-referrer">` : '<div class="tk-ph"></div>') +
       `<button class="play-overlay" data-idx="${idx}" aria-label="Phát video ${esc(nhan)}"><span>▶</span></button>`;
-  } else if (video) {
+  } else if (video && video.url && !chetRoi) {
     media = `<video controls preload="none" ${poster ? `poster="${esc(proxyMedia(poster))}"` : ''} src="${esc(proxyMedia(video.url))}"></video>`;
   } else {
-    media = poster ? `<img src="${esc(proxyMedia(poster))}" loading="lazy" alt="">` : '';
+    // Không có player: chỉ ảnh bìa. Với thẻ đã chết thì kèm một nhãn nói ĐÚNG chuyện gì xảy
+    // ra — thiếu nhãn, một thẻ không có nút ▶ đọc thành "tool lấy thiếu", trong khi sự thật
+    // là chính sàn đã gỡ video còn ảnh bìa thì vẫn là ảnh bìa thật của nó.
+    media =
+      (poster ? `<img src="${esc(proxyMedia(poster))}" loading="lazy" alt="">` : '<div class="tk-ph"></div>') +
+      (chetRoi ? `<span class="mbadge langoff" title="Sàn đã gỡ hoặc chuyển riêng tư video này. Ảnh bìa lấy từ chỉ mục Bing nên vẫn còn.">⚠ không phát được</span>` : '');
   }
 
   const el = document.createElement('div');

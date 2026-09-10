@@ -153,6 +153,21 @@ class Ad(CamelModel):
     similar_url: str | None = None
     countries: list[CountryCode] = []
     platforms: list[str] | None = None
+    #: Khung nhúng của sàn có phát được video này không.
+    #:
+    #:   None   chưa kiểm (nguồn không có cách kiểm — xem `platforms/douyinvideo.py`)
+    #:   True   đã hỏi và sàn nói còn
+    #:   False  đã hỏi và sàn nói không
+    #:
+    #: `False` KHÔNG dùng để LOẠI thẻ. Một quảng cáo đã gỡ vẫn là dữ liệu research thật: ảnh
+    #: bìa, tiêu đề, tài khoản, lượt xem đều còn nguyên và đều trả lời được câu "có ai đang
+    #: bán món này không". Chỉ mục Bing giữ ảnh bìa của riêng nó nên ảnh vẫn hiện sau khi
+    #: video biến mất — đo 2026-09-10 trên id `7653092931838037268`: oEmbed trả 400 còn
+    #: `ts1.mm.bing.net` vẫn trả 200 image/jpeg.
+    #:
+    #: Việc duy nhất của cờ này là để giao diện ĐỪNG VẼ NÚT ▶ lên thẻ ấy — một nút ▶ mở ra
+    #: "Video currently unavailable" tốn của người dùng một cú bấm mới biết là không có gì.
+    playable: bool | None = None
     #: Do `lib/ads/scoring.py` điền vào.
     score: AdScore | None = None
     #: Độ trùng ẢNH (0-100) khi quảng cáo này được lọc qua luồng "tìm video theo ảnh sản phẩm"

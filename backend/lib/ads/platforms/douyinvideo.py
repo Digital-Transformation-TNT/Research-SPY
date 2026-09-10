@@ -22,7 +22,7 @@ nhận thẳng `aweme_id` mình đang có, không có `X-Frame-Options` cũng kh
 và nhúng trong chính `tntecom.com` thì 8/8 video của lượt đo phát ra hình thật. Ghi chú cũ
 ("Douyin không mở player cho người ngoài") đã hết đúng — xem `research.js::vidEmbed`.
 
-KHÔNG LỌC ĐƯỢC VIDEO CHẾT Ở SERVER, khác TikTok. Đây là ngõ cụt đã đo, chép lại để không ai đi
+KHÔNG KIỂM ĐƯỢC VIDEO CÒN SỐNG HAY KHÔNG Ở SERVER, khác TikTok. Đây là ngõ cụt đã đo, chép lại để không ai đi
 lại — cả ba đường đều không phân biệt nổi id thật với id bịa:
 
     open.douyin.com/player/video?vid=…   ❌ vỏ SPA, trả 200 và ĐÚNG 45.620 byte cho cả id thật
@@ -30,9 +30,10 @@ lại — cả ba đường đều không phân biệt nổi id thật với id 
     iesdouyin.com/share/video/<id>/      ❌ luôn 302 về douyin.com/video/<id>, không tra gì cả
     /aweme/v1/web/aweme/detail/          ❌ 200 kèm thân RỖNG (đòi chữ ký, chặn người gọi ngoài)
 
-Nên nguồn này KHÔNG khai `oembed`. Chấp nhận được vì phép đo cùng ngày cho thấy 8/8 video Bing
-trả về đều còn sống — chỉ mục Douyin của Bing mới hơn hẳn chỉ mục TikTok. Nếu sau này thấy thẻ
-Douyin chết, thứ cần tìm là một điểm tra CÔNG KHAI, đừng quay lại ba đường trên.
+Nên nguồn này KHÔNG khai `oembed`, và mọi thẻ Douyin về với `Ad.playable = None` (chưa kiểm),
+tức là vẫn có nút ▶. Chấp nhận được vì phép đo cùng ngày cho thấy 8/8 video Bing trả về đều
+còn sống — chỉ mục Douyin của Bing mới hơn hẳn chỉ mục TikTok. Nếu sau này thấy thẻ Douyin
+chết, thứ cần tìm là một điểm tra CÔNG KHAI, đừng quay lại ba đường trên.
 """
 
 from __future__ import annotations

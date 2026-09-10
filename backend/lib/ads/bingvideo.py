@@ -106,12 +106,16 @@ class BingSite:
     #: Ép cứng thị trường Bing, bỏ qua nước người dùng chọn. Douyin là sàn NỘI ĐỊA Trung Quốc:
     #: hỏi bằng `mkt=vi-VN` thì Bing trả kết quả Việt Nam, tức là gần như không có gì.
     mkt_ep: "tuple[str, str] | None" = None
-    #: Điểm oEmbed để hỏi "video này còn sống không", hoặc `None` nếu sàn không có.
+    #: Điểm oEmbed để hỏi "video này còn phát được không", hoặc `None` nếu sàn không có.
     #:
     #: BING LÀ MỘT CHỈ MỤC, KHÔNG PHẢI MỘT DANH SÁCH ĐANG SỐNG. Nó vẫn trả về thẻ của những
     #: video đã bị xoá hoặc chuyển riêng tư từ lâu, và thẻ ấy trông y hệt thẻ tốt: có tiêu đề,
     #: có ảnh bìa, có lượt xem. Chỉ tới lúc người dùng bấm ▶ mới lòi ra "Video currently
     #: unavailable" — tức là lỗi hiện ra ở nơi xa nhất so với chỗ sinh ra nó.
+    #:
+    #: Kết quả đi vào `Ad.playable` để giao diện thôi vẽ nút ▶. KHÔNG dùng để loại thẻ: ảnh
+    #: bìa do chính Bing phục vụ nên nó sống lâu hơn video, và thẻ ấy vẫn là dữ liệu research
+    #: thật. Xem `Ad.playable`.
     oembed: "str | None" = None
 
 
@@ -261,41 +265,48 @@ _SONG_TIMEOUT = 8.0
 _MA_CHET = {400, 404, 410}
 
 
-async def _con_song(client: Any, mẫu: str, ad: Ad) -> bool:
+async def _con_song(client: Any, mẫu: str, ad: Ad) -> "bool | None":
     """
-    Một lượt hỏi oEmbed. `True` nghĩa là GIỮ LẠI, kể cả khi không hỏi được.
+    Một lượt hỏi oEmbed. `None` nghĩa là KHÔNG BIẾT, không phải "đã chết".
 
-    NGHI NGỜ THÌ GIỮ. Phép kiểm này chỉ được phép bỏ đi thứ nó CHỨNG MINH được là đã chết;
-    mọi trạng thái mơ hồ đều phải giữ. Làm ngược lại thì một lần TikTok chặn tần suất sẽ quét
-    sạch cả lưới video, và người dùng đọc lưới rỗng ấy thành "không ai làm video về món này" —
-    đúng kiểu hỏng im lặng mà `PlatformSearchOutcome.notice` sinh ra để chống.
+    NGHI NGỜ THÌ IM. Chỉ những mã nói CHẮC CHẮN video không còn mới cho ra `False`; hết giờ,
+    429, 5xx đều trả `None`. Làm ngược lại thì một lần TikTok chặn tần suất sẽ dán nhãn
+    "không phát được" lên cả lưới video trong khi chúng vẫn phát tốt — và người dùng bỏ qua
+    đúng những thẻ đáng xem nhất.
     """
     if not ad.permalink:
-        return True
+        return None
     try:
         phản_hồi = await client.get(
             mẫu, params={"url": ad.permalink}, timeout=_SONG_TIMEOUT
         )
     except Exception:
-        return True  # hỏi không được thì không biết gì — giữ
-    return phản_hồi.status_code not in _MA_CHET
+        return None  # hỏi không được thì không biết gì
+    if phản_hồi.status_code in _MA_CHET:
+        return False
+    return True if 200 <= phản_hồi.status_code < 300 else None
 
 
-async def _loc_con_song(site: BingSite, ads: "list[Ad]") -> "tuple[list[Ad], int]":
-    """Bỏ những video đã chết. Trả `(còn lại, số đã bỏ)`."""
+async def _danh_dau_con_song(site: BingSite, ads: "list[Ad]") -> int:
+    """
+    Điền `Ad.playable` cho từng thẻ. Trả về SỐ THẺ không phát được.
+
+    Đánh dấu TẠI CHỖ, không loại bỏ: xem `Ad.playable` để biết vì sao thẻ chết vẫn đáng giữ.
+    """
     if not site.oembed or not ads:
-        return ads, 0
+        return 0
 
     client = get_client()
     khoá = asyncio.Semaphore(_SONG_SONG)
 
-    async def một(ad: Ad) -> bool:
+    async def một(ad: Ad) -> "bool | None":
         async with khoá:
             return await _con_song(client, site.oembed, ad)
 
-    còn = await asyncio.gather(*[một(ad) for ad in ads])
-    giữ = [ad for ad, sống in zip(ads, còn) if sống]
-    return giữ, len(ads) - len(giữ)
+    kết_quả = await asyncio.gather(*[một(ad) for ad in ads])
+    for ad, sống in zip(ads, kết_quả):
+        ad.playable = sống
+    return sum(1 for sống in kết_quả if sống is False)
 
 
 async def tim_video(site: BingSite, request: PlatformSearchInput) -> PlatformSearchOutcome:
@@ -359,21 +370,16 @@ async def _mot_luot(site: BingSite, request: PlatformSearchInput) -> PlatformSea
             ),
         )
 
-    ads, đã_bỏ = await _loc_con_song(site, ads)
-    if not ads:
-        # Bing CÓ thẻ nhưng không thẻ nào còn xem được. Câu này khác hẳn câu ở trên, và trộn
-        # hai cái vào nhau là bỏ mất thông tin: ở đây sàn CÓ nội dung về món này, chỉ là bản
-        # Bing đang giữ đã cũ — nên cách xử cũng khác (đổi cụm không giúp gì).
+    giữ = ads[: request.limit]
+    # Đánh dấu SAU khi đã cắt theo `limit`: hỏi oEmbed cho những thẻ không bao giờ hiện ra là
+    # tốn thêm mấy chục lượt gọi mạng để lấy một câu trả lời không ai đọc.
+    không_phát = await _danh_dau_con_song(site, giữ)
+    if không_phát:
         return PlatformSearchOutcome(
-            ads=[],
+            ads=giữ,
             notice=(
-                f"Bing còn {đã_bỏ} video {site.ten} cho \"{keyword}\" nhưng tất cả đã bị gỡ "
-                "hoặc chuyển riêng tư — chỉ mục của Bing cũ hơn sàn."
+                f"{không_phát}/{len(giữ)} video {site.ten} đã bị gỡ hoặc chuyển riêng tư — "
+                "thẻ vẫn hiện kèm ảnh bìa, chỉ không bấm phát được."
             ),
         )
-    if đã_bỏ:
-        return PlatformSearchOutcome(
-            ads=ads[: request.limit],
-            notice=f"Đã bỏ {đã_bỏ} video {site.ten} không còn xem được (Bing vẫn giữ trong chỉ mục).",
-        )
-    return PlatformSearchOutcome(ads=ads[: request.limit])
+    return PlatformSearchOutcome(ads=giữ)

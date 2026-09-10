@@ -23,10 +23,15 @@ hiện "Video currently unavailable" trong khung nhúng. Nhìn thấy tận mắ
 `tntecom.com`: id `7653092931838037268` mà Bing trả về cho "tai nghe bluetooth" ra đúng màn
 hình chết ấy.
 
-oEmbed phân biệt được hai loại, và đó là lý do nó được dùng làm bộ lọc:
+oEmbed phân biệt được hai loại, và đó là lý do nó được dùng để đánh dấu:
 
     video đã gỡ   `https://www.tiktok.com/oembed?url=…`  →  400 {"message":"Something went wrong"}
     video còn sống                                        →  200 kèm tiêu đề + tác giả
+
+THẺ CHẾT VẪN Ở LẠI LƯỚI, chỉ mất nút ▶. Ảnh bìa do chính Bing phục vụ nên nó sống lâu hơn
+video: cùng ngày, id `7653092931838037268` trả oEmbed 400 trong khi `ts1.mm.bing.net` vẫn trả
+200 image/jpeg. Ảnh bìa + tiêu đề + tài khoản + lượt xem vẫn trả lời được câu "có ai đang bán
+món này không", nên bỏ thẻ đi là vứt dữ liệu research thật chỉ vì một nút bấm không dùng được.
 """
 
 from __future__ import annotations
@@ -50,7 +55,7 @@ _SITE = BingSite(
     doc_id=tach_tiktok,
     dung_link=lambda tác_giả, vid: f"https://www.tiktok.com/@{tác_giả}/video/{vid}",
     ten="TikTok",
-    #: Lọc video đã chết trước khi trả về — xem `BingSite.oembed`.
+    #: Đánh dấu video đã chết (`Ad.playable=False`) — KHÔNG bỏ thẻ. Xem `BingSite.oembed`.
     oembed="https://www.tiktok.com/oembed",
 )
 
