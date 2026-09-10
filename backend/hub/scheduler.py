@@ -8,7 +8,7 @@ LỊCH ĐÊM (giờ máy chủ):
   04:00  report    sinh báo cáo ngày                  -> reports
   05:00  sigtrends chuỗi Trends ngày+tuần (Hub ①)     -> trends_daily
   05:40  sigsnap   chụp listing theo từ khoá (Hub ②)    -> listings_snapshot
-  06:00  sigcat    top 100 mỗi danh mục cấp 1 (Hub ②)   -> listings_snapshot
+  06:00  sigcat    top 100 mỗi ngành trong sheet (Hub ②) -> listings_snapshot + crawl_log
 
 Tắt bằng biến môi trường: SCHEDULER_ENABLED=0
 Chạy ngay một lần: POST /api/scheduler/run?job=all
