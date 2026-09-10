@@ -2375,13 +2375,21 @@ async function searchShopee(msg) {
   if (catId) {
     // ĐƯỜNG `-cat.<id>` chứ không phải `/search?catId=`. `/search` là trang TÌM KIẾM: không có
     // từ khoá thì SPA không chạy lượt tìm nào, nên không có `search_items` để chộp. `-cat.<id>`
-    // mới là đường Shopee tự dùng khi người ta bấm vào một danh mục. Phần chữ trước `-cat.`
-    // chỉ để cho đẹp URL — sàn định tuyến bằng số id.
-    const slug = String(msg.catName || 'c').replace(/[^\w]+/g, '-').replace(/^-+|-+$/g, '') || 'c';
+    // mới là đường Shopee tự dùng khi người ta bấm vào một danh mục.
+    //
+    // NGÀNH CẤP 2 CẦN CẢ HAI MÃ: `-cat.<cha>.<con>`. Chỉ mã con thôi thì Shopee đá sang trang
+    // xác minh — đường một-mã chỉ đúng với ngành cấp 1, và nó chạy được suốt thời gian vòng
+    // cào còn dùng cây cấp 1 nên không ai thấy giới hạn đó. `catUrl` là link lấy thẳng từ
+    // sheet danh mục (`shopee_categories.url`), tức đúng dạng Shopee tự sinh ra; dùng lại nó
+    // thì không phải đoán slug — mà đoán slug là chỗ hỏng thật: tên "Áo" qua `[^\w]` thành
+    // "o", cho ra `shopee.vn/o-cat.…` chẳng giống URL nào của sàn.
+    const base = msg.catUrl
+      ? String(msg.catUrl).split('?')[0]
+      : `https://${domain}/${String(msg.catName || 'c').replace(/[^\w]+/g, '-').replace(/^-+|-+$/g, '') || 'c'}-cat.${catId}`;
     const texts = [];
     let last = null;
     for (const page of [0, 1]) {
-      const url = `https://${domain}/${slug}-cat.${catId}?sortBy=sales&page=${page}`;
+      const url = `${base}?sortBy=sales&page=${page}`;
       // Nhận diện response theo GIÁ TRỊ id, chấp nhận vài tên tham số: Shopee gọi nó là
       // `match_id` ở endpoint search, nhưng tên ấy không phải thứ ta kiểm soát được.
       //
