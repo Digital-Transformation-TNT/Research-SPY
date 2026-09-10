@@ -1546,7 +1546,7 @@ async function openCostModal(p) {
   $('costGrid').innerHTML = '';
   $('costControls').hidden = true;
   $('costModal').classList.add('on');
-  setCostStatus('Đang tìm giá vốn trên 1688 theo ảnh… (lần đầu hơi chậm)');
+  setCostStatus('Đang tìm giá vốn trên 1688 theo ảnh…');
 
   const res = await fetch1688Offers(p.img, p.name);
   if (my !== costToken) return; // user đã mở dòng khác trong lúc chờ → bỏ kết quả cũ
@@ -1635,7 +1635,7 @@ async function runCost1688Batch() {
   // Nhãn nút thành spinner + tiến độ NGAY khi bấm (lần fetch đầu vài giây, đừng để user tưởng lỗi).
   function setBtnRunning() { if (btn) { btn.disabled = true; btn.innerHTML = `<span class="rs-spin"></span>Đang tính… ${done}/${total}`; } }
   setBtnRunning();
-  setStatus(`Đang tra giá vốn 1688 cho ${total} sản phẩm… (lần đầu mỗi món hơi chậm)`);
+  setStatus(`Đang tra giá vốn 1688 cho ${total} sản phẩm…`);
   async function worker() {
     while (idx < targets.length && !blocked) {
       const p = targets[idx++];
@@ -1859,7 +1859,7 @@ async function openVideoModal(p) {
   $('vidGrid').innerHTML = '';
   $('vidModal').classList.add('on');
 
-  setVidStatus('Đang lọc từ khoá (Gemini) và lấy video quảng cáo… (lần đầu hơi chậm)');
+  setVidStatus('Đang lọc từ khoá (Gemini) và lấy video quảng cáo…');
 
   // Facebook Ad Library nhận country; dùng region của SP nếu là mã 2 chữ, không thì VN.
   const region = /^[A-Z]{2}$/.test((p.region || '').toUpperCase()) ? p.region.toUpperCase() : 'VN';
