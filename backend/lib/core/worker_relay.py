@@ -107,12 +107,13 @@ VIDEO_TIMEOUT_S = 155.0
 SUBMIT_TIMEOUTS: dict[str, float] = {
     # Shopee render kết quả chậm hơn hạn chung: extension chờ tới 22s mới bỏ cuộc, nên hạn
     # ở đây phải rộng hơn — nếu không backend cắt trước và nuốt mất lý do mà extension vừa
-    # soạn ra. Thứ tự bắt buộc: 44s (extension) < 75s (trang máy-thợ) < 85s (đây).
+    # soạn ra. Thứ tự bắt buộc: 129s (extension) < 160s (trang máy-thợ) < 180s (đây).
     #
-    # 44s chứ không phải 22s: đường DANH MỤC chộp HAI trang, mỗi trang một hạn 22s riêng.
-    # Bộ ba cũ (22 < 40 < 45) tính cho một lượt chộp và đã sai từ lúc thêm trang thứ hai —
-    # sai im lặng, vì trang đầu thường xong trong 3s nên chỉ lúc sàn chậm mới vỡ ra.
-    "RS_SHOPEE": 85.0,
+    # 129s vì đường DANH MỤC chộp HAI trang, mỗi trang một hạn 60s riêng, cộng 9s đợi thanh
+    # sắp xếp. Và 60s/trang là con số của MÁY CHẠY chứ không phải của Shopee: VPS production
+    # có 4 vCPU, 8 GB RAM mà chỉ còn trống 1,3 GB, Chrome đã chiếm 3,2 GB — SPA Shopee dựng ì
+    # ạch ở mức đó. Cùng trang ấy trên máy cá nhân thì nhanh bình thường.
+    "RS_SHOPEE": 180.0,
     # Google chỉ là MỘT lần tải trang cộng một lượt cuộn — rẻ hơn hẳn hai nguồn video kia,
     # nên không cần tới ngân sách của chúng.
     "RS_GOOGLE_VIDEOS": 60.0,

@@ -176,6 +176,10 @@ async def _shopee_category(cat_id: str | int, cat_name: str, market: str,
 
     texts = (result or {}).get("texts") or []
     trace["texts"] = len(texts)
+    # Dạng đường dẫn nào ăn — máy-thợ thử `<cha>.<con>` rồi mới tới `<con>`. Ghi ra trace để
+    # còn biết mà chốt lại một dạng, thay vì mãi mãi trả tiền cho một lượt thử hỏng.
+    if (used := (result or {}).get("usedPath")):
+        trace["usedPath"] = used
     if not texts:
         raise RuntimeError(str((result or {}).get("error") or "máy-thợ trả 0 mảnh JSON"))
 

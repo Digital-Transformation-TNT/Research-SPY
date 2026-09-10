@@ -2475,17 +2475,23 @@ async function shopeeCapture(domain, pageUrl, param, want, mustHave, clickSort) 
       }
     }
 
-    // 22s, không phải 15s: quá nửa số lần chộp được chỉ xảy ra ở lượt thử thứ hai, tức 15s
-    // cắt ngay trước lúc trang kịp bắn `search_items`.
+    // 60s, KHÔNG phải 22s — và con số này là của MÁY CHẠY, không phải của Shopee.
+    //
+    // 22s đủ trên máy cá nhân nhưng thiếu trên VPS. Đo 2026-09-10 trên máy production: 4 vCPU,
+    // 8 GB RAM mà chỉ còn trống 1,3 GB, riêng Chrome đã ngốn 3,2 GB qua 17 tiến trình. Trang
+    // Shopee là SPA nặng; ở mức tài nguyên đó nó dựng ì ạch và `search_items` bắn ra muộn hơn
+    // hẳn. Chính chủ dự án mở tay cùng trang trên hai máy và thấy rõ: máy cá nhân nhanh, VPS
+    // khựng.
+    //
+    // ĐÂY LÀ KIỂU HỎNG DỄ CHẨN NHẦM NHẤT: một danh mục chạy được lúc máy còn rảnh rồi thôi
+    // hẳn khi Chrome phình ra, mà lý do ghi lại là "trang đã rời khỏi URL" — trông y hệt
+    // Shopee đổi đường dẫn hoặc chặn bot. Đã đuổi theo ba giả thuyết về URL trước khi nhận ra.
     //
     // Thứ tự bắt buộc của chuỗi hạn giờ, tính cho đường DANH MỤC vì nó tốn nhất — hai trang,
-    // mỗi trang một hạn 22s riêng, cộng tối đa 9s đợi thanh sắp xếp:
+    // mỗi trang một hạn 60s riêng, cộng tối đa 9s đợi thanh sắp xếp:
     //
-    //     53s (đây) < 75s (trang máy-thợ) < 85s (backend)
-    //
-    // Bộ ba cũ ghi 22 < 40 < 45 và tính cho MỘT lượt chộp; nó đã sai từ lúc thêm trang thứ
-    // hai, sai im lặng vì trang đầu thường xong trong 3s nên chỉ vỡ lúc sàn chậm.
-    const deadline = Date.now() + 22000;
+    //     129s (đây) < 160s (trang máy-thợ) < 180s (backend)
+    const deadline = Date.now() + 60000;
     let texts = [], videoItems = {}, textsIter = -1, iter = 0, seen = null;
     while (Date.now() < deadline) {
       await sleep(500);
