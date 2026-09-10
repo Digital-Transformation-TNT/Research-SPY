@@ -191,6 +191,21 @@ def active(market: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def markets() -> list[str]:
+    """
+    Những thị trường đang có ngành bật — tức những thị trường đáng đi cào.
+
+    Vòng cào đêm lấy danh sách từ đây chứ không từ `watchlist`: watchlist là danh sách TỪ
+    KHOÁ theo dõi, một thứ khác hẳn. Buộc hai thứ vào nhau thì muốn cào danh mục cho một
+    nước lại phải thêm từ khoá giả cho nước đó, và job cào-theo-từ-khoá cũng chạy theo.
+    """
+    with db.connect() as c:
+        rows = c.execute(
+            "SELECT DISTINCT market FROM shopee_categories WHERE active=1"
+            " ORDER BY market").fetchall()
+    return [r["market"] for r in rows]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Nạp danh mục Shopee từ Google Sheet")
     ap.add_argument("--market", choices=sorted(TABS), action="append",

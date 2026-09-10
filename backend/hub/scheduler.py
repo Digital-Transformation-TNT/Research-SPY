@@ -205,14 +205,20 @@ def job_sigtrends() -> dict:
 
 
 def job_sigcat() -> dict:
-    """Chụp top bán chạy TỪNG DANH MỤC cấp 1 -> listings_snapshot. Nguồn của bảng Top 10."""
+    """
+    Chụp top bán chạy TỪNG DANH MỤC -> listings_snapshot. Nguồn của bảng Top 10.
+
+    Thị trường lấy từ `shopee_categories`, KHÔNG từ `watchlist`. Watchlist là danh sách từ
+    khoá theo dõi; trước đây job này bám vào nó nên chỉ chạy `ph` — vn không có mặt trong
+    watchlist thì 206 ngành của vn không bao giờ được cào, mà không có gì báo ra cả.
+    """
     import asyncio
-    from .ingestion import market_snapshot
-    from .signal import store as sig_store
-    wl = sig_store.get_config("watchlist") or {}
-    markets = sorted({(q.get("market") or "ph").lower()
-                      for q in (wl.get("partitions") or [])
-                      if (q.get("platform") or "shopee") == "shopee"}) or ["ph"]
+    from .ingestion import market_snapshot, shopee_categories
+    markets = shopee_categories.markets()
+    if not markets:
+        return {"job": "sigcat", "markets": 0, "runs": [],
+                "error": "chưa nạp danh mục — chạy"
+                         " `python -m hub.ingestion.shopee_categories`"}
     runs = []
     for mk in markets:
         try:
