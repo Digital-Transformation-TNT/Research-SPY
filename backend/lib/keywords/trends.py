@@ -1193,3 +1193,125 @@ async def fetch_related_queries(seed: str, ctx: SearchContext) -> RelatedOutcome
             break
         outcome = await _serialise(run)
     return outcome
+
+
+# ============================================================================
+# BẢNG XẾP HẠNG THEO DANH MỤC — nuôi `trends_rank` của Trend Signal Hub
+# ============================================================================
+
+
+def category_explore_url(cat_id: int, geo: str, time_range: str) -> str:
+    """
+    Đường /explore lọc theo DANH MỤC, KHÔNG có từ khoá gốc.
+
+    Khác hẳn `explore_url` ở chỗ không truyền `q=` — và đó là cả điểm của nó. Đường kia hỏi
+    "ai tìm CỤM NÀY còn tìm gì nữa", nên mọi con số đều đo trên thang của cụm neo: neo vào một
+    từ lớn thì cả ngách rơi xuống 0–5. Đường này hỏi "trong NGÀNH NÀY người ta đang tìm gì",
+    không có neo nào cả.
+    """
+    url = (f"https://{TRENDS_HOST}{EXPLORE_PATH}"
+           f"?cat={int(cat_id)}&date={quote(time_range, safe='')}&hl=vi")
+    if geo and geo != WORLDWIDE:
+        url += f"&geo={quote(geo, safe='')}"
+    return url
+
+
+async def fetch_category_queries(cat_id: int, ctx: SearchContext) -> RelatedOutcome:
+    """
+    Bảng "Truy vấn liên quan" của MỘT danh mục — cả hàng đầu lẫn đang tăng.
+
+    KHÔNG đi qua máy-thợ, khác `fetch_related_queries`. Hai lý do, và cả hai đều bắt buộc:
+    đường máy-thợ dựng lệnh quanh một từ khoá gốc nên không chở được lệnh chỉ-có-danh-mục; và
+    vòng cào Shopee chiếm máy-thợ hàng giờ liền, nên xếp hàng sau nó là tự bỏ đói phần Trends.
+    Đường này dùng phiên `.auth/google.json` của chính server.
+
+    Thứ hạng KHÔNG nằm trong phản hồi — nó là VỊ TRÍ trong danh sách. `parse_related_widget`
+    giữ nguyên thứ tự Google trả về, nên nơi gọi đánh số 1, 2, 3… theo thứ tự ấy. Đừng xếp lại
+    theo `value`: hai bảng dùng hai thang khác nhau và bảng đang tăng có thể có nhiều mục cùng
+    giá trị "Đột phá".
+    """
+    started_at = time.monotonic()
+
+    def elapsed() -> int:
+        return round((time.monotonic() - started_at) * 1000)
+
+    if not session_paths(GOOGLE_SESSION):
+        return RelatedOutcome(
+            message=f"Chưa có phiên đăng nhập Google. {GOOGLE_LOGIN_HINT}",
+            needs_login=True, took_ms=elapsed())
+
+    async def run() -> RelatedOutcome:
+        async def body(page: Page) -> RelatedOutcome:
+            captured: asyncio.Future[list[RelatedQuery]] = (
+                asyncio.get_running_loop().create_future())
+            replies = 0
+            empty_at: float | None = None
+
+            async def on_response(response: Response) -> None:
+                nonlocal replies, empty_at
+                qua_widget = is_related_widget(response.url)
+                if captured.done() or not (qua_widget or RELATED_RPC in response.url):
+                    return
+                try:
+                    text = await response.text()
+                except Exception:
+                    return
+                replies += 1
+                if _is_empty_payload(text, RELATED_RPC, widget=qua_widget):
+                    empty_at = time.monotonic()
+                    return
+                try:
+                    queries = parse_related_widget(text) if qua_widget else parse_related(text)
+                except Exception:
+                    return
+                if queries and not captured.done():
+                    _note_data_received()
+                    captured.set_result(queries)
+
+            page.on("response", on_response)
+            try:
+                await page.goto(
+                    category_explore_url(cat_id, ctx.country, ctx.time_range),
+                    wait_until="domcontentloaded", timeout=90_000)
+
+                deadline = time.monotonic() + RELATED_TIMEOUT_SECONDS
+
+                def gave_up() -> bool:
+                    return (empty_at is not None
+                            and time.monotonic() - empty_at > EMPTY_GRACE_SECONDS)
+
+                # Bảng nằm cuối trang và chỉ được xin khi cuộn tới — giống hệt đường từ khoá.
+                while not captured.done() and time.monotonic() < deadline and not gave_up():
+                    try:
+                        await page.mouse.wheel(0, 1000)
+                    except Exception:
+                        break
+                    await asyncio.sleep(2.0)
+
+                if captured.done():
+                    return RelatedOutcome(queries=captured.result(), took_ms=elapsed())
+
+                html = await page.content()
+                if any(marker in html for marker in _LOGIN_WALL_MARKERS):
+                    return RelatedOutcome(
+                        message=("Google Trends hiện màn hình mời đăng nhập — phiên đã hết "
+                                 f"hạn. {GOOGLE_LOGIN_HINT}"),
+                        needs_login=True, took_ms=elapsed())
+                if empty_at is not None:
+                    # Danh mục KHÔNG bao giờ "quá ít người tìm" theo kiểu một cụm dài hiếm gặp
+                    # — nó gộp cả ngành. Nên bảng rỗng ở đây nghiêng hẳn về phía tài khoản bị
+                    # chặn, khác với đường từ khoá vốn phải hỏi thêm biểu đồ mới dám kết luận.
+                    _note_empty_payload()
+                    return RelatedOutcome(
+                        message=(f"Danh mục {cat_id} trả bảng rỗng — nhiều khả năng tài khoản "
+                                 f"Google đang bị chặn. {THROTTLED_HINT}"),
+                        exhausted=True, took_ms=elapsed())
+                return RelatedOutcome(
+                    message=f"Danh mục {cat_id} — không nhận được response nào của bảng "
+                            f"({replies} lượt).", took_ms=elapsed())
+            finally:
+                page.remove_listener("response", on_response)
+
+        return await _with_page(body, keep_session=lambda r: bool(r.queries))
+
+    return await _serialise(run)
