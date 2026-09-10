@@ -41,10 +41,10 @@ ALLOWED: list[_Allowed] = [
     for suffix in AD_PLATFORMS[platform_id].media.host_suffixes  # type: ignore[union-attr]
 ]
 
-# Ảnh của mục "Giá vốn theo ảnh" (chào hàng 1688) đến từ CDN alicdn — 1688 không phải AD
-# platform nên không tự có trong danh sách trên. CDN công khai, referer 1688 cho chắc.
+# CDN alicdn KHÔNG còn khai tay ở đây: từ khi 1688 thành một nguồn thật
+# (`lib/ads/platforms/ali1688.py`) nó tự khai `MediaPolicy` và danh sách dựng ở trên đã phủ.
+# Mục "Giá vốn theo ảnh" dùng chung đúng CDN ấy nên vẫn được phục vụ như cũ.
 ALLOWED += [
-    _Allowed(suffix="alicdn.com", referer="https://www.1688.com"),
     # Ảnh bìa video lấy qua nguồn Google (`site:tiktok.com` ở tab Hình ảnh) là bản thu nhỏ do
     # chính Google phục vụ, trên `encrypted-tbnN.gstatic.com` — KHÔNG phải CDN của TikTok. Thiếu
     # dòng này thì proxy trả 403 và cả lưới video Google hiện ra toàn ảnh vỡ, trong khi link

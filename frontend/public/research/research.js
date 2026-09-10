@@ -284,9 +284,12 @@ async function detectMode() {
   const text = document.getElementById('statusText');
   if (!bar || !text) return;
   bar.classList.add('err');
+  // 1688 KHÔNG còn trong danh sách này: từ 2026-09-09 nó chạy thẳng ở server và không cần
+  // extension lẫn máy-thợ (`backend/lib/ads/platforms/ali1688.py`). Kể tên nó ở đây sẽ khiến
+  // người dùng bỏ qua đúng cái sàn duy nhất vẫn đang chạy được.
   text.textContent =
-    'Các sàn cần đăng nhập (Shopee, TikTok Shop, Amazon, Taobao, 1688, Temu) tạm thời chưa dùng ' +
-    'được. Thử lại sau ít phút.';
+    'Các sàn cần đăng nhập (Shopee, TikTok Shop, Amazon, Taobao, Temu) tạm thời chưa dùng ' +
+    'được. 1688 vẫn chạy bình thường. Thử lại sau ít phút.';
 }
 
 const DOMAIN = { VN: 'shopee.vn', TH: 'shopee.co.th', PH: 'shopee.ph', MY: 'shopee.com.my', ID: 'shopee.co.id', SG: 'shopee.sg', TW: 'shopee.tw', BR: 'shopee.com.br', MX: 'shopee.com.mx', CO: 'shopee.com.co', CL: 'shopee.cl' };
@@ -312,7 +315,7 @@ const FX_USD = { PHP: 0.017, VND: 0.00004, THB: 0.028, IDR: 0.000062, MYR: 0.22,
 // `frontend/next.config.mjs` chuyển tiếp sang FastAPI. Nhờ vậy đổi tên miền lúc deploy
 // không phải sửa file này — khác hẳn bản cũ trỏ cứng vào localhost:8000.
 const BACKEND = '';
-const PF_LABEL = { etsy: 'Etsy', facebook: 'Facebook', tiktok: 'TikTok', douyin: 'Douyin 抖音', youtube: 'YouTube' };
+const PF_LABEL = { etsy: 'Etsy', facebook: 'Facebook', tiktok: 'TikTok', douyin: 'Douyin 抖音', youtube: 'YouTube', ali1688: '1688' };
 const PRICE_SCALE = 100000;
 
 // Modal Giá vốn — QUY VỀ ¥ TRUNG: giá bán đối thủ (tiền sàn) → ₫ → ¥, rồi so với giá vốn 1688 (vốn
@@ -355,7 +358,11 @@ const PLATFORMS = {
   amazon: { label: 'Amazon', active: true, regions: ['US', 'GB', 'DE', 'JP', 'FR', 'IT', 'ES', 'CA'] },
   etsy: { label: 'Etsy', active: true, backend: true, regions: [] },
   taobao: { label: 'Taobao', active: true, experimental: true, regions: [] },
-  ali1688: { label: '1688 (giá sỉ)', active: true, regions: [] },
+  // 1688 chạy Ở SERVER (`backend/lib/ads/platforms/ali1688.py`), không qua tab: đo 2026-09-09
+  // từ VPS, 15/15 lượt, trung vị ~1s. Nhờ vậy nó thoát hàng đợi tab dùng chung và chạy được cả
+  // khi KHÔNG có máy-thợ nào online. Đường extension vẫn còn, làm DỰ PHÒNG — xem `fetch1688`.
+  // Taobao thì KHÔNG port được: cổng h5search trả Baxia (RGV587) 100% lượt từ IP datacenter.
+  ali1688: { label: '1688 (giá sỉ)', active: true, backend: true, regions: [] },
   temu: { label: 'Temu', active: true, experimental: true, regions: ['US', 'GB', 'DE', 'FR', 'JP'] }, // gõ-search-trong-tab để bắn API rồi chộp
 };
 
@@ -1013,8 +1020,12 @@ async function fetchAmazon(keyword, region, count) {
 }
 
 // --- Sàn BACKEND (Etsy: API key; Facebook: scrape) — extension gọi /api/ads/search của backend ---
-async function fetchBackend(platform, keyword, region, count) {
-  const country = region === '_' ? 'US' : region;
+async function fetchBackend(platform, keyword, region, count, countryOverride) {
+  // `'_'` = sàn KHÔNG chia theo nước (Etsy, 1688). Backend vẫn cần một mã nước để đặt vào
+  // `ad.countries` và làm khoá cache, nên phải điền một cái gì đó — mặc định 'US'. Nguồn nào
+  // biết rõ mình thuộc nước nào thì nói ra bằng `countryOverride`: 1688 là sàn sỉ nội địa
+  // Trung, dán nhãn 'US' cho nó là ghi sai vào dữ liệu chỉ vì một giá trị mặc định.
+  const country = countryOverride || (region === '_' ? 'US' : region);
   const params = new URLSearchParams({ keyword, platforms: platform, countries: country, limit: String(count) });
   let data;
   try {
@@ -1040,14 +1051,25 @@ async function fetchBackend(platform, keyword, region, count) {
       sold: ad.soldCount ?? null, soldIsShop: !!ad.soldIsShop,
       rating: ad.rating ?? null, ratingCount: ad.ratingCount ?? null, ratingIsShop: !!ad.ratingIsShop,
       daysActive: ad.daysActive ?? null, // cho tab Content (FB: đời quảng cáo)
+      // 回头率 của 1688 — vắng ở mọi nguồn khác, nên `?? null` chứ không phải giá trị mặc định.
+      repurchase: ad.repurchaseRate ?? null,
+      // Video sản phẩm nếu nguồn có (Etsy trả .mp4 thật). Thiếu dòng này thì nút ▶ của bảng
+      // không bao giờ hiện cho nguồn server, dù creative video đã về tới nơi.
+      videoUrl: (ad.creatives || []).find((c) => c.kind === 'video' && c.url)?.url || '',
       shop: ad.advertiser || '', isAd: false,
-      link: ad.permalink || '#', similarUrl: ad.permalink || '#',
+      // `similarUrl` KHÔNG suy được từ `permalink`: 1688 trả `sameDesignUrl` đã kèm vân tay ảnh
+      // của chính chào hàng đó. Nguồn nào không có thì mới rơi về trang sản phẩm như cũ.
+      link: ad.permalink || '#', similarUrl: ad.similarUrl || ad.permalink || '#',
       // Dùng điểm do BACKEND chấm (FB chấm theo đời quảng cáo; Etsy theo favorites) — đừng re-score.
       score: ad.score ? { total: ad.score.total, demand: ad.score.demandScore ?? ad.score.cvrProxy ?? 0, quality: ad.score.qualityScore ?? ad.score.contentScore ?? 0 } : undefined,
     };
   });
   const notice = (data.statuses || []).map((s) => s.message).filter(Boolean)[0] || null;
-  return { products, blocked: false, notice };
+  // `ok` = nguồn có CHẠY được không, tách khỏi "chạy được nhưng không có hàng". Hai cái đó
+  // trông giống hệt nhau ở `products.length === 0`, và nơi cần phân biệt là chỗ quyết định có
+  // hạ xuống đường dự phòng hay không — xem `fetch1688`.
+  const ok = (data.statuses || []).some((st) => st.ok);
+  return { products, blocked: false, notice, ok };
 }
 
 // --- TikTok Shop (Cách A qua Seller Center) — build POST rồi fetch trong tab seller; SDK tự ký ---
@@ -1106,8 +1128,13 @@ async function fetchTiktok(keyword, region, count) {
   return { products, blocked: false };
 }
 
-// --- 1688 (giá sỉ Trung, công khai) — background gọi API mtop JSON trong tab h5api. Không region ---
-async function fetch1688(keyword, count) {
+// --- 1688 ĐƯỜNG DỰ PHÒNG — background gọi API mtop JSON trong tab h5api. Không region ---
+//
+// KHÔNG còn là đường chính: `fetch1688` bên dưới đi thẳng ra server trước. Giữ lại vì chặn
+// theo IP là thứ bật lên bất cứ lúc nào mà không báo trước, và khi nó bật thì đường qua tab
+// vẫn chạy — trình duyệt user đi từ IP dân cư. Cùng lối Shopee đang làm: đường nhanh → 403 →
+// hạ xuống đường điều hướng.
+async function fetch1688Extension(keyword, count) {
   const res = await new Promise((r) => chrome.runtime.sendMessage({ type: 'RS_1688', keyword, count }, (x) => r(x)));
   if (!res || !res.ok) return { products: [], blocked: false, notice: '1688: không lấy được dữ liệu — thử lại.' };
   if (res.blocked) return { products: [], blocked: true, notice: `1688: bị chặn tạm (${res.error || 'rate-limit'}) — thử lại sau` };
@@ -1127,6 +1154,30 @@ async function fetch1688(keyword, count) {
   // Hiện LÝ DO thật khi rỗng (thay vì để lọt vào thông báo chung chung) — vd token/limit/không có SP.
   if (!products.length) return { products: [], blocked: false, notice: `1688: ${res.error || 'không có sản phẩm cho từ khoá này'}` };
   return { products, blocked: false };
+}
+
+// --- 1688 (giá sỉ Trung, công khai) — SERVER trước, extension dự phòng. Không region ---
+//
+// 1688 là một trong hai sàn duy nhất của nhóm "phải chạy trong trình duyệt" mà KHÔNG cần đăng
+// nhập — nó chỉ cần một chữ ký md5 tự tính được. Đo 2026-09-09 từ VPS (IP datacenter, chính
+// cái IP mà Facebook Ad Library trả 0 kết quả): 15/15 lượt thành công, trung vị 996ms, 300/300
+// mục đủ trường. Chi tiết trong docstring `backend/lib/ads/platforms/ali1688.py`.
+//
+// Cái được không phải là tốc độ một lượt, mà là thoát HÀNG ĐỢI TAB: cả công ty dùng chung một
+// máy-thợ chạy tuần tự, nên mỗi sàn rút khỏi hàng đợi là mọi sàn còn lại nhanh lên. Và 1688
+// giờ chạy được cả khi không có máy-thợ nào online — trước đây không thợ là sàn này tắt hẳn.
+//
+// CHỈ hạ xuống extension khi server THẤT BẠI, không hạ khi server chạy được mà từ khoá không
+// có hàng: hạ lúc ấy chỉ tốn thêm một lượt tab để nhận về đúng một danh sách rỗng.
+async function fetch1688(keyword, count) {
+  const may = await fetchBackend('ali1688', keyword, '_', count, 'CN');
+  if (may.ok && !may.backendDown) return may;
+  const tab = await fetch1688Extension(keyword, count);
+  // Nói ra là đã phải đi đường vòng, và vì sao. Một lượt chậm hơn hẳn mà không có lời giải
+  // thích thì lần sau không ai truy được nó chậm ở đâu.
+  const vi = may.notice || (may.backendDown ? 'backend không trả lời' : 'server không lấy được');
+  const ghi = `1688: server hỏng (${vi}) — đã lấy qua trình duyệt`;
+  return { ...tab, notice: tab.notice ? `${ghi}. ${tab.notice}` : ghi };
 }
 
 // --- Taobao (Cách A "ký sinh": trang tự gọi h5search đã ký + x5sec, extension chộp response). Không region ---
@@ -1173,7 +1224,7 @@ async function fetchTemu(keyword, region, count) {
 function fetchFor(platform, keyword, region, count) {
   if (platform === 'amazon') return fetchAmazon(keyword, region, count);
   if (platform === 'tiktok') return fetchTiktok(keyword, region, count);
-  if (platform === 'ali1688') return fetch1688(keyword, count);
+  if (platform === 'ali1688') return fetch1688(keyword, count); // server trước, extension dự phòng
   if (platform === 'taobao') return fetchTaobao(keyword, count);
   if (platform === 'temu') return fetchTemu(keyword, region, count);
   if (PLATFORMS[platform] && PLATFORMS[platform].backend) return fetchBackend(platform, keyword, region, count);

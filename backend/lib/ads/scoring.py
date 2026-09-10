@@ -165,6 +165,13 @@ def _score_product(ad: Ad) -> AdScore:
         # nói được sản phẩm ĐANG XEM bán bao nhiêu — nó có thể là mẫu ế nhất trong 68 mẫu.
         demand = clamp(jround(math.log10(max(1, historical)) / 7 * 100))
         reasons.append(f"Shop đã bán {vi_thousands(historical)} — số của SHOP, không phải của sản phẩm này")
+    elif ad.repurchase_rate is not None:
+        # 回头率 của 1688: % khách QUAY LẠI mua. Không phải số bán, nhưng trên một sàn sỉ thì
+        # nó trả lời gần đúng câu hỏi ấy — người mua lại là người bán lẻ đang bán được hàng.
+        # Chỉ dùng khi không còn gì khác; với 1688 thì `monthly` gần như luôn có (đo 2026-09-09:
+        # 300/300 mục), nên nhánh này hầu như chỉ là lưới đỡ.
+        demand = clamp(ad.repurchase_rate)
+        reasons.append(f"{_num(ad.repurchase_rate)}% khách quay lại mua — sàn không cho số bán")
     else:
         demand = 0.0
         reasons.append("Không có dữ liệu số bán — không đo được cầu")
@@ -172,11 +179,19 @@ def _score_product(ad: Ad) -> AdScore:
     # --- Chất lượng ---
     if ad.rating is not None:
         base = clamp(jround((ad.rating - 3.0) / 2.0 * 100))  # 3.0★→0, 5.0★→100
-        count = ad.rating_count or 0
-        trust = min(1.0, math.log10(count + 1) / 2)  # ~100 review = tin cậy đầy đủ
+        # `rating_count = None` và `= 0` KHÔNG cùng nghĩa, và gộp chúng lại là một lỗi im lặng.
+        # `0` là "sàn có đếm, và đếm được không review" → chiết khấu đúng. `None` là "sàn KHÔNG
+        # công bố số review" — 1688 chỉ cho điểm dịch vụ tổng hợp của shop, không kèm số đếm.
+        # Chiết khấu một điểm 4,5★ xuống 0 chỉ vì không có con số đi kèm là bịa ra một kết luận
+        # từ chỗ trống: mọi mục 1688 sẽ có `quality = 0` trong khi sàn nói rõ shop 4,5 sao.
+        # `research.js::score` đã xử đúng chỗ này từ trước ("1688 → tin luôn"); đây là chép lại
+        # cho khớp, để hai bên chấm cùng một sản phẩm ra cùng một điểm.
+        count = ad.rating_count
+        trust = 1.0 if count is None else min(1.0, math.log10(count + 1) / 2)  # ~100 review = đủ tin
         quality = clamp(jround(base * trust))
         ai = "của SHOP" if ad.rating_is_shop else ""
-        reasons.append(f"{_num(ad.rating)}★ từ {vi_thousands(count)} đánh giá{' ' + ai if ai else ''}")
+        dem = f" từ {vi_thousands(count)} đánh giá" if count is not None else ""
+        reasons.append(f"{_num(ad.rating)}★{dem}{' ' + ai if ai else ''}")
     else:
         quality = 0.0
         reasons.append("Chưa có đánh giá — chưa đo được chất lượng")
@@ -191,6 +206,9 @@ def _score_product(ad: Ad) -> AdScore:
 
     total = clamp(jround(demand * 0.6 + quality * 0.4))
     signals = sum(1 for x in (monthly, ad.rating) if x is not None)
+    # Nguồn không công bố số review (`None`) thì không tự khoe "high" được — có điểm mà không
+    # biết điểm ấy dựa trên bao nhiêu người thì đó đúng là còn thiếu dữ liệu, và `medium` nói
+    # thật hơn. Đây là chỗ DUY NHẤT `None` vẫn bị coi như thiếu, và là chủ ý.
     confidence = (
         "high" if signals >= 2 and (ad.rating_count or 0) >= 50 else "medium" if signals >= 1 else "low"
     )

@@ -143,6 +143,14 @@ class Ad(CamelModel):
     rating_is_shop: bool = False
     #: Số lượt đánh giá — quyết định độ tin của `rating` (rating cao mà 3 review thì chưa chắc).
     rating_count: int | None = None
+    #: Tỉ lệ khách QUAY LẠI mua (回头率), theo phần trăm. Riêng 1688 — sàn sỉ nên đây là tín
+    #: hiệu mạnh: người mua đi mua lại một mã hàng là người bán lẻ đang bán được, không phải
+    #: khách lẻ mua thử. Không sàn nào khác công bố, nên vắng ở mọi nguồn còn lại.
+    repurchase_rate: float | None = None
+    #: Link "tìm sản phẩm tương tự / cùng mẫu" trên chính sàn đó, khi sàn có sẵn một đường như
+    #: vậy. Không suy ra được từ `permalink`: 1688 trả `sameDesignUrl` đã kèm vân tay ảnh của
+    #: chính chào hàng ấy, thứ không dựng lại được từ phía mình.
+    similar_url: str | None = None
     countries: list[CountryCode] = []
     platforms: list[str] | None = None
     #: Do `lib/ads/scoring.py` điền vào.

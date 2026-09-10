@@ -17,6 +17,7 @@ from __future__ import annotations
 from lib.core.model import CamelModel
 
 from ..platform import AdPlatform, PlatformCapabilities, PlatformOption
+from .ali1688 import ali1688
 from .douyinvideo import douyinvideo
 from .etsy import etsy
 from .facebook import facebook
@@ -33,6 +34,7 @@ AD_PLATFORMS: dict[str, AdPlatform] = {
     "youtube": youtube,
     "shopee": shopee,
     "etsy": etsy,
+    "ali1688": ali1688,
 }
 
 PLATFORM_IDS: list[str] = list(AD_PLATFORMS.keys())

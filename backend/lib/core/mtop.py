@@ -25,6 +25,7 @@ import hashlib
 import json
 import time
 from typing import Any
+from urllib.parse import urlsplit
 
 from .http import get_client
 
@@ -51,20 +52,33 @@ def sign(token: str, timestamp: str, data: str, app_key: str = APP_KEY) -> str:
     return hashlib.md5(f"{token}&{timestamp}&{app_key}&{data}".encode()).hexdigest()
 
 
-def token() -> str:
+def token(host: str) -> str:
     """
-    Phần trước dấu gạch dưới của cookie `_m_h5_tk`. Chuỗi rỗng khi chưa có — đó là trạng thái
-    BÌNH THƯỜNG ở lượt gọi đầu, không phải lỗi.
+    Phần trước dấu gạch dưới của cookie `_m_h5_tk` MÀ MỘT HOST CỤ THỂ đã đặt. Chuỗi rỗng khi
+    chưa có — đó là trạng thái BÌNH THƯỜNG ở lượt gọi đầu, không phải lỗi.
 
-    `httpx.Cookies.get` ném `CookieConflict` khi hai tên miền cùng đặt một tên cookie. Cả tiến
-    trình dùng CHUNG một client với mọi nguồn khác, nên một ngày nào đó một nguồn mới đặt
-    cookie trùng tên sẽ làm hỏng nguồn này chứ không phải nguồn kia.
+    PHẢI ĐỌC THEO HOST, và đây là một lỗi đã đo được chứ không phải phòng xa. Cả tiến trình
+    dùng CHUNG một client (`lib/core/http.py`), và MỖI tên miền Alibaba đặt một cookie CÙNG
+    TÊN `_m_h5_tk`: `.1688.com` một cái, `.aliexpress.com` một cái. `httpx.Cookies.get` ném
+    `CookieConflict` khi gặp hai cái trùng tên, bản cũ nuốt mọi Exception rồi trả chuỗi rỗng —
+    nên triệu chứng không phải một traceback mà là 1688 CHẾT HẲN sau lượt tìm-bằng-ảnh
+    AliExpress đầu tiên, và chết theo kiểu trông y hệt bị chặn.
+
+    Đo 2026-09-09 trên bản cũ, cùng một tiến trình:
+
+        sau khi chỉ gọi 1688        token() = '02fe7ade1b197816360a931de7398ae9'
+        sau khi gọi thêm AliExpress token() = ''          ← và không bao giờ hồi lại
+
+    Ba lượt thử lại của `TOKEN_ATTEMPTS` cũng không cứu được: cổng vẫn cấp cookie mới, chỉ là
+    bên đọc không lấy nổi cái nào. Nên khớp theo đúng luật tên miền của cookie thay vì tra tên.
     """
-    try:
-        raw = get_client().cookies.get("_m_h5_tk") or ""
-    except Exception:
-        raw = ""
-    return raw.split("_")[0]
+    for cookie in get_client().cookies.jar:
+        if cookie.name != "_m_h5_tk":
+            continue
+        domain = (cookie.domain or "").lstrip(".")
+        if domain and (host == domain or host.endswith(f".{domain}")):
+            return (cookie.value or "").split("_")[0]
+    return ""
 
 
 async def call(
@@ -91,6 +105,9 @@ async def call(
     data = json.dumps({"appId": app_id, "params": params_body}, ensure_ascii=False)
 
     client = get_client()
+    # Cookie `_m_h5_tk` được đọc theo host của CỔNG này — xem `token()` để biết vì sao
+    # đọc theo tên là hỏng.
+    host = (urlsplit(gateway).hostname or "").lower()
     message = "Cổng Alibaba không trả lời"
     for _ in range(attempts):
         timestamp = str(int(time.time() * 1000))
@@ -100,7 +117,7 @@ async def call(
                 "jsv": "2.7.2",
                 "appKey": app_key,
                 "t": timestamp,
-                "sign": sign(token(), timestamp, data, app_key),
+                "sign": sign(token(host), timestamp, data, app_key),
                 "api": api,
                 "v": version,
                 # `originaljson` trả JSON trần. Trang thật gửi `dataType=jsonp` kèm theo và
