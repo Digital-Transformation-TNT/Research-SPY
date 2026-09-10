@@ -145,6 +145,70 @@ CREATE TABLE IF NOT EXISTS signal_config (
     updated_at TEXT
 );
 
+-- ══ DANH MỤC SHOPEE — danh sách ngành hàng cần quét, nhập từ Google Sheet ══
+-- Nguồn: sheet "Chốt danh mục sản phẩm" của chủ dự án, không phải cây `get_category_tree`
+-- của Shopee. Hai thứ KHÁC NHAU và không được trộn: cây của sàn là toàn bộ ngành hàng đang
+-- tồn tại, còn bảng này là tập con ĐÃ CHỌN để làm — có ngành bị bỏ hẳn khỏi phạm vi.
+-- `hub/ingestion/categories.py` lấy cây của sàn; nó phục vụ việc khác, đừng thay bảng này.
+--
+-- `sub_id` là khoá thật. `main_id` đi kèm chỉ để dựng link `-cat.{main}.{sub}` và để nhóm
+-- báo cáo; Shopee cho một ngành con nằm dưới đúng một ngành cha nên không sợ nhân bản.
+CREATE TABLE IF NOT EXISTS shopee_categories (
+    market       TEXT NOT NULL,             -- vn | ph
+    main_id      TEXT NOT NULL,
+    sub_id       TEXT NOT NULL,
+    main_name    TEXT,                      -- tên hiển thị (VI với vn, EN với ph)
+    main_name_en TEXT,                      -- chỉ vn mới có cột EN riêng trong sheet
+    sub_name     TEXT,
+    sub_name_en  TEXT,
+    url          TEXT,
+    sheet_row    INTEGER,                   -- cột "No." trong sheet, để đối chiếu khi lệch
+    active       INTEGER NOT NULL DEFAULT 1,
+    imported_at  TEXT NOT NULL,
+    PRIMARY KEY (market, sub_id)
+);
+CREATE INDEX IF NOT EXISTS idx_sc_active ON shopee_categories(market, active);
+
+-- ══ XẾP HẠNG GOOGLE TRENDS — 1 dòng = 1 từ khoá × 1 ngành × 1 ngày × 1 bảng ══
+-- LƯU THỨ HẠNG, KHÔNG LƯU CHỈ SỐ 0–100. Google chuẩn hoá lại thang 0–100 theo từng lần hỏi
+-- nên hai lần cào cách nhau một ngày cho ra hai thang khác nhau; trừ chúng cho nhau ra một
+-- con số vô nghĩa mà trông vẫn hợp lý. Thứ hạng thì bền qua các lần chuẩn hoá.
+--
+-- `list_type` tách hai bảng của Trends và KHÔNG được trộn khi xếp hạng: 'top' là khối lượng,
+-- 'rising' là phần trăm tăng trưởng. Một cụm +1.800% có thể chỉ nhảy từ 2 lên 36 lượt tìm.
+-- Xem `signal/trendsig.py` và ghi chú `_primary_pool`.
+CREATE TABLE IF NOT EXISTS trends_rank (
+    market_code   TEXT NOT NULL,            -- vn | ph
+    category_code TEXT NOT NULL,            -- mã Danh mục của Trends, KHÔNG phải catid Shopee
+    day           TEXT NOT NULL,            -- YYYY-MM-DD
+    list_type     TEXT NOT NULL,            -- top | rising
+    keyword       TEXT NOT NULL,            -- giữ nguyên dấu tiếng Việt để nối được qua ngày
+    rank          INTEGER NOT NULL,         -- 1 = cao nhất
+    crawled_at    TEXT NOT NULL,
+    PRIMARY KEY (market_code, category_code, day, list_type, keyword)
+);
+CREATE INDEX IF NOT EXISTS idx_tr_part ON trends_rank(market_code, category_code, day, list_type);
+
+-- ══ NHẬT KÝ CÀO — phân biệt "rớt khỏi bảng" với "hôm đó cào lỗi" ══
+-- BẢNG NÀY LÀ BẮT BUỘC, không phải tiện ích ghi log. Không có nó thì một từ khoá vắng mặt
+-- hôm nay có hai cách đọc trái ngược nhau — mất hạng thật, hay chưa bao giờ cào được — và
+-- lớp tính không có cách nào phân biệt. Ghi một dòng cho MỖI cặp (ngành, thị trường, ngày)
+-- kể cả khi hỏng, `status` nói ra là hỏng.
+--
+-- Dùng chung cho cả hai nguồn: `source` = 'trends' hoặc 'shopee'.
+CREATE TABLE IF NOT EXISTS crawl_log (
+    source        TEXT NOT NULL,            -- trends | shopee
+    market_code   TEXT NOT NULL,
+    category_code TEXT NOT NULL,
+    day           TEXT NOT NULL,
+    status        TEXT NOT NULL,            -- ok | empty | error
+    n_rows        INTEGER NOT NULL DEFAULT 0,
+    note          TEXT,
+    started_at    TEXT,
+    finished_at   TEXT,
+    PRIMARY KEY (source, market_code, category_code, day)
+);
+
 -- AI học hành vi: log thao tác người dùng để cá nhân hóa đề xuất
 CREATE TABLE IF NOT EXISTS events (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -183,7 +247,11 @@ def init_db() -> None:
         for _sql in ("ALTER TABLE trends_cache ADD COLUMN labels_json TEXT",
                      "ALTER TABLE trends_cache ADD COLUMN timeframe TEXT",
                      "ALTER TABLE listings_snapshot ADD COLUMN sold_monthly INTEGER",
-                     "ALTER TABLE listings_snapshot ADD COLUMN rank INTEGER"):
+                     "ALTER TABLE listings_snapshot ADD COLUMN rank INTEGER",
+                     # Ngành hàng mà listing được nhìn thấy trong đó. `rank` chỉ có nghĩa
+                     # KÈM cột này: hạng 1 của "Áo Ba Lỗ" và hạng 1 của "Đồ Chơi" là hai
+                     # thang khác nhau, gộp lại thành một bảng xếp hạng là sai.
+                     "ALTER TABLE listings_snapshot ADD COLUMN category_code TEXT"):
             try:
                 c.execute(_sql)
             except Exception:
