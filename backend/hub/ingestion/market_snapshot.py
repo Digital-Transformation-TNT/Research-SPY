@@ -145,8 +145,9 @@ async def _items_job(job: str, keyword: str, trace: dict) -> list[dict]:
 PER_CATEGORY = 100
 
 
-async def _shopee_category(cat_id: int, cat_name: str, market: str, trace: dict) -> list[dict]:
-    """Top bán chạy của MỘT danh mục cấp 1. Hạng = vị trí trong danh sách đã sắp theo bán chạy."""
+async def _shopee_category(cat_id: str | int, cat_name: str, market: str,
+                           trace: dict) -> list[dict]:
+    """Top bán chạy của MỘT danh mục. Hạng = vị trí trong danh sách đã sắp theo bán chạy."""
     from lib.ads.platform import PlatformSearchInput
     from lib.ads.platforms.shopee import DOMAIN, shopee
     from lib.ads.types import ClientResponse
@@ -202,44 +203,67 @@ async def _shopee_category(cat_id: int, cat_name: str, market: str, trace: dict)
     return rows
 
 
-async def snapshot_categories(market: str = "ph", only: list[int] | None = None) -> dict:
+async def snapshot_categories(market: str = "ph", only: list[int | str] | None = None) -> dict:
     """
-    Chụp TOP BÁN CHẠY theo từng danh mục cấp 1 — nguồn chính của bảng Top 10.
+    Chụp TOP BÁN CHẠY theo từng danh mục — nguồn chính của bảng Top 10.
 
     Đây là điều đã chốt: chỉ cào sản phẩm lọt top bán của từng danh mục, không cào tràn lan.
     Sản phẩm rơi khỏi top thì đơn giản là NGÀY ĐÓ KHÔNG CÓ DÒNG — lịch sử cũ vẫn nguyên trong
     kho, và `top10._rank_score` đọc ngày thiếu thành 0 điểm. Quay lại top thì lại có dòng.
     Không cần cột "out" nào: sự vắng mặt đã là dữ liệu.
-    """
-    from . import categories
 
-    tree = categories.level1(market)
-    cats = tree["categories"]
+    DANH MỤC LẤY TỪ `shopee_categories`, KHÔNG PHẢI `categories.level1()`. Hai nguồn khác
+    nhau về bản chất: `level1` hỏi sàn xem đang có ngành nào (24–25 ngành CẤP 1), còn bảng
+    kia là danh sách ngành CON mà chủ dự án đã chọn làm (206 vn + 197 ph). Cào theo cấp 1 thì
+    một hạng nói về cả "Thời Trang Nam", quá thô để so sánh sản phẩm; cào theo ngành con thì
+    hạng 1 là hạng 1 của đúng ngách đó. Nạp bảng bằng:
+
+        python -m hub.ingestion.shopee_categories
+
+    Mỗi ngành ghi MỘT dòng `crawl_log`, kể cả khi hỏng. Không có nó thì một sản phẩm vắng mặt
+    hôm nay có hai cách đọc trái ngược nhau — rớt khỏi top thật, hay hôm đó không cào được.
+    """
+    from . import shopee_categories
+
+    cats = shopee_categories.active(market)
     if only:
-        keep = {int(c) for c in only}
-        cats = [c for c in cats if c["cat_id"] in keep]
+        keep = {str(c) for c in only}
+        cats = [c for c in cats if c["sub_id"] in keep]
     if not cats:
+        # Bảng rỗng đọc thành "sàn không có hàng" nếu không nói rõ. Nêu luôn cách chữa.
         return {"platform": "shopee", "market": market, "categories": 0, "rows": 0,
-                "failures": {"cây danh mục": tree.get("error") or "rỗng"}, "trace": {}}
+                "failures": {"danh mục": "bảng `shopee_categories` chưa có ngành nào đang bật"
+                                         " — chạy `python -m hub.ingestion.shopee_categories`"},
+                "trace": {}}
 
     day = _today()
     total, failures, trace = 0, {}, {}
     for cat in cats:
+        # Khoá có cả mã lẫn tên: 197 ngành của ph có nhiều ngành trùng tên "Others" nằm dưới
+        # các ngành cha khác nhau, lấy tên làm khoá là chúng đè lên nhau trong báo cáo.
+        label = f'{cat["sub_id"]} {cat["main_name"]} > {cat["sub_name"]}'
         tr: dict = {}
-        trace[cat["name"]] = tr
+        trace[label] = tr
+        started = datetime.now(timezone.utc).isoformat()
         try:
-            rows = await _shopee_category(cat["cat_id"], cat["name"], market, tr)
+            rows = await _shopee_category(cat["sub_id"], cat["sub_name"], market, tr)
         except (WorkerOffline, WorkerTimeout, RuntimeError) as e:
-            failures[cat["name"]] = str(e)
+            failures[label] = str(e)
+            store.log_crawl("shopee", market, cat["sub_id"], day, "error",
+                            0, str(e), started)
             continue
         for r in rows:
-            r.update(platform="shopee", market=market, day=day,
-                     keyword=None, sold_type="cumulative")
-        total += store.save_snapshot(rows)
+            r.update(platform="shopee", market=market, day=day, keyword=None,
+                     sold_type="cumulative", category_code=cat["sub_id"])
+        written = store.save_snapshot(rows)
+        total += written
+        store.log_crawl("shopee", market, cat["sub_id"], day,
+                        "ok" if written else "empty", written, None, started)
 
     return {"platform": "shopee", "market": market, "day": day,
             "categories": len(cats), "rows": total,
-            "tree_cached": tree.get("cached"), "tree_error": tree.get("error"),
+            "source": "shopee_categories",
+            "health": store.crawl_health("shopee", market, day),
             "failures": failures, "trace": trace}
 
 

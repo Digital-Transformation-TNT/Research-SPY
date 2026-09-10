@@ -1003,9 +1003,10 @@ def signal_categories(market: str = "ph", fresh: bool = False):
 @router.post("/signal/snapshot-categories")
 async def signal_snapshot_categories(payload: dict):
     """
-    Chụp top bán chạy của TỪNG danh mục cấp 1 (bình thường do lịch chạy mỗi đêm).
+    Chụp top bán chạy của TỪNG danh mục trong `shopee_categories` (lịch chạy mỗi đêm).
 
-    `only` giới hạn vài `cat_id` — để thử một danh mục mà không phải chờ hết cả 25.
+    `only` giới hạn vài `sub_id` — để thử một ngành mà không phải chờ hết cả 206 ngành của
+    vn hoặc 197 của ph. Bảng danh mục nạp bằng `python -m hub.ingestion.shopee_categories`.
     """
     from .ingestion import market_snapshot
     p = payload or {}

@@ -84,7 +84,7 @@ def save_snapshot(rows: list[dict]) -> int:
         vals.append((
             r.get("platform"), r.get("market"), str(r["product_id"]), r.get("day"),
             int(sold), r.get("sold_type") or "cumulative", r.get("sold_monthly"),
-            r.get("rank"), r.get("keyword"),
+            r.get("rank"), r.get("keyword"), r.get("category_code"),
             r.get("title"), r.get("price"), r.get("currency"), r.get("rating"),
             r.get("reviews"), r.get("favorites"), r.get("shop_id"),
             r.get("image_url"), r.get("url"), now))
@@ -94,9 +94,56 @@ def save_snapshot(rows: list[dict]) -> int:
         c.executemany(
             "INSERT OR IGNORE INTO listings_snapshot"
             " (platform, market, product_id, day, sold_cumulative, sold_type, sold_monthly,"
-            "  rank, keyword, title, price, currency, rating, reviews, favorites, shop_id,"
-            "  image_url, url, crawled_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", vals)
+            "  rank, keyword, category_code, title, price, currency, rating, reviews,"
+            "  favorites, shop_id, image_url, url, crawled_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", vals)
     return len(vals)
+
+
+def log_crawl(source: str, market: str, category_code: str, day: str,
+              status: str, n_rows: int = 0, note: str | None = None,
+              started_at: str | None = None) -> None:
+    """
+    Ghi một dòng nhật ký cào. GỌI CẢ KHI HỎNG — đó mới là lúc nó có giá trị.
+
+    REPLACE chứ không IGNORE: chạy lại một ngành trong ngày là để CHỮA lần hỏng trước, nên
+    kết quả mới phải đè lên. Ngược với `save_snapshot` ngay trên — bảng kia giữ mốc đầu tiên
+    vì mốc là dữ liệu, còn ở đây "lần chạy gần nhất ra sao" mới là thứ cần biết.
+
+    `status`: 'ok' (có dòng), 'empty' (chạy xong, sàn không trả gì), 'error' (không chạy được).
+    Tách 'empty' khỏi 'error' vì hai cái dẫn tới hai việc khác nhau: một ngành thật sự hết
+    hàng thì không có gì để sửa, còn máy-thợ rớt thì phải chạy lại.
+    """
+    with db.connect() as c:
+        c.execute(
+            "INSERT OR REPLACE INTO crawl_log"
+            " (source, market_code, category_code, day, status, n_rows, note,"
+            "  started_at, finished_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (source, market, str(category_code), day, status, int(n_rows),
+             (note or None) and str(note)[:500], started_at or _now(), _now()))
+
+
+def crawl_health(source: str, market: str, day: str) -> dict:
+    """
+    Một ngày cào ra sao. Dùng để trả lời "hôm nay có tin được không" trước khi đọc số.
+
+    Không có dòng nào trong `crawl_log` KHÁC HẲN với "cào xong, 0 kết quả" — nên `missing`
+    đếm số ngành đang bật mà hôm đó không hề có nhật ký, tức chưa chạy tới.
+    """
+    with db.connect() as c:
+        rows = c.execute(
+            "SELECT status, COUNT(*) n FROM crawl_log"
+            " WHERE source=? AND market_code=? AND day=? GROUP BY status",
+            (source, market, day)).fetchall()
+        active = c.execute(
+            "SELECT COUNT(*) FROM shopee_categories WHERE market=? AND active=1",
+            (market,)).fetchone()[0]
+    by = {r["status"]: r["n"] for r in rows}
+    logged = sum(by.values())
+    return {"day": day, "source": source, "market": market,
+            "ok": by.get("ok", 0), "empty": by.get("empty", 0),
+            "error": by.get("error", 0),
+            "missing": max(active - logged, 0), "categories_active": active}
 
 
 def partitions() -> list[dict]:
