@@ -146,13 +146,13 @@ PER_CATEGORY = 100
 
 
 async def _shopee_category(cat_id: str | int, cat_name: str, market: str,
-                           trace: dict, cat_url: str = "") -> list[dict]:
+                           trace: dict, cat_path: str = "") -> list[dict]:
     """
     Top bán chạy của MỘT danh mục. Hạng = vị trí trong danh sách đã sắp theo bán chạy.
 
-    `cat_url` là link của sheet (`shopee_categories.url`) — dạng `-cat.<cha>.<con>`. Gửi
-    xuống để máy-thợ khỏi phải tự dựng URL: ngành cấp 2 cần CẢ HAI mã, và tự ghép slug từ
-    tên tiếng Việt cho ra những đường như `shopee.vn/o-cat.…` mà sàn không nhận.
+    `cat_path` là "<mã cha>.<mã con>" — ngành cấp 2 cần CẢ HAI mã. Không gửi cả link của
+    sheet: link ấy ở dạng `/-cat.X.Y` với slug RỖNG, mà Shopee trả 404 cho slug rỗng (đo
+    2026-09-10 trong Chrome đã đăng nhập). Máy-thợ tự ghép slug từ `cat_name`.
     """
     from lib.ads.platform import PlatformSearchInput
     from lib.ads.platforms.shopee import DOMAIN, shopee
@@ -167,7 +167,7 @@ async def _shopee_category(cat_id: str | int, cat_name: str, market: str,
     for attempt in (0, 1):
         result = await run_on_worker(
             "RS_SHOPEE", {"catId": cat_id, "catName": cat_name, "domain": domain,
-                          "catUrl": cat_url or None})
+                          "catPath": cat_path or None})
         if (why := worker_error(result)):
             raise RuntimeError(why)
         if (result or {}).get("texts"):
@@ -254,7 +254,7 @@ async def snapshot_categories(market: str = "ph", only: list[int | str] | None =
         started = datetime.now(timezone.utc).isoformat()
         try:
             rows = await _shopee_category(cat["sub_id"], cat["sub_name"], market, tr,
-                                          cat_url=cat.get("url") or "")
+                                          cat_path=f'{cat["main_id"]}.{cat["sub_id"]}')
         except (WorkerOffline, WorkerTimeout, RuntimeError) as e:
             failures[label] = str(e)
             store.log_crawl("shopee", market, cat["sub_id"], day, "error",

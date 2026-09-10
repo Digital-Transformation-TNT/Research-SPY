@@ -2377,15 +2377,22 @@ async function searchShopee(msg) {
     // từ khoá thì SPA không chạy lượt tìm nào, nên không có `search_items` để chộp. `-cat.<id>`
     // mới là đường Shopee tự dùng khi người ta bấm vào một danh mục.
     //
-    // NGÀNH CẤP 2 CẦN CẢ HAI MÃ: `-cat.<cha>.<con>`. Chỉ mã con thôi thì Shopee đá sang trang
-    // xác minh — đường một-mã chỉ đúng với ngành cấp 1, và nó chạy được suốt thời gian vòng
-    // cào còn dùng cây cấp 1 nên không ai thấy giới hạn đó. `catUrl` là link lấy thẳng từ
-    // sheet danh mục (`shopee_categories.url`), tức đúng dạng Shopee tự sinh ra; dùng lại nó
-    // thì không phải đoán slug — mà đoán slug là chỗ hỏng thật: tên "Áo" qua `[^\w]` thành
-    // "o", cho ra `shopee.vn/o-cat.…` chẳng giống URL nào của sàn.
-    const base = msg.catUrl
-      ? String(msg.catUrl).split('?')[0]
-      : `https://${domain}/${String(msg.catName || 'c').replace(/[^\w]+/g, '-').replace(/^-+|-+$/g, '') || 'c'}-cat.${catId}`;
+    // NGÀNH CẤP 2 CẦN CẢ HAI MÃ: `-cat.<cha>.<con>`. `catPath` mang sẵn dạng "<cha>.<con>";
+    // không có nó thì rơi về `catId` một mình, đúng cho ngành cấp 1.
+    //
+    // SLUG KHÔNG ĐƯỢC RỖNG. Đo 2026-09-10 trong Chrome đã đăng nhập: `shopee.vn/-cat.11035567`
+    // và `shopee.vn/-cat.11035567.11035592` đều trả 404 ĐỨNG YÊN, trong khi cùng mã ấy kèm
+    // slug thì trang chạy tiếp. Nên link chép thẳng từ sheet (dạng `/-cat.X.Y`, slug rỗng)
+    // KHÔNG dùng làm URL được — sheet ghi nó để người đọc bấm, không phải để máy tải.
+    //
+    // Và slug phải BỎ DẤU trước khi lọc. `[^\w]` xoá luôn chữ có dấu: "Áo" thành "o",
+    // "Đồ Chơi" thành "Chơi"→"Chi". Chuẩn hoá NFD rồi cắt dấu thanh cho ra "Ao", "Do-Choi".
+    const slug = String(msg.catName || 'c')
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+      .replace(/[^\w]+/g, '-').replace(/^-+|-+$/g, '') || 'c';
+    const catPath = msg.catPath ? String(msg.catPath) : catId;
+    const base = `https://${domain}/${slug}-cat.${catPath}`;
     const texts = [];
     let last = null;
     for (const page of [0, 1]) {
@@ -2415,6 +2422,47 @@ async function shopeeCapture(domain, pageUrl, param, want, mustHave) {
     // search_items bắn NGAY khi load → thoát ngay khi chộp được (nhanh ~2-3s), không chờ/không cuộn.
     const tab = await ensureTab(domain);
     await chrome.tabs.update(tab.id, { url: pageUrl, active: false });
+
+    // BẤM TAY VÀO TAB "BÁN CHẠY" KHI THAM SỐ URL KHÔNG ĂN.
+    //
+    // `?sortBy=sales` thường tự chọn đúng tab, nhưng khi nó không ăn thì trang trả về danh
+    // sách "Phổ biến" — và đó là kiểu hỏng KHÔNG nhìn ra được ở phía sau: vẫn đủ 60 sản
+    // phẩm, vẫn có `sold_count`, chỉ có thứ tự là của một bảng xếp hạng khác. Mà `rank` của
+    // ta CHÍNH LÀ thứ tự ấy. Nên kiểm rồi bấm, thay vì tin vào tham số.
+    //
+    // Chỉ bấm khi tab đang chọn KHÁC "bán chạy": bấm lại tab đang chọn cũng làm trang bắn
+    // thêm một lượt `search_items`, và lượt thừa đó đua với lượt đang chờ chộp.
+    if (/[?&]sortBy=sales/.test(pageUrl)) {
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id }, world: 'MAIN',
+          func: () => {
+            const NHAN = ['top sales', 'bán chạy', 'ban chay'];
+            const den = Date.now() + 8000;
+            const tim = () => [...document.querySelectorAll('div,button,a,span')].find((e) => {
+              const t = (e.textContent || '').trim().toLowerCase();
+              return t.length < 24 && NHAN.some((n) => t === n);
+            });
+            return new Promise((xong) => {
+              const nhip = setInterval(() => {
+                const o = tim();
+                if (!o) { if (Date.now() > den) { clearInterval(nhip); xong('khong-thay-tab'); } return; }
+                clearInterval(nhip);
+                // Shopee đánh dấu tab đang chọn bằng class chứa "active"/"selected" ở chính
+                // nó hoặc ở thẻ cha gần nhất — đọc cả hai rồi mới quyết định có bấm không.
+                const lop = ((o.className || '') + ' ' + ((o.parentElement || {}).className || '')).toLowerCase();
+                if (/active|selected/.test(lop)) { xong('da-dung-san'); return; }
+                o.click();
+                xong('da-bam');
+              }, 250);
+            });
+          },
+        });
+      } catch (e) {
+        // Không bấm được thì vẫn chạy tiếp bằng tham số URL — đây là lớp bảo hiểm, không
+        // phải điều kiện bắt buộc.
+      }
+    }
 
     // 22s, không phải 15s: quá nửa số lần chộp được chỉ xảy ra ở lượt thử thứ hai, tức 15s
     // cắt ngay trước lúc trang kịp bắn `search_items`. Thứ tự bắt buộc của chuỗi hạn giờ:
