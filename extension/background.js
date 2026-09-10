@@ -2428,47 +2428,63 @@ async function shopeeCapture(domain, pageUrl, param, want, mustHave, clickSort) 
     // BẤM TAY VÀO TAB "BÁN CHẠY" KHI THAM SỐ URL KHÔNG ĂN.
     //
     // `?sortBy=sales` thường tự chọn đúng tab, nhưng khi nó không ăn thì trang trả về danh
-    // sách "Phổ biến" — và đó là kiểu hỏng KHÔNG nhìn ra được ở phía sau: vẫn đủ 60 sản
-    // phẩm, vẫn có `sold_count`, chỉ có thứ tự là của một bảng xếp hạng khác. Mà `rank` của
-    // ta CHÍNH LÀ thứ tự ấy. Nên kiểm rồi bấm, thay vì tin vào tham số.
+    // sách "Phổ biến" — kiểu hỏng KHÔNG nhìn ra được ở phía sau: vẫn đủ 60 sản phẩm, vẫn có
+    // `sold_count`, chỉ thứ tự là của một bảng xếp hạng khác. Mà `rank` của ta CHÍNH LÀ thứ
+    // tự ấy.
     //
-    // Chỉ bấm khi tab đang chọn KHÁC "bán chạy": bấm lại tab đang chọn cũng làm trang bắn
-    // thêm một lượt `search_items`, và lượt thừa đó đua với lượt đang chờ chộp.
+    // PHẢI ĐỢI TRANG ĐÍCH TẢI XONG TRƯỚC KHI ĐỤNG VÀO. `chrome.tabs.update` trả về NGAY, lúc
+    // đó tab vẫn còn là danh mục TRƯỚC. Bản đầu của bước này không kiểm gì cả nên nó tìm thấy
+    // thanh sắp xếp của trang cũ rồi bấm — và cú bấm ấy tự nó điều hướng tab đi chỗ khác,
+    // làm lượt chộp mất trang đích. Đo 2026-09-10: hai danh mục liên tiếp chết ở trần 75s
+    // theo đúng kiểu đó, một VN một PH, nên nó không phải chuyện của riêng thị trường nào.
+    //
+    // So khớp bằng MÃ trong đường dẫn chứ không bằng cả URL: Shopee tự viết lại slug và thêm
+    // tham số theo dõi sau khi tải, nên so nguyên văn sẽ không bao giờ khớp.
     if (clickSort && /[?&]sortBy=sales/.test(pageUrl)) {
       try {
         await chrome.scripting.executeScript({
-          target: { tabId: tab.id }, world: 'MAIN',
-          func: () => {
+          target: { tabId: tab.id }, world: 'MAIN', args: [String(want)],
+          func: (maCanCo) => {
             const NHAN = ['top sales', 'bán chạy', 'ban chay'];
-            const den = Date.now() + 5000;
+            const den = Date.now() + 9000;
+            const dungTrang = () => location.pathname.includes(maCanCo);
             const tim = () => [...document.querySelectorAll('div,button,a,span')].find((e) => {
               const t = (e.textContent || '').trim().toLowerCase();
               return t.length < 24 && NHAN.some((n) => t === n);
             });
             return new Promise((xong) => {
               const nhip = setInterval(() => {
+                if (Date.now() > den) { clearInterval(nhip); xong('het-gio'); return; }
+                if (!dungTrang()) return;            // còn ở trang cũ — TUYỆT ĐỐI không bấm
                 const o = tim();
-                if (!o) { if (Date.now() > den) { clearInterval(nhip); xong('khong-thay-tab'); } return; }
+                if (!o) return;                      // đúng trang nhưng chưa render thanh sắp xếp
                 clearInterval(nhip);
-                // Shopee đánh dấu tab đang chọn bằng class chứa "active"/"selected" ở chính
-                // nó hoặc ở thẻ cha gần nhất — đọc cả hai rồi mới quyết định có bấm không.
+                // Shopee đánh dấu tab đang chọn bằng class chứa "active"/"selected" ở chính nó
+                // hoặc ở thẻ cha gần nhất — đọc cả hai rồi mới quyết định có bấm không. Bấm lại
+                // tab đang chọn cũng làm trang bắn thêm một lượt `search_items` đua với lượt
+                // đang chờ chộp.
                 const lop = ((o.className || '') + ' ' + ((o.parentElement || {}).className || '')).toLowerCase();
-                if (/active|selected/.test(lop)) { xong('da-dung-san'); return; }
-                o.click();
-                xong('da-bam');
+                xong(/active|selected/.test(lop) ? 'da-dung-san' : (o.click(), 'da-bam'));
               }, 250);
             });
           },
         });
       } catch (e) {
-        // Không bấm được thì vẫn chạy tiếp bằng tham số URL — đây là lớp bảo hiểm, không
-        // phải điều kiện bắt buộc.
+        // Không chạy được thì vẫn đi tiếp bằng tham số URL — đây là lớp bảo hiểm, không phải
+        // điều kiện bắt buộc.
       }
     }
 
     // 22s, không phải 15s: quá nửa số lần chộp được chỉ xảy ra ở lượt thử thứ hai, tức 15s
-    // cắt ngay trước lúc trang kịp bắn `search_items`. Thứ tự bắt buộc của chuỗi hạn giờ:
-    // 22s (đây) < 40s (trang máy-thợ) < 45s (backend).
+    // cắt ngay trước lúc trang kịp bắn `search_items`.
+    //
+    // Thứ tự bắt buộc của chuỗi hạn giờ, tính cho đường DANH MỤC vì nó tốn nhất — hai trang,
+    // mỗi trang một hạn 22s riêng, cộng tối đa 9s đợi thanh sắp xếp:
+    //
+    //     53s (đây) < 75s (trang máy-thợ) < 85s (backend)
+    //
+    // Bộ ba cũ ghi 22 < 40 < 45 và tính cho MỘT lượt chộp; nó đã sai từ lúc thêm trang thứ
+    // hai, sai im lặng vì trang đầu thường xong trong 3s nên chỉ vỡ lúc sàn chậm.
     const deadline = Date.now() + 22000;
     let texts = [], videoItems = {}, textsIter = -1, iter = 0, seen = null;
     while (Date.now() < deadline) {
