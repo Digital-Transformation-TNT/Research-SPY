@@ -27,18 +27,62 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from lib.core.bu import BU_CHOICES, normalize_bu
 from lib.core.db import supabase_or_none, is_configured as db_ready
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
+#: Vai trò được vào trang Quản trị. `owner` là admin cộng thêm quyền đổi vai trò người khác.
+_ADMIN_ROLES = ("owner", "admin")
+
+
 def _require_admin(request: Request) -> tuple[dict | None, JSONResponse | None]:
-    """Trả (user, None) nếu admin, hoặc (None, response 403) nếu không. Endpoint tự xử."""
+    """Trả (user, None) nếu admin hoặc owner, hoặc (None, response 403) nếu không."""
     user = getattr(request.state, "user", None)
     if not user:
         return None, JSONResponse({"error": "Chưa đăng nhập"}, status_code=401)
-    if user.get("role") != "admin":
+    if user.get("role") not in _ADMIN_ROLES:
         return None, JSONResponse({"error": "Cần quyền admin"}, status_code=403)
+    return user, None
+
+
+def _role_now(user_id: str) -> str | None:
+    """
+    Vai trò ĐỌC TỪ DB, không phải từ vé JWT.
+
+    Vé mang theo `role` và sống 7 ngày (`lib/core/jwt_util.py`), nên ngay sau khi owner nâng
+    một người thì vé của người ấy vẫn ghi vai trò cũ. Với các trang thường thì chờ hết vé cũng
+    được. Với chính quyền ĐỔI VAI TRÒ thì không: người vừa được trao quyền owner sẽ bị chặn
+    suốt một tuần, còn người vừa bị hạ thì vẫn nâng/hạ được người khác suốt một tuần — và cái
+    thứ hai mới là chỗ nguy hiểm.
+    """
+    supa = supabase_or_none()
+    if supa is None:
+        return None
+    try:
+        res = supa.table("users").select("role").eq("id", user_id).limit(1).execute()
+    except Exception:
+        return None
+    return (res.data or [{}])[0].get("role")
+
+
+def _require_owner(request: Request) -> tuple[dict | None, JSONResponse | None]:
+    """Chỉ owner. Dùng cho mọi thao tác ĐỔI VAI TRÒ."""
+    user, err = _require_admin(request)
+    if err is not None:
+        return None, err
+    if _role_now(str(user["id"])) != "owner":
+        return None, JSONResponse(
+            {
+                "error": (
+                    "Chỉ owner mới nâng/hạ được vai trò. Gửi yêu cầu cho owner "
+                    "(nút “Xin đổi vai trò”) thay vì đổi thẳng."
+                ),
+                "needsOwner": True,
+            },
+            status_code=403,
+        )
     return user, None
 
 
@@ -101,6 +145,17 @@ async def create_user(body: CreateUserBody, request: Request) -> JSONResponse:
     email = body.email.strip().lower()
     if body.role not in ("admin", "user"):
         return JSONResponse({"error": "role phải là 'admin' hoặc 'user'"}, status_code=400)
+    # TẠO THẲNG MỘT ADMIN CŨNG LÀ NÂNG ADMIN. Không chặn ở đây thì luật "admin không tự nâng
+    # nhau" đi vòng qua đúng một bước: tạo tài khoản mới với role='admin'.
+    if body.role == "admin":
+        _, err = _require_owner(request)
+        if err is not None:
+            return err
+    bu = normalize_bu(body.bu) if body.bu.strip() else None
+    if body.bu.strip() and bu is None:
+        return JSONResponse(
+            {"error": f"BU phải là một trong: {', '.join(BU_CHOICES)}."}, status_code=400
+        )
     supa = supabase_or_none()
     try:
         # Admin tạo tay → duyệt luôn (status='approved'), không phải chờ.
@@ -110,7 +165,7 @@ async def create_user(body: CreateUserBody, request: Request) -> JSONResponse:
             "email": email,
             "full_name": body.full_name.strip() or None,
             "position": body.position.strip() or None,
-            "bu": body.bu.strip() or None,
+            "bu": bu,
             "role": body.role,
             "is_active": True,
             "status": "approved",
@@ -132,6 +187,11 @@ async def update_user(user_id: str, body: UpdateUserBody, request: Request) -> J
     if body.role is not None:
         if body.role not in ("admin", "user"):
             return JSONResponse({"error": "role phải là 'admin' hoặc 'user'"}, status_code=400)
+        # ĐÂY LÀ CHỖ DUY NHẤT ĐỔI ĐƯỢC VAI TRÒ, và từ 2026-09-10 nó là của riêng owner. Admin
+        # muốn nâng/hạ ai thì mở một yêu cầu (`POST /role-requests`) để owner duyệt.
+        _, err_owner = _require_owner(request)
+        if err_owner is not None:
+            return err_owner
         update["role"] = body.role
     if body.is_active is not None:
         update["is_active"] = body.is_active
@@ -141,6 +201,14 @@ async def update_user(user_id: str, body: UpdateUserBody, request: Request) -> J
         update["status"] = body.status
     if not update:
         return JSONResponse({"error": "Không có trường nào để cập nhật"}, status_code=400)
+    # KHOÁ TÀI KHOẢN OWNER CŨNG LÀ HẠ OWNER, chỉ bằng một cột khác. Không chặn ở đây thì luật
+    # "chỉ owner đổi được vai trò" vẫn đúng về chữ nhưng vô nghĩa trên thực tế: một admin đặt
+    # `is_active=false` cho owner là xong, và từ giây đó không còn ai nâng/hạ được ai nữa.
+    if str(user_id) != str(admin["id"]) and _role_now(str(user_id)) == "owner":
+        return JSONResponse(
+            {"error": "Không thể sửa tài khoản owner. Chỉ chính owner tự đổi được."},
+            status_code=403,
+        )
     # Chặn admin tự vô hiệu hoá chính mình — dễ khóa mất tài khoản cuối cùng.
     if str(user_id) == str(admin["id"]) and (
         update.get("is_active") is False
@@ -164,9 +232,169 @@ async def delete_user(user_id: str, request: Request) -> JSONResponse:
         return _db_missing()
     if str(user_id) == str(admin["id"]):
         return JSONResponse({"error": "Không thể tự xoá tài khoản của chính mình"}, status_code=400)
+    # Cùng lý do như ở `update_user`: xoá owner là cách nhanh nhất để vô hiệu hoá cả luật phân
+    # quyền. Owner cuối cùng biến mất thì phải vào Supabase chạy SQL tay mới dựng lại được.
+    if _role_now(str(user_id)) == "owner":
+        return JSONResponse({"error": "Không thể xoá tài khoản owner."}, status_code=403)
     supa = supabase_or_none()
     res = supa.table("users").delete().eq("id", user_id).execute()
     return JSONResponse({"ok": True, "deleted": len(res.data or [])})
+
+
+# ---------------------------------------------------------------------------
+# YÊU CẦU ĐỔI VAI TRÒ — đường đi của admin khi họ không tự đổi được
+# ---------------------------------------------------------------------------
+#
+# Admin không nâng/hạ được ai (xem `_require_owner`). Nhưng chặn mà không mở đường thay thế
+# thì việc vẫn phải chạy, chỉ là chạy ngoài tool: nhắn riêng cho owner, và không còn dấu vết
+# ai xin gì, ai duyệt, lúc nào. Bảng `role_requests` đưa đúng cuộc trao đổi ấy vào trong tool.
+
+
+class RoleRequestBody(BaseModel):
+    target_id: str = Field(..., alias="targetId")
+    #: 'admin' = xin NÂNG, 'user' = xin HẠ.
+    to_role: str = Field(..., alias="toRole")
+    reason: str = Field(default="", max_length=500)
+
+    model_config = {"populate_by_name": True}
+
+
+class RoleDecisionBody(BaseModel):
+    #: 'approved' | 'rejected'.
+    status: str
+
+
+_REQ_SELECT = "id, target_id, requester_id, to_role, reason, status, decided_by, decided_at, created_at"
+
+
+def _kem_ten(supa, rows: list[dict]) -> list[dict]:
+    """Gắn email/tên của người xin và người được đề nghị vào từng dòng.
+
+    Không có nó thì danh sách chỉ là mấy cột UUID, và owner phải tự tra tay mới biết mình đang
+    duyệt cho ai — tức là một màn hình duyệt mà không đọc được sẽ bị bấm bừa.
+    """
+    ids = {str(r[k]) for r in rows for k in ("target_id", "requester_id") if r.get(k)}
+    if not ids:
+        return rows
+    try:
+        res = supa.table("users").select("id, email, full_name, role, bu").in_("id", list(ids)).execute()
+    except Exception:
+        return rows
+    theo_id = {str(u["id"]): u for u in (res.data or [])}
+    for r in rows:
+        r["target"] = theo_id.get(str(r.get("target_id")))
+        r["requester"] = theo_id.get(str(r.get("requester_id")))
+    return rows
+
+
+@router.get("/role-requests")
+async def list_role_requests(request: Request) -> JSONResponse:
+    """Owner thấy MỌI yêu cầu; admin chỉ thấy yêu cầu của chính mình."""
+    user, err = _require_admin(request)
+    if err is not None:
+        return err
+    if not db_ready():
+        return _db_missing()
+    supa = supabase_or_none()
+    truy_vấn = supa.table("role_requests").select(_REQ_SELECT).order("created_at", desc=True)
+    là_owner = _role_now(str(user["id"])) == "owner"
+    if not là_owner:
+        truy_vấn = truy_vấn.eq("requester_id", str(user["id"]))
+    try:
+        res = truy_vấn.execute()
+    except Exception as e:
+        return JSONResponse({"error": f"Không đọc được yêu cầu: {e}"}, status_code=502)
+    rows = _kem_ten(supa, res.data or [])
+    treo = sum(1 for r in rows if r.get("status") == "pending")
+    return JSONResponse({"requests": rows, "pending_count": treo, "isOwner": là_owner})
+
+
+@router.post("/role-requests")
+async def create_role_request(body: RoleRequestBody, request: Request) -> JSONResponse:
+    """Admin mở một yêu cầu đổi vai trò để owner duyệt."""
+    user, err = _require_admin(request)
+    if err is not None:
+        return err
+    if not db_ready():
+        return _db_missing()
+    if body.to_role not in ("admin", "user"):
+        return JSONResponse({"error": "toRole phải là 'admin' hoặc 'user'"}, status_code=400)
+
+    hiện_tại = _role_now(str(body.target_id))
+    if hiện_tại is None:
+        return JSONResponse({"error": "Không tìm thấy user"}, status_code=404)
+    if hiện_tại == "owner":
+        return JSONResponse({"error": "Không thể đổi vai trò của owner."}, status_code=403)
+    if hiện_tại == body.to_role:
+        return JSONResponse(
+            {"error": f"Người này đã là '{body.to_role}' rồi."}, status_code=400
+        )
+
+    supa = supabase_or_none()
+    try:
+        res = supa.table("role_requests").insert({
+            "target_id": str(body.target_id),
+            "requester_id": str(user["id"]),
+            "to_role": body.to_role,
+            "reason": body.reason.strip() or None,
+            "status": "pending",
+        }).execute()
+    except Exception as e:
+        # Chỉ số duy nhất `role_requests_one_open_idx` chặn yêu cầu treo thứ hai cho cùng một
+        # người. Nói đúng nguyên nhân thay vì ném lỗi DB thô ra màn hình.
+        return JSONResponse(
+            {"error": f"Người này đã có một yêu cầu đang chờ owner duyệt. ({e})"},
+            status_code=409,
+        )
+    return JSONResponse({"request": (res.data or [{}])[0]}, status_code=201)
+
+
+@router.patch("/role-requests/{request_id}")
+async def decide_role_request(
+    request_id: str, body: RoleDecisionBody, request: Request
+) -> JSONResponse:
+    """Owner duyệt hoặc từ chối. Duyệt thì ÁP LUÔN vai trò mới."""
+    owner, err = _require_owner(request)
+    if err is not None:
+        return err
+    if not db_ready():
+        return _db_missing()
+    if body.status not in ("approved", "rejected"):
+        return JSONResponse({"error": "status phải là 'approved' hoặc 'rejected'"}, status_code=400)
+
+    supa = supabase_or_none()
+    try:
+        found = supa.table("role_requests").select(_REQ_SELECT).eq("id", request_id).limit(1).execute()
+    except Exception as e:
+        return JSONResponse({"error": f"Không đọc được yêu cầu: {e}"}, status_code=502)
+    if not found.data:
+        return JSONResponse({"error": "Không tìm thấy yêu cầu"}, status_code=404)
+    đơn = found.data[0]
+    if đơn.get("status") != "pending":
+        return JSONResponse(
+            {"error": f"Yêu cầu này đã được xử ('{đơn.get('status')}')."}, status_code=409
+        )
+
+    # ĐỔI VAI TRÒ TRƯỚC, ĐÓNG ĐƠN SAU. Ngược lại thì một lượt hỏng giữa chừng sẽ để lại một đơn
+    # ghi "đã duyệt" trong khi vai trò chưa hề đổi — và không ai đi kiểm lại một đơn đã đóng.
+    if body.status == "approved":
+        if _role_now(str(đơn["target_id"])) == "owner":
+            return JSONResponse({"error": "Không thể đổi vai trò của owner."}, status_code=403)
+        try:
+            đã = supa.table("users").update({"role": đơn["to_role"]}).eq("id", đơn["target_id"]).execute()
+        except Exception as e:
+            return JSONResponse({"error": f"Không đổi được vai trò: {e}"}, status_code=502)
+        if not đã.data:
+            return JSONResponse({"error": "Không tìm thấy user để đổi vai trò"}, status_code=404)
+
+    from datetime import datetime, timezone
+
+    res = supa.table("role_requests").update({
+        "status": body.status,
+        "decided_by": str(owner["id"]),
+        "decided_at": datetime.now(tz=timezone.utc).isoformat(),
+    }).eq("id", request_id).execute()
+    return JSONResponse({"request": (res.data or [{}])[0]})
 
 
 # ---------------------------------------------------------------------------

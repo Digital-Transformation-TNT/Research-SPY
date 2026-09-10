@@ -103,8 +103,18 @@
       <input id="regName" type="text" placeholder="Họ và tên" maxlength="120" />
       <label for="regPos">Vị trí</label>
       <input id="regPos" type="text" placeholder="vd: R&D" maxlength="120" />
+      <!-- Ô CHỌN, không phải ô gõ — phải khớp `backend/lib/core/bu.py::BU_CHOICES`. BU quyết
+           định ngưỡng xanh của tỷ giá, nên một cách viết lạ ("Hoding") sẽ lặng lẽ áp sai
+           chính sách cho người ấy. Bản Next ở `frontend/app/(auth)/login/page.tsx` cùng danh
+           sách này; sửa BU là phải sửa CẢ HAI. -->
       <label for="regBu">BU (đơn vị làm việc)</label>
-      <input id="regBu" type="text" placeholder="vd: BU1" maxlength="120" />
+      <select id="regBu">
+        <option value="">— Chọn BU —</option>
+        <option value="BU1">BU1</option>
+        <option value="BU2">BU2</option>
+        <option value="BU3">BU3</option>
+        <option value="HO">HO</option>
+      </select>
       <button class="primary" type="submit">Gửi yêu cầu →</button>
       <button class="ghost" type="button" id="regBack">← Đổi email khác</button>
     </form>
@@ -149,6 +159,12 @@
       localStorage.setItem('rs_role', data.user.role || 'user');
       localStorage.setItem('rs_user_id', data.user.id || '');
       localStorage.setItem('rs_display', data.user.displayName || data.user.email || '');
+      localStorage.setItem('rs_bu', data.user.bu || '');
+      // Ngưỡng xanh mặc định theo BU, server tính (`backend/lib/core/bu.py`). Khoá RIÊNG chứ
+      // không phải `rs_cost_thresh` — khoá kia là lựa chọn người dùng tự đặt, ghi đè nó mỗi
+      // lần đăng nhập là nuốt mất thiết lập của họ. Xem `research.js::costThresh`.
+      if (data.user.fxGreenThreshold > 0) localStorage.setItem('rs_bu_thresh', String(data.user.fxGreenThreshold));
+      else localStorage.removeItem('rs_bu_thresh');
       window.location.replace(ENTER_URL);
     }
 

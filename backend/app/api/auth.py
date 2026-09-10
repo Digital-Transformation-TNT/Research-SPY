@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 
 log = logging.getLogger("auth")
 
+from lib.core.bu import BU_CHOICES, fx_green_threshold, normalize_bu
 from lib.core.config import env_string
 from lib.core.db import supabase_or_none, is_configured as db_ready
 from lib.core.jwt_util import sign, JWTError, is_configured as jwt_ready
@@ -91,6 +92,13 @@ def _public_user(u: dict) -> dict:
         "bu": u.get("bu"),
         "role": u.get("role"),
         "displayName": display,
+        # Ngưỡng xanh MẶC ĐỊNH theo BU, tính ở server chứ không để trang tự tra.
+        #
+        # Trang Research là một file tĩnh và không có cách nào biết bảng tra BU→ngưỡng; chép
+        # bảng ấy sang JavaScript nghĩa là từ nay thêm một BU phải nhớ sửa hai nơi, và nơi
+        # quên sửa sẽ hỏng im lặng (người dùng vẫn thấy một con số, chỉ là con số của BU khác).
+        # Gửi kèm lúc đăng nhập thì `lib/core/bu.py` vẫn là nơi duy nhất giữ chính sách.
+        "fxGreenThreshold": fx_green_threshold(u.get("bu")),
     }
 
 
@@ -172,9 +180,16 @@ async def register(body: RegisterBody) -> JSONResponse:
         return _domain_error()
     full_name = body.full_name.strip()
     position = body.position.strip()
-    bu = body.bu.strip()
-    if not (full_name and position and bu):
+    if not (full_name and position and body.bu.strip()):
         return JSONResponse({"error": "Phải nhập đủ Tên, Vị trí và BU."}, status_code=400)
+    # BU phải là MỘT MÃ trong danh sách chốt, không phải chữ người dùng tự gõ. Ô trên giao diện
+    # đã là ô chọn, nhưng kiểm lại ở đây vì giao diện không phải một chốt chặn — và vì từ nay
+    # BU quyết định ngưỡng xanh, nên một cách viết lạ sẽ lặng lẽ áp sai chính sách cho người ấy.
+    bu = normalize_bu(body.bu)
+    if bu is None:
+        return JSONResponse(
+            {"error": f"BU phải là một trong: {', '.join(BU_CHOICES)}."}, status_code=400
+        )
 
     supa = supabase_or_none()
     # Đã tồn tại rồi → không tạo trùng, báo trạng thái hiện tại để frontend chuyển đúng màn.

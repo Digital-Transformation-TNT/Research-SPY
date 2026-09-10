@@ -24,6 +24,16 @@ const ENTER_URL = withBase('/ads')
 const POLL_MS = 4000
 const DOMAIN_HINT = '@tntecom.com'
 
+/**
+ * BU chốt danh sách — phải KHỚP `backend/lib/core/bu.py::BU_CHOICES`.
+ *
+ * Ô chọn thay ô gõ, vì bốn tài khoản đầu đã đẻ ra ba cách viết cho cùng một đơn vị
+ * ("Holding", "Hoding", "HO"). Từ khi BU quyết định ngưỡng xanh của tỷ giá thì một cách viết
+ * lạ không còn chỉ là xấu — nó lặng lẽ áp sai chính sách cho người ấy. Server vẫn kiểm lại
+ * (`auth.py::register`): danh sách ở đây là để chọn cho nhanh, không phải chốt chặn.
+ */
+const BU_OPTIONS = ['BU1', 'BU2', 'BU3', 'HO']
+
 type Mode = 'email' | 'reg' | 'wait'
 type Status = { text: string; kind: 'err' | 'wait' | 'ok' } | null
 
@@ -45,6 +55,19 @@ function saveAndEnter(data: any) {
   localStorage.setItem('rs_role', data.user?.role || 'user')
   localStorage.setItem('rs_user_id', data.user?.id || '')
   localStorage.setItem('rs_display', data.user?.displayName || data.user?.email || '')
+  localStorage.setItem('rs_bu', data.user?.bu || '')
+  // NGƯỠNG XANH MẶC ĐỊNH THEO BU, do server tính (`lib/core/bu.py`). Trang Research là file
+  // tĩnh và không gọi API kèm token, nên đây là chỗ DUY NHẤT con số ấy đi được sang nó.
+  //
+  // Cố ý dùng khoá RIÊNG (`rs_bu_thresh`), không ghi đè `rs_cost_thresh`: khoá kia là lựa chọn
+  // người dùng tự đặt trong modal Giá vốn, và ghi đè nó mỗi lần đăng nhập sẽ âm thầm nuốt mất
+  // thiết lập của họ sau mỗi phiên.
+  const nguong = data.user?.fxGreenThreshold
+  if (typeof nguong === 'number' && nguong > 0) {
+    localStorage.setItem('rs_bu_thresh', String(nguong))
+  } else {
+    localStorage.removeItem('rs_bu_thresh')
+  }
   window.location.replace(ENTER_URL)
 }
 
@@ -303,15 +326,19 @@ export default function LoginPage() {
                 <label className={s.label} htmlFor="regBu">
                   BU (đơn vị làm việc)
                 </label>
-                <input
+                <select
                   id="regBu"
                   className={s.input}
-                  type="text"
-                  placeholder="vd: BU1"
-                  maxLength={120}
                   value={regBu}
                   onChange={(e) => setRegBu(e.target.value)}
-                />
+                >
+                  <option value="">— Chọn BU —</option>
+                  {BU_OPTIONS.map((bu) => (
+                    <option key={bu} value={bu}>
+                      {bu}
+                    </option>
+                  ))}
+                </select>
                 <button className={s.primary} type="submit" disabled={busy}>
                   {busy ? 'Đang gửi…' : 'Gửi yêu cầu →'}
                 </button>

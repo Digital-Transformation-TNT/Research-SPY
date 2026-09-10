@@ -28,7 +28,7 @@ type User = {
   full_name?: string
   position?: string
   bu?: string
-  role: 'admin' | 'user'
+  role: 'owner' | 'admin' | 'user'
   status?: 'pending' | 'approved' | 'rejected'
   is_active?: boolean
   created_at?: string
@@ -72,6 +72,9 @@ function fmtCompact(n: any) {
   return (n / 1_000_000).toFixed(1).replace('.', ',') + 'M'
 }
 
+/** BU chốt danh sách — phải KHỚP `backend/lib/core/bu.py::BU_CHOICES` và trang đăng nhập. */
+const BU_OPTIONS = ['BU1', 'BU2', 'BU3', 'HO']
+
 const nameOf = (u: User) => u.full_name || u.email || '(không tên)'
 const roleBu = (u: User) => [u.position, u.bu].filter(Boolean).join(' · ') || '—'
 
@@ -104,6 +107,9 @@ function Delta({ curr, prev, trend, invert }: { curr: any; prev: any; trend?: st
 export default function AdminPage() {
   const [ready, setReady] = useState(false)
   const [tab, setTab] = useState<'users' | 'stats'>('users')
+  //: Chỉ owner đổi được vai trò. Admin thấy nút "Xin đổi vai trò" để gửi yêu cầu.
+  const [isOwner, setIsOwner] = useState(false)
+  const [roleReqs, setRoleReqs] = useState<any[]>([])
 
   const [users, setUsers] = useState<User[]>([])
   const [addStatus, setAddStatus] = useState<{ text: string; kind: 'err' | 'ok' } | null>(null)
@@ -120,7 +126,10 @@ export default function AdminPage() {
     const role = localStorage.getItem('rs_role') || 'user'
     const uname = localStorage.getItem('rs_display') || localStorage.getItem('rs_email') || ''
     if (!token && !uname) return void window.location.replace(withBase('/login'))
-    if (role !== 'admin') return void window.location.replace(withBase('/ads'))
+    // `owner` PHẢI qua được cổng này. Kiểm `!== 'admin'` sẽ đá đúng người có nhiều quyền nhất
+    // ra khỏi trang Quản trị, và họ là người duy nhất sửa được vai trò cho người khác.
+    if (role !== 'admin' && role !== 'owner') return void window.location.replace(withBase('/ads'))
+    setIsOwner(role === 'owner')
     setReady(true)
   }, [])
 
@@ -151,12 +160,66 @@ export default function AdminPage() {
     }
   }, [])
 
+  // ---- Yêu cầu đổi vai trò (admin xin, owner duyệt) ----
+  const loadRoleReqs = useCallback(async () => {
+    try {
+      const r = await api('/api/admin/role-requests')
+      const data = await r.json()
+      if (r.ok) setRoleReqs(data.requests || [])
+    } catch {
+      /* danh sách phụ — hỏng thì thôi, đừng chặn cả trang */
+    }
+  }, [])
+
   useEffect(() => {
-    if (ready) loadUsers()
-  }, [ready, loadUsers])
+    if (ready) {
+      loadUsers()
+      loadRoleReqs()
+    }
+  }, [ready, loadUsers, loadRoleReqs])
   useEffect(() => {
     if (ready && tab === 'stats') loadStats(period)
   }, [ready, tab, period, loadStats])
+
+  async function askRoleChange(u: User, toRole: string) {
+    const lyDo = prompt(
+      `Xin owner đổi vai trò của "${nameOf(u)}" thành ${toRole}.
+
+Lý do (owner sẽ đọc):`,
+      '',
+    )
+    if (lyDo === null) return
+    try {
+      const r = await api('/api/admin/role-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetId: u.id, toRole, reason: lyDo }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`)
+      setAddStatus({ text: `Đã gửi yêu cầu cho owner duyệt.`, kind: 'ok' })
+      loadRoleReqs()
+    } catch (err: any) {
+      setAddStatus({ text: err.message, kind: 'err' })
+    }
+  }
+
+  async function decideRoleReq(id: string, status: 'approved' | 'rejected') {
+    if (!confirm(status === 'approved' ? 'Duyệt và đổi vai trò ngay?' : 'Từ chối yêu cầu này?')) return
+    try {
+      const r = await api(`/api/admin/role-requests/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`)
+      loadRoleReqs()
+      loadUsers()
+    } catch (err: any) {
+      setAddStatus({ text: err.message, kind: 'err' })
+    }
+  }
 
   // ---- Thao tác trên một dòng user ----
   async function rowAction(u: User, act: 'approve' | 'reject' | 'role' | 'toggle' | 'delete') {
@@ -170,6 +233,10 @@ export default function AdminPage() {
     })
     if (act === 'role') {
       const newRole = u.role === 'admin' ? 'user' : 'admin'
+      // ADMIN KHÔNG ĐỔI THẲNG ĐƯỢC — cùng một nút, nhưng với admin nó MỞ MỘT YÊU CẦU cho owner
+      // duyệt. Server chặn rồi (`_require_owner`); nhánh này để admin nhận được một đường đi
+      // tiếp thay vì một thông báo 403 cụt.
+      if (!isOwner) return void askRoleChange(u, newRole)
       if (!confirm(`Đổi role của "${uname}" thành ${newRole}?`)) return
       opts = json({ role: newRole })
     } else if (act === 'toggle') {
@@ -247,10 +314,18 @@ export default function AdminPage() {
               <input type="email" placeholder="email @tntecom.com" maxLength={120} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
               <input placeholder="Tên" maxLength={120} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
               <input placeholder="Vị trí (vd: R&D)" maxLength={120} value={form.pos} onChange={(e) => setForm({ ...form, pos: e.target.value })} />
-              <input placeholder="BU (vd: BU1)" maxLength={120} value={form.bu} onChange={(e) => setForm({ ...form, bu: e.target.value })} />
+              {/* Ô CHỌN, khớp `backend/lib/core/bu.py::BU_CHOICES`. Admin gõ tay chính là chỗ
+                  đã đẻ ra "Hoding"; và từ nay BU quyết định ngưỡng xanh nên gõ sai là áp sai
+                  chính sách cho người được tạo. */}
+              <select value={form.bu} onChange={(e) => setForm({ ...form, bu: e.target.value })}>
+                <option value="">— BU —</option>
+                {BU_OPTIONS.map((bu) => <option key={bu} value={bu}>{bu}</option>)}
+              </select>
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
                 <option value="user">User</option>
-                <option value="admin">Admin</option>
+                {/* Tạo thẳng một admin CŨNG LÀ nâng admin, nên chỉ owner thấy lựa chọn này —
+                    server chặn nốt (`admin.py::create_user`). */}
+                {isOwner && <option value="admin">Admin</option>}
               </select>
               <button className={s.primary} onClick={addUser}>Thêm →</button>
             </div>
@@ -282,6 +357,43 @@ export default function AdminPage() {
           )}
 
           <div className={s.panel}>
+            {roleReqs.length > 0 && (
+              <div className={s.card} style={{ marginBottom: 16 }}>
+                <h2>
+                  {isOwner ? 'Yêu cầu đổi vai trò chờ duyệt' : 'Yêu cầu đổi vai trò bạn đã gửi'}
+                  {' '}({roleReqs.filter((q) => q.status === 'pending').length})
+                </h2>
+                <table className={s.table}>
+                  <thead>
+                    <tr><th>Đổi cho ai</th><th>Thành</th><th>Người xin</th><th>Lý do</th><th>Trạng thái</th><th>Thao tác</th></tr>
+                  </thead>
+                  <tbody>
+                    {roleReqs.map((q) => (
+                      <tr key={q.id}>
+                        <td><b>{q.target?.full_name || q.target?.email || q.target_id}</b></td>
+                        <td><span className={s.badge}>{q.to_role}</span></td>
+                        <td>{q.requester?.full_name || q.requester?.email || '—'}</td>
+                        <td>{q.reason || '—'}</td>
+                        <td><StatusBadge status={q.status} /></td>
+                        <td>
+                          {/* Chỉ owner mới có nút xử. Admin xem để biết yêu cầu của mình
+                              đã tới đâu — thiếu cột này thì họ bấm xin lần nữa. */}
+                          {isOwner && q.status === 'pending' ? (
+                            <>
+                              <button className={`${s.mini} ${s.approve}`} onClick={() => decideRoleReq(q.id, 'approved')}>✓ Duyệt</button>
+                              <button className={`${s.mini} ${s.danger}`} onClick={() => decideRoleReq(q.id, 'rejected')}>✕ Từ chối</button>
+                            </>
+                          ) : (
+                            <span className={s.sub}>{q.status === 'pending' ? 'chờ owner' : '—'}</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
             <h2>Danh sách user</h2>
             <table className={s.table}>
               <thead>
@@ -292,16 +404,33 @@ export default function AdminPage() {
                   <tr key={u.id}>
                     <td><WhoCell u={u} /></td>
                     <td>{roleBu(u)}</td>
-                    <td><span className={`${s.badge} ${u.role === 'admin' ? s.badgeAdmin : s.badgeUser}`}>{u.role}</span></td>
+                    <td><span className={`${s.badge} ${u.role === 'admin' || u.role === 'owner' ? s.badgeAdmin : s.badgeUser}`}>{u.role}</span></td>
                     <td><StatusBadge status={u.status} /></td>
                     <td>{fmtDate(u.last_login_at)}</td>
                     <td>
                       {u.status === 'rejected' && (
                         <button className={`${s.mini} ${s.approve}`} onClick={() => rowAction(u, 'approve')}>✓ Duyệt lại</button>
                       )}
-                      <button className={s.mini} onClick={() => rowAction(u, 'role')}>{u.role === 'admin' ? '↓ Hạ user' : '↑ Nâng admin'}</button>
-                      <button className={s.mini} onClick={() => rowAction(u, 'toggle')}>{u.is_active ? 'Khoá' : 'Mở'}</button>
-                      <button className={`${s.mini} ${s.danger}`} onClick={() => rowAction(u, 'delete')}>Xoá</button>
+                      {/* Tài khoản owner không sửa/xoá được từ đây — server cũng chặn
+                          (`admin.py::update_user`). Hiện nút rồi để nó báo 403 là bắt người
+                          dùng thử mới biết. */}
+                      {u.role === 'owner' ? (
+                        <span className={s.sub}>owner — không sửa từ đây</span>
+                      ) : (
+                        <>
+                          <button
+                            className={s.mini}
+                            onClick={() => rowAction(u, 'role')}
+                            title={isOwner ? '' : 'Chỉ owner đổi được vai trò — nút này gửi yêu cầu cho owner'}
+                          >
+                            {isOwner
+                              ? (u.role === 'admin' ? '↓ Hạ user' : '↑ Nâng admin')
+                              : (u.role === 'admin' ? '✎ Xin hạ user' : '✎ Xin nâng admin')}
+                          </button>
+                          <button className={s.mini} onClick={() => rowAction(u, 'toggle')}>{u.is_active ? 'Khoá' : 'Mở'}</button>
+                          <button className={`${s.mini} ${s.danger}`} onClick={() => rowAction(u, 'delete')}>Xoá</button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}

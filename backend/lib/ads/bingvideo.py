@@ -27,12 +27,14 @@ là nó không có.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass
 from typing import Any, Callable
 from urllib.parse import quote
 
 from lib.core.browser import browser_lane, describe_browser_error
+from lib.core.http import get_client
 
 from .humancount import parse_count
 from .platform import PlatformSearchInput, PlatformSearchOutcome, request_with
@@ -104,6 +106,13 @@ class BingSite:
     #: Ép cứng thị trường Bing, bỏ qua nước người dùng chọn. Douyin là sàn NỘI ĐỊA Trung Quốc:
     #: hỏi bằng `mkt=vi-VN` thì Bing trả kết quả Việt Nam, tức là gần như không có gì.
     mkt_ep: "tuple[str, str] | None" = None
+    #: Điểm oEmbed để hỏi "video này còn sống không", hoặc `None` nếu sàn không có.
+    #:
+    #: BING LÀ MỘT CHỈ MỤC, KHÔNG PHẢI MỘT DANH SÁCH ĐANG SỐNG. Nó vẫn trả về thẻ của những
+    #: video đã bị xoá hoặc chuyển riêng tư từ lâu, và thẻ ấy trông y hệt thẻ tốt: có tiêu đề,
+    #: có ảnh bìa, có lượt xem. Chỉ tới lúc người dùng bấm ▶ mới lòi ra "Video currently
+    #: unavailable" — tức là lỗi hiện ra ở nơi xa nhất so với chỗ sinh ra nó.
+    oembed: "str | None" = None
 
 
 def tach_tiktok(url: str) -> "tuple[str, str] | None":
@@ -240,6 +249,55 @@ def _bo_chu_latin(keyword: str) -> "str | None":
     return còn
 
 
+#: Trần số lượt hỏi oEmbed chạy cùng lúc. Kiểm tuần tự 40 video thì lượt tìm đội thêm gần một
+#: phút; bắn cả 40 cùng lúc thì sàn trả 429 và ta tưởng cả 40 đều chết.
+_SONG_SONG = 8
+_SONG_TIMEOUT = 8.0
+
+#: Mã trạng thái nói CHẮC CHẮN là video không còn. Đo 2026-09-10 trên oEmbed của TikTok:
+#: video Bing còn đánh chỉ mục nhưng đã bị gỡ trả `400 {"message":"Something went wrong"}`,
+#: còn video sống trả `200` kèm tiêu đề. Mọi mã khác (429 chặn tần suất, 5xx, hết giờ) KHÔNG
+#: nằm ở đây, và đó là chủ ý — xem `_loc_con_song`.
+_MA_CHET = {400, 404, 410}
+
+
+async def _con_song(client: Any, mẫu: str, ad: Ad) -> bool:
+    """
+    Một lượt hỏi oEmbed. `True` nghĩa là GIỮ LẠI, kể cả khi không hỏi được.
+
+    NGHI NGỜ THÌ GIỮ. Phép kiểm này chỉ được phép bỏ đi thứ nó CHỨNG MINH được là đã chết;
+    mọi trạng thái mơ hồ đều phải giữ. Làm ngược lại thì một lần TikTok chặn tần suất sẽ quét
+    sạch cả lưới video, và người dùng đọc lưới rỗng ấy thành "không ai làm video về món này" —
+    đúng kiểu hỏng im lặng mà `PlatformSearchOutcome.notice` sinh ra để chống.
+    """
+    if not ad.permalink:
+        return True
+    try:
+        phản_hồi = await client.get(
+            mẫu, params={"url": ad.permalink}, timeout=_SONG_TIMEOUT
+        )
+    except Exception:
+        return True  # hỏi không được thì không biết gì — giữ
+    return phản_hồi.status_code not in _MA_CHET
+
+
+async def _loc_con_song(site: BingSite, ads: "list[Ad]") -> "tuple[list[Ad], int]":
+    """Bỏ những video đã chết. Trả `(còn lại, số đã bỏ)`."""
+    if not site.oembed or not ads:
+        return ads, 0
+
+    client = get_client()
+    khoá = asyncio.Semaphore(_SONG_SONG)
+
+    async def một(ad: Ad) -> bool:
+        async with khoá:
+            return await _con_song(client, site.oembed, ad)
+
+    còn = await asyncio.gather(*[một(ad) for ad in ads])
+    giữ = [ad for ad, sống in zip(ads, còn) if sống]
+    return giữ, len(ads) - len(giữ)
+
+
 async def tim_video(site: BingSite, request: PlatformSearchInput) -> PlatformSearchOutcome:
     """
     Điểm vào chung. Hỏi cụm gốc trước, rỗng thì NỚI DẦN — mỗi bước bỏ đúng một thứ làm hẹp:
@@ -299,5 +357,23 @@ async def _mot_luot(site: BingSite, request: PlatformSearchInput) -> PlatformSea
                 f'Bing không có video {site.ten} nào cho "{keyword}". '
                 "Thử cụm ngắn hơn — đây là chỉ mục tìm kiếm, không phải bảng xếp hạng của sàn."
             ),
+        )
+
+    ads, đã_bỏ = await _loc_con_song(site, ads)
+    if not ads:
+        # Bing CÓ thẻ nhưng không thẻ nào còn xem được. Câu này khác hẳn câu ở trên, và trộn
+        # hai cái vào nhau là bỏ mất thông tin: ở đây sàn CÓ nội dung về món này, chỉ là bản
+        # Bing đang giữ đã cũ — nên cách xử cũng khác (đổi cụm không giúp gì).
+        return PlatformSearchOutcome(
+            ads=[],
+            notice=(
+                f"Bing còn {đã_bỏ} video {site.ten} cho \"{keyword}\" nhưng tất cả đã bị gỡ "
+                "hoặc chuyển riêng tư — chỉ mục của Bing cũ hơn sàn."
+            ),
+        )
+    if đã_bỏ:
+        return PlatformSearchOutcome(
+            ads=ads[: request.limit],
+            notice=f"Đã bỏ {đã_bỏ} video {site.ten} không còn xem được (Bing vẫn giữ trong chỉ mục).",
         )
     return PlatformSearchOutcome(ads=ads[: request.limit])

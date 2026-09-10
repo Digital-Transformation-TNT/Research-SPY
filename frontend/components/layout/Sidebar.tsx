@@ -159,14 +159,24 @@ export default function Sidebar() {
   }, [])
 
   const logout = () => {
-    ;['rs_token', 'rs_email', 'rs_role', 'rs_user_id', 'rs_display', 'rs_username', 'rs_loginAt'].forEach((k) =>
-      localStorage.removeItem(k),
-    )
+    // `rs_bu` + `rs_bu_thresh` PHẢI nằm trong danh sách này. Chúng là chính sách của MỘT NGƯỜI,
+    // không phải thiết lập của cái máy: bỏ sót thì người đăng nhập sau trên cùng trình duyệt
+    // (máy dùng chung ở văn phòng) thừa hưởng ngưỡng xanh của người trước, và không có gì trên
+    // màn hình nói rằng con số ấy không phải của họ.
+    ;[
+      'rs_token', 'rs_email', 'rs_role', 'rs_user_id', 'rs_display', 'rs_username', 'rs_loginAt',
+      'rs_bu', 'rs_bu_thresh',
+    ].forEach((k) => localStorage.removeItem(k))
     window.location.replace(withBase('/login'))
   }
 
-  // Admin thấy thêm nhóm Quản trị. Chỉ ghép sau khi mounted để không nháy nhóm này với user thường.
-  const groups = mounted && role === 'admin' ? [...GROUPS, ADMIN_GROUP] : GROUPS
+  // Admin VÀ owner thấy thêm nhóm Quản trị. Chỉ ghép sau khi mounted để không nháy nhóm này
+  // với user thường.
+  //
+  // `owner` phải có mặt ở đây: nó là vai trò CAO HƠN admin, nên kiểm `=== 'admin'` sẽ khoá
+  // đúng người có nhiều quyền nhất ra khỏi trang Quản trị — và người duy nhất sửa được việc
+  // đó lại chính là họ.
+  const groups = mounted && (role === 'admin' || role === 'owner') ? [...GROUPS, ADMIN_GROUP] : GROUPS
 
   return (
     <aside className="sidebar">

@@ -16,6 +16,17 @@ diện nhúng player theo `permalink`.
 GIỚI HẠN: đây là CHỈ MỤC của Bing, không phải bảng xếp hạng TikTok. Video quá mới có thể chưa
 được lập chỉ mục, nên nguồn này KHÔNG thay đường tìm thật trong tab TikTok của máy-thợ; nó là
 đường chạy được ở MỌI máy, kể cả khi không có máy-thợ nào online.
+
+CHỈ MỤC CŨ HƠN SÀN, nên phải lọc lại — đo 2026-09-10. Bing vẫn trả thẻ đầy đủ (tiêu đề, ảnh
+bìa, lượt xem) cho video ĐÃ BỊ GỠ, và thẻ ấy nhìn không khác gì thẻ tốt; chỉ tới lúc bấm ▶ mới
+hiện "Video currently unavailable" trong khung nhúng. Nhìn thấy tận mắt trên chính
+`tntecom.com`: id `7653092931838037268` mà Bing trả về cho "tai nghe bluetooth" ra đúng màn
+hình chết ấy.
+
+oEmbed phân biệt được hai loại, và đó là lý do nó được dùng làm bộ lọc:
+
+    video đã gỡ   `https://www.tiktok.com/oembed?url=…`  →  400 {"message":"Something went wrong"}
+    video còn sống                                        →  200 kèm tiêu đề + tác giả
 """
 
 from __future__ import annotations
@@ -39,6 +50,8 @@ _SITE = BingSite(
     doc_id=tach_tiktok,
     dung_link=lambda tác_giả, vid: f"https://www.tiktok.com/@{tác_giả}/video/{vid}",
     ten="TikTok",
+    #: Lọc video đã chết trước khi trả về — xem `BingSite.oembed`.
+    oembed="https://www.tiktok.com/oembed",
 )
 
 

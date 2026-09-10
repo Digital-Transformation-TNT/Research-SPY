@@ -68,7 +68,9 @@ window.rsAuthFetch = async function (url, options = {}) {
   const r = await fetch(url, Object.assign({}, options, { headers }));
   // 401 = token hết hạn hoặc sai → về login.
   if (r.status === 401) {
-    ['rs_token', 'rs_email', 'rs_display', 'rs_role', 'rs_user_id', 'rs_username'].forEach((k) => localStorage.removeItem(k));
+    // Kèm 'rs_bu' + 'rs_bu_thresh': ngưỡng xanh là chính sách của MỘT NGƯỜI, không phải thiết
+    // lập của cái máy — xem `Sidebar.tsx::logout`.
+    ['rs_token', 'rs_email', 'rs_display', 'rs_role', 'rs_user_id', 'rs_username', 'rs_bu', 'rs_bu_thresh'].forEach((k) => localStorage.removeItem(k));
     window.top.location.replace(LOGIN_URL);
     throw new Error('Phiên đã hết hạn');
   }
@@ -330,7 +332,25 @@ function curVnd(cur) {
   try { const v = parseFloat(localStorage.getItem('rs_cost_curvnd_' + cur)); if (v > 0) return v; } catch (e) {}
   return CUR_VND_DEFAULTS[cur] != null ? CUR_VND_DEFAULTS[cur] : 1;
 }
-function costThresh() { try { const v = parseFloat(localStorage.getItem('rs_cost_thresh')); return v > 0 ? v : COST_THRESH_DEFAULT; } catch (e) { return COST_THRESH_DEFAULT; } }
+// NGƯỠNG XANH RƠI THEO BA BẬC, và thứ tự này là toàn bộ ý nghĩa của nó:
+//
+//   1. `rs_cost_thresh`  người dùng TỰ đặt trong modal Giá vốn        → luôn thắng
+//   2. `rs_bu_thresh`    mặc định theo BU, server gửi lúc đăng nhập   → BU1 20%, còn lại 30%
+//   3. `COST_THRESH_DEFAULT`                                          → chưa đăng nhập
+//
+// Bậc 1 phải đứng trên bậc 2, nếu không thì mỗi lần đăng nhập lại là thiết lập riêng của
+// người dùng bị nuốt mất mà không có gì báo. Bậc 2 do `backend/lib/core/bu.py` tính chứ
+// không tra ở đây — chép bảng BU→ngưỡng sang JavaScript nghĩa là thêm một BU phải nhớ sửa
+// hai nơi, và nơi quên sửa sẽ hỏng im lặng (vẫn hiện một con số, chỉ là của BU khác).
+function costThresh() {
+  try {
+    const rieng = parseFloat(localStorage.getItem('rs_cost_thresh'));
+    if (rieng > 0) return rieng;
+    const theoBu = parseFloat(localStorage.getItem('rs_bu_thresh'));
+    if (theoBu > 0) return theoBu;
+  } catch (e) { /* trình duyệt chặn localStorage → dùng mặc định */ }
+  return COST_THRESH_DEFAULT;
+}
 // Giá bán đối thủ (tiền sàn) → quy ¥: price × ([nước]→₫) ÷ (¥→₫). Null nếu thiếu/không hợp lệ.
 function sellToCny(cur, price) {
   if (price == null || !(price > 0)) return null;
@@ -2251,8 +2271,14 @@ const VID_SOURCES = [
  * đúng một nguồn xem-được; giờ YouTube cũng nhúng được, mà nó lại là nguồn ĐÔNG video nhất —
  * để nguyên thì thẻ YouTube chỉ còn là ảnh bìa tĩnh, xem được duy nhất bằng cách mở tab mới.
  *
- * Douyin CỐ Ý không có ở đây: nó không mở player cho người ngoài, nên thẻ Douyin vẫn là ảnh
- * bìa kèm link, đúng như trước.
+ * Douyin CŨNG nhúng được — xem ghi chú ngay trong thân hàm. Dòng cũ ở đây nói ngược lại
+ * ("không mở player cho người ngoài") và đã sai từ 2026-09-09.
+ *
+ * MỘT THẺ CÓ ▶ LÀ MỘT LỜI HỨA. Chỉ trả về link nhúng cho nguồn ĐÃ XEM TẬN MẮT là phát được;
+ * nguồn nào chưa kiểm thì để rơi xuống ảnh bìa + link, vì một nút ▶ mở ra "Video currently
+ * unavailable" còn tệ hơn một tấm ảnh tĩnh — người dùng mất một cú bấm mới biết là không có gì.
+ * Video CHẾT thì đã bị chặn từ phía server (`lib/ads/bingvideo.py::_loc_con_song`), chứ không
+ * lọc ở đây: lọc ở đây thì thẻ vẫn được đếm vào chip lọc rồi mới biến mất.
  */
 function vidEmbed(ad) {
   if (!ad || !ad.id) return '';
