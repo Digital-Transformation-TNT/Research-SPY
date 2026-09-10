@@ -107,8 +107,12 @@ VIDEO_TIMEOUT_S = 155.0
 SUBMIT_TIMEOUTS: dict[str, float] = {
     # Shopee render kết quả chậm hơn hạn chung: extension chờ tới 22s mới bỏ cuộc, nên hạn
     # ở đây phải rộng hơn — nếu không backend cắt trước và nuốt mất lý do mà extension vừa
-    # soạn ra. Thứ tự bắt buộc: 22s (extension) < 40s (trang máy-thợ) < 45s (đây).
-    "RS_SHOPEE": 45.0,
+    # soạn ra. Thứ tự bắt buộc: 44s (extension) < 75s (trang máy-thợ) < 85s (đây).
+    #
+    # 44s chứ không phải 22s: đường DANH MỤC chộp HAI trang, mỗi trang một hạn 22s riêng.
+    # Bộ ba cũ (22 < 40 < 45) tính cho một lượt chộp và đã sai từ lúc thêm trang thứ hai —
+    # sai im lặng, vì trang đầu thường xong trong 3s nên chỉ lúc sàn chậm mới vỡ ra.
+    "RS_SHOPEE": 85.0,
     # Google chỉ là MỘT lần tải trang cộng một lượt cuộn — rẻ hơn hẳn hai nguồn video kia,
     # nên không cần tới ngân sách của chúng.
     "RS_GOOGLE_VIDEOS": 60.0,
@@ -215,10 +219,16 @@ def inflight_count() -> int:
 
 
 async def run_on_worker(
-    job_type: str, payload: dict[str, Any], timeout_s: float = SUBMIT_TIMEOUT_S
+    job_type: str, payload: dict[str, Any], timeout_s: float | None = None
 ) -> Any:
     """
     Sai một job xuống máy-thợ và chờ kết quả.
+
+    HẠN GIỜ MẶC ĐỊNH LẤY THEO LOẠI JOB, không phải `SUBMIT_TIMEOUT_S` chung. Trước đây chỉ
+    endpoint HTTP `app/api/relay.py` gọi `submit_timeout_for`, nên mọi lời gọi TỪ TRONG
+    server — vòng cào danh mục, chụp theo từ khoá — đều dùng 45s dù bảng `SUBMIT_TIMEOUTS`
+    ghi con số khác hẳn cho loại job ấy. Bảng có mà không ai đọc, và hậu quả là job bị cắt
+    ngang đúng ở những nguồn được cấp ngân sách rộng nhất.
 
     Ném `WorkerOffline` NGAY khi không có thợ, thay vì để người gọi chờ hết giờ rồi mới biết:
     hai tình huống này cần hai câu thông báo khác hẳn nhau, và gộp chúng lại thành một lần
@@ -229,6 +239,8 @@ async def run_on_worker(
     """
     if job_type not in ALLOWED_TYPES:
         raise ValueError(f"type không hợp lệ: {job_type!r}")
+    if timeout_s is None:
+        timeout_s = submit_timeout_for(job_type)
     if not worker_online():
         raise WorkerOffline(
             f"Chưa có máy-thợ nào online. Mở trang {WORKER_PAGE_PATH} trên máy đã cài extension."

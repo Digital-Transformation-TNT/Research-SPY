@@ -2404,8 +2404,10 @@ async function searchShopee(msg) {
       // riêng nó không phân biệt được trang 1 với trang 2: lượt chụp trang 2 nhận lại đúng
       // response của trang 1 còn sót, và cả danh mục dừng ở 60 mục thay vì 100. Shopee đánh
       // offset bằng `newest` (0, 60, 120…) — đó mới là thứ khác nhau giữa hai trang.
+      // Chỉ kiểm tab sắp xếp ở TRANG ĐẦU: sang trang 2 thì lựa chọn đã dính vào phiên,
+      // kiểm lại chỉ tốn thêm ngân sách của một chuỗi hạn giờ vốn đã chật.
       last = await shopeeCapture(domain, url, 'match_id|catid|category', catId,
-                                 `newest=${page * 60}`);
+                                 `newest=${page * 60}`, page === 0);
       if (last.blocked && last.reason) return last;      // login / xác minh: dừng hẳn
       for (const t of (last.texts || [])) texts.push(t);
       if (!last.texts || !last.texts.length) break;      // trang rỗng thì trang sau cũng rỗng
@@ -2416,7 +2418,7 @@ async function searchShopee(msg) {
   return shopeeCapture(domain, url, 'keyword', msg.keyword || '');
 }
 
-async function shopeeCapture(domain, pageUrl, param, want, mustHave) {
+async function shopeeCapture(domain, pageUrl, param, want, mustHave, clickSort) {
   try {
     // Dùng lại tab shopee CÓ SẴN (không đẻ tab thừa), navigate ngầm (active:false → không cướp focus).
     // search_items bắn NGAY khi load → thoát ngay khi chộp được (nhanh ~2-3s), không chờ/không cuộn.
@@ -2432,13 +2434,13 @@ async function shopeeCapture(domain, pageUrl, param, want, mustHave) {
     //
     // Chỉ bấm khi tab đang chọn KHÁC "bán chạy": bấm lại tab đang chọn cũng làm trang bắn
     // thêm một lượt `search_items`, và lượt thừa đó đua với lượt đang chờ chộp.
-    if (/[?&]sortBy=sales/.test(pageUrl)) {
+    if (clickSort && /[?&]sortBy=sales/.test(pageUrl)) {
       try {
         await chrome.scripting.executeScript({
           target: { tabId: tab.id }, world: 'MAIN',
           func: () => {
             const NHAN = ['top sales', 'bán chạy', 'ban chay'];
-            const den = Date.now() + 8000;
+            const den = Date.now() + 5000;
             const tim = () => [...document.querySelectorAll('div,button,a,span')].find((e) => {
               const t = (e.textContent || '').trim().toLowerCase();
               return t.length < 24 && NHAN.some((n) => t === n);

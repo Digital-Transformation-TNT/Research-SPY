@@ -59,7 +59,10 @@ let _seq = 0;
  * được với việc thật sự không có video nào. Thêm nguồn dài mới thì thêm dòng ở đây TRƯỚC.
  */
 const JOB_TIMEOUT_MS = {
-  RS_SHOPEE: 40000,         // extension chờ 22s + mở tab + điều hướng; trần 28s từng bị chạm
+  RS_SHOPEE: 75000,         // HAI trang mỗi danh mục, mỗi trang tới 22s (=44s) + kiểm tab
+                            // sắp xếp + mở tab + điều hướng. Trần 40s cũ tính cho MỘT lượt
+                            // chộp — đường danh mục vượt nó mà không ai thấy, vì trang đầu
+                            // thường chộp được trong 3s nên trần chỉ bị chạm lúc sàn chậm.
                             // dù extension chưa vượt 22s. Chuỗi đúng: 22s < 40s < 45s.
   RS_TEMU_SUGGEST: 165000,  // 4 cụm, mỗi cụm còn mở thêm trang kết quả; extension chờ 150s
   RS_LENS_IMAGE: 88000,     // mở google.com, thả ảnh, chờ trang kết quả, cuộn cho ảnh kịp tải
