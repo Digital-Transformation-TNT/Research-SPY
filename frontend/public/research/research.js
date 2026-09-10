@@ -617,7 +617,18 @@ let sortKey = 'score';
 function esc(s) { return String(s == null ? '' : s).replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
 function setStatus(msg, kind) { $('statusText').textContent = msg; $('status').className = 'status' + (kind ? ' ' + kind : ''); }
 function fmtInt(n) { return typeof n === 'number' ? n.toLocaleString('vi-VN') : '—'; }
-function fmtPrice(v, cur) { return v == null ? '—' : v.toLocaleString('vi-VN') + ' ' + cur; }
+// Đồng tiền nào có KÝ HIỆU mà cả tool đã dùng sẵn thì viết bằng ký hiệu ấy, không viết mã ISO.
+//
+// Chỉ có CNY, và nó có mặt ở đây vì một lý do cụ thể: cột "Giá vốn 1688" viết `¥13`, còn cột
+// "Giá đối thủ" ngay bên cạnh lại viết `13 CNY` cho ĐÚNG cùng một đồng tiền trên cùng một
+// dòng. Người đọc bảng không có cách nào biết đó là một thứ, và sẽ đi tìm tỉ giá giữa hai
+// cái không tồn tại. (`curTuChu` đã coi `¥` là CNY từ trước — chỗ này chỉ nói cho khớp.)
+const CUR_SYMBOL = { CNY: '¥' };
+function fmtPrice(v, cur) {
+  if (v == null) return '—';
+  const so = v.toLocaleString('vi-VN');
+  return CUR_SYMBOL[cur] ? CUR_SYMBOL[cur] + so : so + ' ' + cur;
+}
 
 /**
  * GIÁ ĐEM RA DÙNG — cận TRÊN khi sàn có trả, không thì con số duy nhất nó cho.
