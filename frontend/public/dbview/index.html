@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Research SPY — Kho dữ liệu</title>
+<!--
+  XEM KHO `hub_data.db` BẰNG MẮT. Chỉ đọc, không nút nào ở đây ghi gì.
+
+  Trang TĨNH trong `frontend/public/`, nên sửa xong chỉ cần restart service frontend — không
+  phải `npm run build`. Địa chỉ thật: https://tntecom.com/research/dbview/index.html
+  (Next chạy với basePath `/research`).
+
+  Gọi `/api/hub/db/*` cùng origin: Caddy đẩy `/api` về Next, Next rewrite sang uvicorn. Đừng
+  đổi sang URL tuyệt đối — sẽ mất cùng-origin và vướng CORS mà không được gì.
+
+  KHÔNG dùng framework, không bundler. Cả trang là một file để người trực đêm mở ra sửa được
+  ngay trên máy chủ, cùng lý do với trang máy-thợ bên cạnh.
+-->
+<style>
+  :root {
+    --nen: #fbfbfa; --the: #fff; --vien: #e5e3df; --chu: #1c1b1a; --mo: #6b6864;
+    --xanh: #2f6f4e; --do: #b3402f; --vang: #9a6b1e; --xanh-nhat: #eef5f1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --nen: #17181a; --the: #1e2023; --vien: #2f3237; --chu: #e8e6e3; --mo: #9b9894;
+      --xanh: #7fbf9a; --do: #e08977; --vang: #d9ad63; --xanh-nhat: #1d2a23;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--nen); color: var(--chu);
+         font: 14px/1.5 ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
+  header { padding: 18px 22px; border-bottom: 1px solid var(--vien); background: var(--the);
+           display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
+  h1 { font-size: 16px; margin: 0; font-weight: 620; }
+  .mo { color: var(--mo); }
+  main { padding: 20px 22px 60px; max-width: 1200px; }
+  .tab { display: flex; gap: 4px; margin-bottom: 18px; flex-wrap: wrap; }
+  .tab button { border: 1px solid var(--vien); background: var(--the); color: var(--chu);
+                padding: 6px 14px; border-radius: 7px; cursor: pointer; font-size: 13px; }
+  .tab button[aria-selected="true"] { background: var(--chu); color: var(--nen);
+                                      border-color: var(--chu); }
+  select { border: 1px solid var(--vien); background: var(--the); color: var(--chu);
+           padding: 5px 9px; border-radius: 6px; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 26px; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--vien);
+           vertical-align: top; }
+  th { font-weight: 600; color: var(--mo); font-size: 12px; text-transform: uppercase;
+       letter-spacing: .03em; }
+  td.so, th.so { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr:hover { background: var(--xanh-nhat); }
+  .ok { color: var(--xanh); } .loi { color: var(--do); } .rong { color: var(--vang); }
+  .nut { border: 0; background: none; color: inherit; font: inherit; cursor: pointer;
+         text-align: left; padding: 0; text-decoration: underline; text-underline-offset: 3px;
+         text-decoration-color: var(--vien); }
+  .khung { overflow-x: auto; }
+  .ghi { color: var(--mo); font-size: 12px; max-width: 520px; }
+  h2 { font-size: 14px; margin: 26px 0 2px; font-weight: 620; }
+  .cot2 { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+  @media (max-width: 760px) { .cot2 { grid-template-columns: 1fr; } }
+  img.anh { width: 40px; height: 40px; object-fit: cover; border-radius: 5px;
+            border: 1px solid var(--vien); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Research SPY — Kho dữ liệu</h1>
+  <span class="mo" id="capnhat">đang tải…</span>
+  <span style="margin-left:auto"></span>
+  <label class="mo">Ngày <select id="ngay"></select></label>
+  <label class="mo">Nước <select id="nuoc">
+    <option value="vn">vn</option><option value="ph">ph</option></select></label>
+</header>
+<main>
+  <div class="tab" role="tablist">
+    <button role="tab" data-tab="tong" aria-selected="true">Tổng quan</button>
+    <button role="tab" data-tab="shopee" aria-selected="false">Shopee</button>
+    <button role="tab" data-tab="trends" aria-selected="false">Trends</button>
+  </div>
+  <div id="than"></div>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+const than = $("#than");
+let TAB = "tong";
+
+const esc = (v) => String(v ?? "").replace(/[&<>"]/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const so = (v) => (v === null || v === undefined || v === "") ? "" : Number(v).toLocaleString("vi-VN");
+
+async function lay(duong) {
+  const r = await fetch(duong, { headers: { accept: "application/json" } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+/** Bảng dựng từ mảng bản ghi. `cot` = [[khoá, nhãn, kiểu]]; kiểu 'so' canh phải. */
+function bang(rows, cot, khiBam) {
+  if (!rows || !rows.length) return `<p class="mo">Không có dòng nào.</p>`;
+  const th = cot.map(([, nhan, k]) => `<th class="${k === "so" ? "so" : ""}">${esc(nhan)}</th>`).join("");
+  const tr = rows.map((r, i) => "<tr>" + cot.map(([k, , kieu]) => {
+    let v = r[k];
+    if (kieu === "so") return `<td class="so">${so(v)}</td>`;
+    if (kieu === "trangthai") {
+      const lop = v === "ok" ? "ok" : v === "error" ? "loi" : "rong";
+      return `<td class="${lop}">${esc(v)}</td>`;
+    }
+    if (kieu === "anh") return `<td>${v ? `<img class="anh" src="${esc(v)}" loading="lazy" alt="">` : ""}</td>`;
+    if (kieu === "ghi") return `<td class="ghi">${esc(v)}</td>`;
+    if (kieu === "mo") return `<td class="mo">${esc(Array.isArray(v) ? v.join(", ") : v)}</td>`;
+    if (kieu === "bam") return `<td><button class="nut" data-i="${i}">${esc(v)}</button></td>`;
+    return `<td>${esc(v)}</td>`;
+  }).join("") + "</tr>").join("");
+  const html = `<div class="khung"><table><thead><tr>${th}</tr></thead><tbody>${tr}</tbody></table></div>`;
+  if (!khiBam) return html;
+  // Gắn sự kiện sau khi nơi gọi đã nhét html vào DOM.
+  queueMicrotask(() => than.querySelectorAll("button.nut[data-i]").forEach((b) => {
+    b.onclick = () => khiBam(rows[Number(b.dataset.i)]);
+  }));
+  return html;
+}
+
+async function veTong() {
+  const d = await lay("/api/hub/db/overview");
+  than.innerHTML = `
+    <h2>Số dòng từng bảng</h2>
+    ${bang(d.tables, [["name", "Bảng"], ["rows", "Dòng", "so"]])}
+    <div class="cot2">
+      <div><h2>Shopee — snapshot theo ngày</h2>
+        ${bang(d.snapshot, [["day", "Ngày"], ["market", "Nước"], ["categories", "Ngành", "so"],
+                            ["products", "Sản phẩm", "so"], ["rows", "Dòng", "so"]])}</div>
+      <div><h2>Trends — xếp hạng theo ngày</h2>
+        ${bang(d.trends, [["day", "Ngày"], ["market", "Nước"], ["categories", "Danh mục", "so"],
+                          ["rows", "Dòng", "so"]])}</div>
+    </div>
+    <h2>Nhật ký cào</h2>
+    <p class="mo">“rỗng” khác “lỗi”: rỗng là cào xong mà nguồn không có gì, lỗi là không cào được.</p>
+    ${bang(d.crawl, [["day", "Ngày"], ["source", "Nguồn"], ["market", "Nước"],
+                     ["ok", "OK", "so"], ["empty", "Rỗng", "so"], ["error", "Lỗi", "so"],
+                     ["rows", "Dòng", "so"]])}`;
+}
+
+async function veShopee(nuoc, ngay) {
+  const d = await lay(`/api/hub/db/shopee?market=${nuoc}&day=${ngay}`);
+  than.innerHTML = `<h2>Shopee ${esc(nuoc)} · ${esc(d.day)}</h2>
+    <p class="mo">Bấm tên ngành để xem sản phẩm đã cào, theo đúng thứ hạng.</p>` +
+    bang(d.categories.map((r) => ({ ...r, ten: `${r.main_name || "?"} › ${r.sub_name || r.category_code}` })),
+      [["ten", "Ngành", "bam"], ["category_code", "Mã"], ["status", "Trạng thái", "trangthai"],
+       ["in_db", "Trong kho", "so"], ["note", "Lý do nếu hỏng", "ghi"]],
+      async (r) => {
+        const p = await lay(`/api/hub/db/shopee?market=${nuoc}&day=${d.day}&category=${r.category_code}`);
+        than.insertAdjacentHTML("beforeend",
+          `<h2>${esc(r.ten)} — ${p.products.length} sản phẩm</h2>` +
+          bang(p.products, [["rank", "Hạng", "so"], ["image_url", "", "anh"], ["title", "Tên"],
+                            ["price", "Giá", "so"], ["sold_cumulative", "Đã bán", "so"],
+                            ["sold_monthly", "Bán 30 ngày", "so"], ["rating", "Sao"],
+                            ["reviews", "Đánh giá", "so"], ["shop_id", "Shop"]]));
+        than.lastElementChild.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+}
+
+async function veTrends(nuoc, ngay) {
+  const d = await lay(`/api/hub/db/trends?market=${nuoc}&day=${ngay}`);
+  than.innerHTML = `<h2>Google Trends ${esc(nuoc)} · ${esc(d.day)}</h2>
+    <p class="mo">Lưu THỨ HẠNG, không lưu chỉ số 0–100 — Google chuẩn hoá lại thang mỗi lần hỏi.
+    Bấm tên danh mục để xem hai bảng từ khoá.</p>` +
+    bang(d.categories.map((r) => ({ ...r, ten: r.cat_name ? `${r.category_code} ${r.cat_name}` : r.category_code })),
+      [["ten", "Danh mục Trends", "bam"], ["status", "Trạng thái", "trangthai"],
+       ["n_top", "Hàng đầu", "so"], ["n_rising", "Đang tăng", "so"],
+       ["shopee", "Ngành Shopee dùng", "mo"], ["note", "Lý do nếu hỏng", "ghi"]],
+      async (r) => {
+        const k = await lay(`/api/hub/db/trends?market=${nuoc}&day=${d.day}&category=${r.category_code}`);
+        than.insertAdjacentHTML("beforeend", `<h2>${esc(r.ten)}</h2><div class="cot2">
+          <div><h2>Hàng đầu</h2>${bang(k.top, [["rank", "#", "so"], ["keyword", "Từ khoá"]])}</div>
+          <div><h2>Đang tăng</h2>${bang(k.rising, [["rank", "#", "so"], ["keyword", "Từ khoá"]])}</div>
+        </div>`);
+        than.lastElementChild.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+}
+
+async function ve() {
+  than.innerHTML = `<p class="mo">Đang tải…</p>`;
+  const nuoc = $("#nuoc").value, ngay = $("#ngay").value || "";
+  try {
+    if (TAB === "tong") await veTong();
+    else if (TAB === "shopee") await veShopee(nuoc, ngay);
+    else await veTrends(nuoc, ngay);
+    $("#capnhat").textContent = "cập nhật " + new Date().toLocaleTimeString("vi-VN");
+  } catch (e) {
+    than.innerHTML = `<p class="loi">Không đọc được kho: ${esc(e.message)}</p>`;
+  }
+}
+
+document.querySelectorAll("[role=tab]").forEach((b) => {
+  b.onclick = () => {
+    document.querySelectorAll("[role=tab]").forEach((x) => x.setAttribute("aria-selected", x === b));
+    TAB = b.dataset.tab;
+    ve();
+  };
+});
+$("#nuoc").onchange = ve;
+$("#ngay").onchange = ve;
+
+lay("/api/hub/db/overview").then((d) => {
+  $("#ngay").innerHTML = (d.days || []).map((x) => `<option>${esc(x)}</option>`).join("");
+  ve();
+}).catch(() => ve());
+</script>
+</body>
+</html>

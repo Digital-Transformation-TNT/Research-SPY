@@ -1,4 +1,6 @@
 from __future__ import annotations
+import json
+
 from fastapi import APIRouter, UploadFile, File, Form
 
 from .schemas import (NormalizeRequest, ScoreTitleRequest, ReportRequest,
@@ -596,6 +598,132 @@ def scheduler_status():
     """Lịch chạy nền: job nào chạy lúc mấy giờ, lần cuối chạy khi nào."""
     from . import scheduler
     return scheduler.status()
+
+
+@router.get("/db/verify-product")
+async def db_verify_product(market: str = "vn", product_id: str = "", day: str = ""):
+    """
+    Đối chiếu số ĐÃ BÁN trong kho với số Shopee đang trả ở TRANG CHI TIẾT sản phẩm.
+
+    VÌ SAO CẦN. Kho chép `historical_sold_count` và `monthly_sold_count` từ JSON của trang
+    DANH MỤC — thẻ kết quả. Trang CHI TIẾT là một endpoint khác (`pdp/get_pc`) với bộ trường
+    riêng. Hai chỗ khớp nhau thì con số đáng tin; lệch nhau thì tên trường đang nói dối về nội
+    dung, và mọi phép trừ giữa hai ngày sau này đều xây trên cát.
+
+    ĐI QUA MÁY-THỢ chứ không gọi thẳng: `pdp/get_pc` cũng chặn người gọi ẩn danh y như
+    `search_items` — xem đầu `lib/ads/platforms/shopee.py`. `RS_FETCH` chạy lời gọi TỪ BÊN
+    TRONG tab shopee đã đăng nhập nên mang theo đúng phiên.
+    """
+    from lib.ads.platforms.shopee import DOMAIN
+    from lib.core.worker_relay import WorkerOffline, WorkerTimeout, run_on_worker
+
+    from . import dbview
+
+    day = day or (dbview.days() or [""])[0]
+    with db.connect() as c:
+        row = c.execute(
+            "SELECT * FROM listings_snapshot WHERE market=? AND product_id=? AND day=?",
+            (market.lower(), product_id, day)).fetchone()
+    if not row:
+        return {"error": f"không có {product_id} trong kho ngày {day}"}
+    trong_kho = dict(row)
+
+    shopid, _, itemid = str(product_id).partition("_")
+    domain = DOMAIN.get(market.upper())
+    if not (domain and shopid and itemid):
+        return {"error": f"product_id {product_id!r} không tách được thành shopid_itemid"}
+
+    # HỎI NHIỀU ĐƯỜNG CÙNG MỘT LƯỢT. `pdp/get_pc&detail_level=0` trả 103 khoá mà KHÔNG khoá
+    # nào chứa "sold" — đo 2026-09-11. Thử từng đường một thì mỗi lần đoán sai tốn một vòng
+    # sửa-restart-gọi, nên bắn cả bộ rồi lấy đường nào có số.
+    ngo = {
+        "pdp0": f"https://{domain}/api/v4/pdp/get_pc?item_id={itemid}&shop_id={shopid}&detail_level=0",
+        "pdp1": f"https://{domain}/api/v4/pdp/get_pc?item_id={itemid}&shop_id={shopid}&detail_level=1",
+        "item_get": f"https://{domain}/api/v4/item/get?itemid={itemid}&shopid={shopid}",
+    }
+    try:
+        out = await run_on_worker(
+            "RS_FETCH", {"requests": [{"url": u, "tag": t} for t, u in ngo.items()]})
+    except (WorkerOffline, WorkerTimeout) as e:
+        return {"in_db": trong_kho, "error": str(e)}
+
+    goc: dict = {}
+    for r in (out or {}).get("responses") or []:
+        try:
+            goc[r.get("tag") or "?"] = json.loads(r.get("text") or "{}")
+        except Exception:
+            goc[r.get("tag") or "?"] = {"_khong_phai_json": str(r.get("text"))[:160]}
+
+    item = ((goc.get("pdp0", {}).get("data") or {}).get("item") or {})
+    # DÒ THEO TÊN, KHÔNG CHỐT MỘT TÊN. Lần đầu viết hàm này tôi liệt kê sẵn `historical_sold`,
+    # `sold`, `global_sold_count` — và nhận về rỗng, vì `pdp/get_pc` gọi chúng bằng tên khác.
+    # Đoán tên trường rồi im lặng trả rỗng chính là kiểu hỏng đang muốn truy, nên quét mọi khoá
+    # có chữ "sold" ở mọi độ sâu rồi để người đọc tự so.
+    tren_san: dict = {}
+
+    def quet(nut, duong_dan=""):
+        if isinstance(nut, dict):
+            for k, v in nut.items():
+                moi = f"{duong_dan}.{k}" if duong_dan else k
+                if "sold" in k.lower() and isinstance(v, (int, float, str)):
+                    tren_san[moi] = v
+                elif isinstance(v, (dict, list)) and moi.count(".") < 5:
+                    quet(v, moi)
+        elif isinstance(nut, list):
+            for i, v in enumerate(nut[:3]):
+                quet(v, f"{duong_dan}[{i}]")
+
+    for ten, than in goc.items():
+        quet(than, ten)
+    rating = item.get("item_rating") if isinstance(item.get("item_rating"), dict) else {}
+    tren_san["rating_star"] = rating.get("rating_star")
+    rc = rating.get("rating_count")
+    tren_san["rating_count"] = rc[0] if isinstance(rc, list) and rc else None
+    tren_san["_so_khoa_item"] = len(item)
+
+    return {
+        "product_id": product_id, "day": day, "title": trong_kho.get("title"),
+        "in_db": {k: trong_kho.get(k) for k in
+                  ("sold_cumulative", "sold_monthly", "reviews", "rating", "rank",
+                   "category_code")},
+        "on_shopee": tren_san,
+        "url": trong_kho.get("url"),
+    }
+
+
+# ── XEM KHO DỮ LIỆU ─────────────────────────────────────────────────────────
+# Chỉ đọc. Nuôi trang tĩnh `/research/dbview/index.html`; mọi truy vấn nằm ở `hub/dbview.py`.
+
+
+@router.get("/db/overview")
+def db_overview():
+    """Đếm tổng + nhật ký cào theo ngày. Chỗ nhìn đầu tiên mỗi sáng."""
+    from . import dbview
+    return {"days": dbview.days(), **dbview.overview()}
+
+
+@router.get("/db/shopee")
+def db_shopee(market: str = "vn", day: str = "", category: str = ""):
+    """Không có `category` thì liệt kê ngành; có thì mở ra danh sách sản phẩm."""
+    from . import dbview
+    day = day or (dbview.days() or [""])[0]
+    if category:
+        return {"market": market, "day": day, "category": category,
+                "products": dbview.shopee_products(market, day, category)}
+    return {"market": market, "day": day,
+            "categories": dbview.shopee_categories(market, day)}
+
+
+@router.get("/db/trends")
+def db_trends(market: str = "vn", day: str = "", category: str = ""):
+    """Không có `category` thì liệt kê danh mục; có thì mở ra hai bảng từ khoá."""
+    from . import dbview
+    day = day or (dbview.days() or [""])[0]
+    if category:
+        return {"market": market, "day": day, "category": category,
+                **dbview.trends_keywords(market, day, category)}
+    return {"market": market, "day": day,
+            "categories": dbview.trends_categories(market, day)}
 
 
 @router.post("/scheduler/run")
