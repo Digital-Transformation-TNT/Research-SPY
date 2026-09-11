@@ -602,6 +602,20 @@ def scheduler_status():
     return scheduler.status()
 
 
+@router.post("/signal/snapshot-1688")
+async def signal_snapshot_1688(payload: dict):
+    """
+    Cào top bán chạy theo ngành trên 1688 (bình thường do lịch 00:00 chạy cùng Shopee).
+
+    `redo` để cào lại cả ngành đã `ok` trong ngày. Danh sách ngành nạp bằng
+    `python -m hub.ingestion.map_1688`.
+    """
+    from .ingestion import market_snapshot
+    p = payload or {}
+    return await market_snapshot.snapshot_keyword_categories(
+        "1688", p.get("market") or "cn", redo=bool(p.get("redo")))
+
+
 @router.get("/db/1688-categories")
 async def db_1688_categories(save: bool = False):
     """
