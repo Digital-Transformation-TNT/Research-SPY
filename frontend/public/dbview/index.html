@@ -107,7 +107,11 @@ function bang(rows, cot, khiBam) {
       const lop = v === "ok" ? "ok" : v === "error" ? "loi" : "rong";
       return `<td class="${lop}">${esc(v)}</td>`;
     }
-    if (kieu === "anh") return `<td>${v ? `<img class="anh" src="${esc(v)}" loading="lazy" alt="">` : ""}</td>`;
+    // `referrerpolicy="no-referrer"` KHÔNG PHẢI tuỳ chọn. CDN của 1688 (cbu01.alicdn.com) chặn
+    // hotlink theo Referer: đo 11/09/2026 thì gọi không header trả HTTP 200 kèm 362KB ảnh, còn
+    // gọi kèm `Referer: tntecom.com` trả HTTP 403 dài 304 byte. Trình duyệt tự gửi header ấy
+    // nên mọi ảnh 1688 đều hỏng, và hỏng IM LẶNG — ô ảnh chỉ trống, không báo gì.
+    if (kieu === "anh") return `<td>${v ? `<img class="anh" src="${esc(v)}" loading="lazy" referrerpolicy="no-referrer" alt="">` : ""}</td>`;
     if (kieu === "ghi") return `<td class="ghi">${esc(v)}</td>`;
     if (kieu === "mo") return `<td class="mo">${esc(Array.isArray(v) ? v.join(", ") : v)}</td>`;
     if (kieu === "bam") return `<td><button class="nut" data-i="${i}">${esc(v)}</button></td>`;
@@ -178,8 +182,8 @@ async function ve1688(ngay) {
           `<h2>${esc(r.category_code)} — ${p.products.length} nguồn hàng</h2>` +
           bang(p.products, [["image_url", "", "anh"], ["title", "Tên"],
                             ["price", "Giá CNY", "so"],
-                            ["sold_monthly", "Bán 30 ngày", "so"],
                             ["sold_cumulative", "Đã bán", "so"],
+                            ["sold_monthly", "Bán 30 ngày", "so"],
                             ["sold_type", "Loại số", "mo"],
                             ["rating", "Điểm shop"], ["shop_id", "Xưởng"]]));
         than.lastElementChild.scrollIntoView({ behavior: "smooth", block: "start" });
