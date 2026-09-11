@@ -209,6 +209,22 @@ CREATE TABLE IF NOT EXISTS crawl_log (
     PRIMARY KEY (source, market_code, category_code, day)
 );
 
+-- ══ NGÀNH HÀNG CỦA SÀN KHÔNG-PHẢI-SHOPEE ══
+-- Shopee có `shopee_categories` riêng vì nó mang mã số hai tầng và link của sheet. Các sàn
+-- khác không có hình dạng đó: ngành hàng 1688 CHÍNH LÀ một cụm từ khoá tiếng Trung, nên `code`
+-- ở đây vừa là mã vừa là thứ ném thẳng vào ô tìm kiếm. Đừng ép chúng vào một bảng chung với
+-- Shopee — hai thứ chỉ giống nhau ở cái tên "danh mục".
+CREATE TABLE IF NOT EXISTS crawl_categories (
+    platform    TEXT NOT NULL,             -- 1688 | taobao
+    market      TEXT NOT NULL,             -- cn
+    code        TEXT NOT NULL,             -- với 1688: chính là từ khoá tiếng Trung
+    name        TEXT,
+    parent_code TEXT,
+    active      INTEGER NOT NULL DEFAULT 1,
+    imported_at TEXT NOT NULL,
+    PRIMARY KEY (platform, market, code)
+);
+
 -- AI học hành vi: log thao tác người dùng để cá nhân hóa đề xuất
 CREATE TABLE IF NOT EXISTS events (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

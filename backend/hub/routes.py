@@ -1,5 +1,7 @@
 from __future__ import annotations
 import json
+from datetime import datetime, timezone
+from urllib.parse import unquote
 
 from fastapi import APIRouter, UploadFile, File, Form
 
@@ -598,6 +600,56 @@ def scheduler_status():
     """Lịch chạy nền: job nào chạy lúc mấy giờ, lần cuối chạy khi nào."""
     from . import scheduler
     return scheduler.status()
+
+
+@router.get("/db/1688-categories")
+async def db_1688_categories(save: bool = False):
+    """
+    Bóc danh sách NGÀNH HÀNG của 1688 từ chính menu của sàn, qua tab đã đăng nhập.
+
+    Danh mục 1688 KHÔNG phải mã số như Shopee — mỗi mục trong menu trỏ tới
+    `offer_search.htm?keywords=<tên ngành>`. Tức "cào theo danh mục" ở sàn này CHÍNH LÀ cào
+    theo từ khoá, và đường `RS_1688` sẵn có đã làm đúng việc đó (đã sắp theo GMV 30 ngày).
+
+    Lấy qua `RS_FETCH` chứ không tải thẳng: 1688 chặn người gọi ẩn danh bằng slider Baxia, và
+    quan trọng hơn — menu chỉ trả TÊN TIẾNG TRUNG khi phiên ở chế độ nội địa. Phiên ở chế độ
+    xuyên biên giới trả tên tiếng Anh, mà tên tiếng Anh ném vào ô tìm kiếm 1688 thì ra rất ít
+    hàng vì tiêu đề sản phẩm toàn tiếng Trung.
+    """
+    import re as _re
+    from lib.core.worker_relay import WorkerOffline, WorkerTimeout, run_on_worker
+
+    try:
+        out = await run_on_worker("RS_FETCH", {"requests": [
+            {"url": "https://www.1688.com/", "tag": "home"}]})
+    except (WorkerOffline, WorkerTimeout) as e:
+        return {"error": str(e)}
+
+    raw = ((out or {}).get("responses") or [{}])[0]
+    html = raw.get("text") or ""
+    # Mỗi mục menu là một link `offer_search.htm?...keywords=<tên>`; lấy tên rồi khử trùng.
+    ten = []
+    # Lớp ký tự: mọi thứ trừ nháy, & < > và khoảng trắng — tên ngành nằm gọn trong đó.
+    for m in _re.finditer(r'keywords=([^"\'&<>\\s]{1,60})', html):
+        t = unquote(m.group(1)).strip()
+        if t and t not in ten:
+            ten.append(t)
+    trung = [t for t in ten if _re.search(r"[一-鿿]", t)]
+
+    kq = {"bytes": len(html), "tong_link": len(ten), "tieng_trung": len(trung),
+          "mau": trung[:25]}
+    if save and trung:
+        now = datetime.now(timezone.utc).isoformat()
+        with db.connect() as c:
+            c.executemany(
+                "INSERT INTO crawl_categories"
+                " (platform, market, code, name, active, imported_at)"
+                " VALUES ('1688','cn',?,?,1,?)"
+                " ON CONFLICT(platform, market, code) DO UPDATE SET"
+                "   name=excluded.name, active=1, imported_at=excluded.imported_at",
+                [(t, t, now) for t in trung])
+        kq["da_luu"] = len(trung)
+    return kq
 
 
 @router.get("/db/verify-product")
