@@ -245,14 +245,19 @@ def job_sigcat() -> dict:
     #
     # Vẫn gộp vào MỘT job thay vì ba job ở ba giờ: `_job_locks` chỉ chặn hai lượt của cùng một
     # job, hai job khác nhau không chặn nhau nên sẽ chồng lên nhau khi một cái chạy quá giờ.
-    async def _song_song():
+    async def _song_song(tang: str):
         ket = await asyncio.gather(
-            *(market_snapshot.snapshot_categories(mk) for mk in markets),
+            *(market_snapshot.snapshot_categories(mk, tang=tang) for mk in markets),
             return_exceptions=True)
-        return [r if not isinstance(r, BaseException) else {"market": mk, "error": str(r)[:200]}
+        return [r if not isinstance(r, BaseException)
+                else {"market": mk, "tang": tang, "error": str(r)[:200]}
                 for mk, r in zip(markets, ket)]
 
-    runs = list(asyncio.run(_song_song()))
+    # NGÀNH LỚN TRƯỚC, và thứ tự này có lý do: 44 ngành cấp 1 chỉ mất ~25 phút, còn 403 ngành
+    # con mất hơn ba tiếng. Đêm nào đứt giữa chừng thì thứ đã xong phải là tầng rẻ nhất và là
+    # tầng người dùng nhìn đầu tiên khi mở trang.
+    runs = list(asyncio.run(_song_song("lon")))
+    runs += list(asyncio.run(_song_song("con")))
 
     return {"job": "sigcat", "markets": len(runs), "runs": runs}
 

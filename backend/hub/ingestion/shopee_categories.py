@@ -191,6 +191,29 @@ def active(market: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def parents(market: str) -> list[dict]:
+    """
+    Ngành LỚN của một thị trường — danh mục cấp 1, khử trùng từ cột `main_id`.
+
+    Cào riêng một tầng nữa chứ không cộng dồn ngành con, và đây là điểm dễ hiểu sai. Top 100
+    của "Thời Trang Nam" KHÔNG bằng gộp top 100 của 15 ngành con rồi xếp lại: Shopee xếp hạng
+    trong phạm vi từng danh mục, nên một sản phẩm hạng 40 ở "Áo" có thể là hạng 3 của cả ngành
+    cha, còn hàng bán chạy nhất ngành cha có thể nằm ở một ngành con ta không cào.
+
+    Mã trả về là `main_id`, KHÔNG trùng với bất kỳ `sub_id` nào — nên dòng ngành lớn và dòng
+    ngành con sống chung trong `listings_snapshot` mà không đè nhau (`category_code` nằm trong
+    khoá chính), và `crawl_log` cũng tách bạch từng tầng.
+    """
+    with db.connect() as c:
+        rows = c.execute(
+            "SELECT DISTINCT main_id, main_name FROM shopee_categories"
+            " WHERE market=? AND active=1 ORDER BY CAST(main_id AS INTEGER)",
+            (market.lower(),)).fetchall()
+    return [{"market": market.lower(), "main_id": r["main_id"], "sub_id": r["main_id"],
+             "main_name": r["main_name"], "sub_name": r["main_name"], "url": ""}
+            for r in rows]
+
+
 def markets() -> list[str]:
     """
     Những thị trường đang có ngành bật — tức những thị trường đáng đi cào.

@@ -150,9 +150,12 @@ async function veTong() {
 async function veShopee(nuoc, ngay) {
   const d = await lay(`/api/hub/db/shopee?market=${nuoc}&day=${ngay}`);
   than.innerHTML = `<h2>Shopee ${esc(nuoc)} · ${esc(d.day)}</h2>
-    <p class="mo">Bấm tên ngành để xem sản phẩm đã cào, theo đúng thứ hạng.</p>` +
+    <p class="mo">Hai tầng: <b>lớn</b> là danh mục cấp 1 (Thời Trang Nam…), <b>con</b> là ngành
+    chi tiết (Quần Jeans…). Cào riêng chứ không cộng dồn — thứ hạng của Shopee tính trong phạm
+    vi từng danh mục. Bấm tên ngành để xem sản phẩm.</p>` +
     bang(d.categories.map((r) => ({ ...r, ten: `${r.main_name || "?"} › ${r.sub_name || r.category_code}` })),
-      [["ten", "Ngành", "bam"], ["category_code", "Mã"], ["status", "Trạng thái", "trangthai"],
+      [["ten", "Ngành", "bam"], ["tang", "Tầng", "mo"], ["category_code", "Mã"],
+       ["status", "Trạng thái", "trangthai"],
        ["in_db", "Trong kho", "so"], ["note", "Lý do nếu hỏng", "ghi"]],
       async (r) => {
         const p = await lay(`/api/hub/db/shopee?market=${nuoc}&day=${d.day}&category=${r.category_code}`);

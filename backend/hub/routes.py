@@ -1223,4 +1223,5 @@ async def signal_snapshot_categories(payload: dict):
     p = payload or {}
     only = [c for c in (p.get("only") or []) if isinstance(c, (int, str))]
     return await market_snapshot.snapshot_categories(
-        p.get("market") or "ph", only or None, redo=bool(p.get("redo")))
+        p.get("market") or "ph", only or None, redo=bool(p.get("redo")),
+        tang=("lon" if str(p.get("tang") or "con").lower() in ("lon", "lớn") else "con"))

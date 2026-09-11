@@ -71,7 +71,13 @@ def shopee_categories(market: str, day: str) -> list[dict]:
     with db.connect() as c:
         rows = c.execute(
             "SELECT l.category_code, l.status, l.n_rows, l.note,"
-            "       sc.main_name, sc.sub_name,"
+            # Ngành LỚN có `category_code` = `main_id`, không khớp `sub_id` nào — nên tên của
+            # nó phải tra bằng một truy vấn con riêng, nếu không bảng hiện mã trần.
+            "       COALESCE(sc.main_name, (SELECT p.main_name FROM shopee_categories p"
+            "         WHERE p.market=l.market_code AND p.main_id=l.category_code LIMIT 1))"
+            "         AS main_name,"
+            "       sc.sub_name,"
+            "       CASE WHEN sc.sub_id IS NULL THEN 'lớn' ELSE 'con' END AS tang,"
             "       (SELECT COUNT(*) FROM listings_snapshot s"
             "         WHERE s.market=l.market_code AND s.day=l.day"
             "           AND s.category_code=l.category_code) AS in_db"

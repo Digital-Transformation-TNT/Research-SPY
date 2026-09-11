@@ -243,7 +243,7 @@ async def _shopee_category(cat_id: str | int, cat_name: str, market: str,
 
 
 async def snapshot_categories(market: str = "ph", only: list[int | str] | None = None,
-                              redo: bool = False) -> dict:
+                              redo: bool = False, tang: str = "con") -> dict:
     """
     Chụp TOP BÁN CHẠY theo từng danh mục — nguồn chính của bảng Top 10.
 
@@ -273,7 +273,11 @@ async def snapshot_categories(market: str = "ph", only: list[int | str] | None =
     """
     from . import shopee_categories
 
-    cats = shopee_categories.active(market)
+    # `tang`: "con" = 206 ngành con (nguồn chính), "lon" = 24 ngành cấp 1 (để hiển thị top
+    # theo ngành lớn rồi bấm vào xem ngành nhỏ). Hai tầng cào RIÊNG, không cộng dồn — xem
+    # ghi chú ở `shopee_categories.parents`.
+    cats = (shopee_categories.parents(market) if tang == "lon"
+            else shopee_categories.active(market))
     if only:
         keep = {str(c) for c in only}
         cats = [c for c in cats if c["sub_id"] in keep]
@@ -304,8 +308,12 @@ async def snapshot_categories(market: str = "ph", only: list[int | str] | None =
         trace[label] = tr
         started = datetime.now(timezone.utc).isoformat()
         try:
+            # Ngành lớn chỉ có MỘT mã (`-cat.<id>`), ngành con cần cả hai (`-cat.<cha>.<con>`).
+            # `parents()` trả `main_id == sub_id` nên điều kiện này tự phân biệt được.
+            duong = (cat["sub_id"] if cat["main_id"] == cat["sub_id"]
+                     else f'{cat["main_id"]}.{cat["sub_id"]}')
             rows = await _shopee_category(cat["sub_id"], cat["sub_name"], market, tr,
-                                          cat_path=f'{cat["main_id"]}.{cat["sub_id"]}')
+                                          cat_path=duong)
         except (WorkerOffline, WorkerTimeout, RuntimeError) as e:
             failures[label] = str(e)
             store.log_crawl("shopee", market, cat["sub_id"], day, "error",
@@ -319,7 +327,7 @@ async def snapshot_categories(market: str = "ph", only: list[int | str] | None =
         store.log_crawl("shopee", market, cat["sub_id"], day,
                         "ok" if written else "empty", written, None, started)
 
-    return {"platform": "shopee", "market": market, "day": day,
+    return {"platform": "shopee", "market": market, "day": day, "tang": tang,
             "categories": len(cats), "rows": total,
             "skipped_done": len(done),
             "source": "shopee_categories",
