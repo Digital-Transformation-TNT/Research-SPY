@@ -679,6 +679,18 @@ async def db_verify_product(market: str = "vn", product_id: str = "", day: str =
     tren_san["rating_star"] = rating.get("rating_star")
     rc = rating.get("rating_count")
     tren_san["rating_count"] = rc[0] if isinstance(rc, list) and rc else None
+    # NGÀY ĐĂNG BÁN quyết định cách đọc hai con số. 93% doanh số cả đời nằm trong 30 ngày là
+    # BÌNH THƯỜNG với hàng mới lên, và RẤT LẠ với hàng bán ba năm. Không có mốc này thì câu
+    # "đã bán lũy kế" không nói lên điều gì về nhịp bán.
+    for ten, than in goc.items():
+        it = ((than.get("data") or {}).get("item") or {}) if isinstance(than, dict) else {}
+        for k in ("ctime", "liked_count", "view_count", "cmt_count"):
+            if isinstance(it.get(k), (int, float)):
+                tren_san[f"{ten}.{k}"] = it[k]
+        if isinstance(it.get("ctime"), (int, float)):
+            from datetime import datetime, timezone as _tz
+            tren_san[f"{ten}.dang_ban_tu"] = datetime.fromtimestamp(
+                it["ctime"], _tz.utc).date().isoformat()
     tren_san["_so_khoa_item"] = len(item)
 
     return {

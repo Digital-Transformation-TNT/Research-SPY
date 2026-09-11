@@ -122,6 +122,12 @@ SUBMIT_TIMEOUTS: dict[str, float] = {
     "RS_TRENDS_RELATED": TRENDS_TIMEOUT_S,
     "RS_LENS_IMAGE": IMAGE_TIMEOUT_S,
     "RS_TAOBAO_IMAGE": IMAGE_TIMEOUT_S,
+    # Hai sàn mtop. Thứ tự bắt buộc: ~100s (extension) < 120s (trang máy-thợ) < 140s (đây).
+    # Cả hai trước đây không có mục nên dùng chung 45s, và 45s không đủ cho một lượt mở tab
+    # h5api cộng tối đa ba lần ký lại — mọi lượt cào đều chết ở hạn giờ của CHÍNH TA chứ không
+    # phải bị sàn chặn, mà câu báo lỗi lại đọc y hệt nhau.
+    "RS_1688": 140.0,
+    "RS_TAOBAO": 140.0,
     # 4 cụm, mỗi cụm còn mở thêm trang kết quả rồi quay về — xem `searchTemu` phần
     # "ĐƯỜNG HAI". Thứ tự bắt buộc: 150s (extension) < 165s (trang máy-thợ) < 180s (đây).
     "RS_TEMU_SUGGEST": 180.0,

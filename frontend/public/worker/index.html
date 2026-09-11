@@ -67,6 +67,12 @@ const JOB_TIMEOUT_MS = {
   RS_TEMU_SUGGEST: 165000,  // 4 cụm, mỗi cụm còn mở thêm trang kết quả; extension chờ 150s
   RS_LENS_IMAGE: 88000,     // mở google.com, thả ảnh, chờ trang kết quả, cuộn cho ảnh kịp tải
   RS_TAOBAO_IMAGE: 88000,   // mở taobao.com, bấm nút máy ảnh, thả ảnh, chờ tab kết quả
+  // 1688 và Taobao đi qua mtop: mở tab h5api, chờ trang xong (tới 12s), rồi tối đa 3 lượt ký
+  // lại khi token hết hạn. Trước đây cả hai KHÔNG có mục ở đây nên rơi về mặc định 40s — trên
+  // VPS này riêng việc tải trang đã gần hết ngần ấy, nên mọi lượt cào đều chết trước khi mtop
+  // kịp trả lời, và lý do ghi lại chỉ là "hết giờ chờ" chứ không chỉ về phía sàn.
+  RS_1688: 120000,
+  RS_TAOBAO: 120000,
   RS_FB_ADLIB: 80000,       // mở tab Ad Library, chờ trang bắn query + cuộn lấy vài trang (deadline 45s + mở tab)
   RS_TRENDS_RELATED: 110000, // đi tối đa HAI trang: Khám phá mới (30s cuộn) rồi mới rơi về trang cũ (20s), cộng hai lần tải
   RS_TIKTOK: 140000,        // totalDeadline 120s cho cả loạt cụm, cộng mở tab + focus + gom kết quả

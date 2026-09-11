@@ -116,21 +116,42 @@ async def _items_job(job: str, keyword: str, trace: dict) -> list[dict]:
     items = (result or {}).get("items") or []
     trace["items"] = len(items)
     if (result or {}).get("error"):
-        trace["worker_error"] = str(result["error"])[:160]
+        # 600 chứ không phải 240: câu chẩn đoán của máy-thợ chở theo hình dạng phản hồi của
+        # sàn, và cắt nó ở 240 thì đúng phần cần đọc bị mất — đã xảy ra một lần với 1688.
+        trace["worker_error"] = str(result["error"])[:600]
+    # Mã gốc của sàn và địa chỉ trang xác minh, khi máy-thợ có gửi kèm. Hai thứ này phân biệt
+    # "giải xác minh sai chỗ" với "giải rồi vẫn bị chặn" — hai lỗi chữa bằng hai cách khác hẳn.
+    for k in ("ret", "verifyUrl"):
+        if (result or {}).get(k):
+            trace[k] = str(result[k])[:160]
+    # MẪU MỘT SẢN PHẨM khi máy-thợ trả hàng nhưng không dòng nào qua được bộ lọc bên dưới.
+    # "60 sản phẩm, 0 dòng ghi" là con số đọc y hệt "sàn không có hàng", trong khi hai chuyện
+    # đó cách nhau rất xa — một cái là sàn rỗng, một cái là ta bóc hụt trường.
+    if items:
+        m = items[0] or {}
+        trace["mau"] = {k: m.get(k) for k in ("id", "sold", "monthly", "price", "rating", "shop")}
+        trace["mau_keys"] = sorted(m)[:18]
+    if (result or {}).get("shape"):
+        trace["shape"] = str(result["shape"])[:900]
     if not items:
         raise RuntimeError("máy-thợ trả 0 sản phẩm"
                            + (f" · {result.get('error')}" if (result or {}).get("error") else ""))
     rows = []
     for it in items:
-        # `sold` (lũy kế) khi có; không có thì `monthly` — và cờ `sold_type` của sàn đã nói
-        # con số này thuộc loại nào. Không bao giờ trộn hai cái vào một cột im lặng.
-        sold = it.get("sold")
+        # `sold` (lũy kế) khi có; không có thì `monthly`. CỜ ĐI THEO TỪNG DÒNG, không theo sàn.
+        #
+        # Chú thích cũ ở đây nói "cờ `sold_type` của sàn đã nói con số này thuộc loại nào, không
+        # bao giờ trộn hai cái vào một cột im lặng" — nhưng `SOLD_TYPE` là hằng số THEO SÀN, nên
+        # dòng rơi về `monthly` vẫn bị dán nhãn 'cumulative'. Đo 2026-09-11 trên 240 dòng 1688:
+        # 53 dòng (22%) mang số tháng mà nhãn ghi lũy kế. `top10.py` sẽ trừ hai con số ấy giữa
+        # hai ngày và cho ra tăng trưởng của một đại lượng không tồn tại.
+        sold, loai = it.get("sold"), "cumulative"
         if sold is None:
-            sold = it.get("monthly")
+            sold, loai = it.get("monthly"), "monthly"
         if sold is None or not it.get("id"):
             continue
         rows.append({
-            "product_id": str(it["id"]), "sold_cumulative": int(sold),
+            "product_id": str(it["id"]), "sold_cumulative": int(sold), "sold_type": loai,
             "sold_monthly": it.get("monthly"),
             "title": it.get("name"), "price": it.get("price"), "currency": "CNY",
             "rating": it.get("rating"), "reviews": None,
@@ -330,8 +351,10 @@ async def snapshot(platform: str, market: str, keywords: list[str]) -> dict:
             continue
 
         for r in rows:
-            r.update(platform=platform, market=market, day=day,
-                     keyword=kw, sold_type=sold_type)
+            # `setdefault` chứ không `update`: adapter nào đã tự xác định loại cho TỪNG dòng
+            # thì giữ nguyên, hằng số của sàn chỉ là mặc định cho những dòng chưa có.
+            r.setdefault("sold_type", sold_type)
+            r.update(platform=platform, market=market, day=day, keyword=kw)
         total += store.save_snapshot(rows)
 
     return {"platform": platform, "market": market, "day": day,

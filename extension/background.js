@@ -1070,7 +1070,36 @@ async function search1688(keyword, count) {
         // Dò link video trong item (chạy IN-PAGE nên không dùng được rsFindVideoUrl của background).
         function _vid(o, dp) { dp = dp || 0; if (o == null || dp > 5) return ''; if (typeof o === 'string') { return /^(https?:)?\/\//.test(o) && /\.mp4(\?|$)|\.m3u8|cloud\.video|\/video\//i.test(o) ? (o.indexOf('//') === 0 ? 'https:' + o : o) : ''; } if (Array.isArray(o)) { for (var i = 0; i < o.length; i++) { var v = _vid(o[i], dp + 1); if (v) return v; } return ''; } if (typeof o === 'object') { for (var k in o) { var vv = _vid(o[k], dp + 1); if (vv) return vv; } } return ''; }
         const raw = ((((j.data || {}).data || {}).OFFER || {}).items) || [];
+        // RỖNG MÀ KHÔNG BÁO GÌ LÀ KIỂU HỎNG TỆ NHẤT. mtop trả SUCCESS nhưng đường dẫn
+        // `data.data.OFFER.items` rỗng thì có ba nguyên nhân không phân biệt được từ ngoài:
+        // từ khoá thật sự không có hàng, 1688 đổi hình dạng phản hồi, hoặc phiên bị hạ quyền
+        // (đăng nhập hỏng thì mtop vẫn SUCCESS nhưng trả danh sách trống). Khai ra hình dạng
+        // thật để lần sau khỏi phải sửa mù.
+        if (!raw.length) {
+          // `data.data.OFFER` CÓ TỒN TẠI (đo 2026-09-11) nhưng `.items` rỗng — nên soi thẳng
+          // vào OFFER: khoá nào, mảng nào dài bao nhiêu. Đây là chỗ duy nhất còn mù.
+          const off = ((((j.data || {}).data || {}).OFFER) || {});
+          const mang = Object.keys(off).filter((k) => Array.isArray(off[k]))
+                             .map((k) => k + '[' + off[k].length + ']');
+          return { items: [], blocked: false,
+                   error: 'OFFER.keys=' + JSON.stringify(Object.keys(off))
+                        + ' mang=' + JSON.stringify(mang)
+                        + ' tail=' + JSON.stringify(off).slice(0, 220) };
+        }
         const items = [];
+        // KHAI RA HÌNH DẠNG THẬT khi bóc hụt. Đo 2026-09-11: `d.offerId` còn đúng chỗ nhưng
+        // `priceInfo`, `bookedCount`, `afterPrice`, `shop` đều vắng — 1688 đã đổi cấu trúc.
+        // Không có mẫu này thì mỗi lần sàn đổi lại tốn một vòng sửa mù.
+        if (raw.length && raw[0] && raw[0].data) {
+          const d0 = raw[0].data;
+          const rut = {};
+          for (const k of Object.keys(d0)) {
+            const v = d0[k];
+            rut[k] = (v && typeof v === 'object') ? ('{' + Object.keys(v).slice(0, 6).join(',') + '}')
+                                                  : String(v).slice(0, 24);
+          }
+          var _mauD = JSON.stringify(rut).slice(0, 900);
+        }
         for (const it of raw) {
           const d = it && it.data;
           if (!d || !d.offerId) continue;
@@ -1108,16 +1137,31 @@ async function search1688(keyword, count) {
             similar: d.sameDesignUrl || '',                   // link tìm sản phẩm CÙNG MẪU
           });
         }
-        return { items, blocked: false };
+        // Có offer nhưng KHÔNG bóc được số bán ở dòng đầu ⇒ kèm mẫu cấu trúc.
+        const hut = items.length && items[0].sold == null && items[0].monthly == null;
+        return { items, blocked: false, shape: hut ? _mauD : undefined };
       },
     });
     const r = (out && out[0] && out[0].result) || { items: [], blocked: false };
     // 1688 bắt xác minh (kéo slider) — mở trang xác minh cho user giải 1 lần → set cookie x5sec → lần sau qua.
     if (r.error && /VALIDATE/i.test(r.error)) {
-      let vurl = r.verifyUrl || 'https://s.1688.com/';
+      // NÓI RA ĐỊA CHỈ ĐÃ MỞ, và nói rõ khi không có địa chỉ thật.
+      //
+      // `verifyUrl` lấy từ `data.url` của mtop. Khi mtop KHÔNG trả trường đó, dòng cũ rơi về
+      // trang chủ 1688 — nơi không có slider nào cả. Người vận hành mở ra, thấy một trang bình
+      // thường, tưởng đã giải xong, và lần cào sau vẫn chặn y hệt. Câu báo lỗi cũ lại giấu cả
+      // mã gốc lẫn địa chỉ nên không cách nào phân biệt "giải sai chỗ" với "giải rồi vẫn chặn".
+      const thatVurl = r.verifyUrl && String(r.verifyUrl).trim();
+      let vurl = thatVurl || 'https://s.1688.com/';
       if (vurl.indexOf('//') === 0) vurl = 'https:' + vurl;
       await openVerifyTab('verify:1688', vurl);
-      return { items: [], blocked: true, error: 'cần xác minh — đã mở tab 1688, kéo slider xong rồi bấm Research lại' };
+      return {
+        items: [], blocked: true, verifyUrl: vurl, ret: r.error,
+        error: thatVurl
+          ? `1688 bắt xác minh (${r.error}) — đã mở ${vurl}, kéo slider ở ĐÚNG tab đó rồi chạy lại`
+          : `1688 bắt xác minh (${r.error}) nhưng KHÔNG trả địa chỉ trang xác minh, `
+            + `đã mở tạm ${vurl} — trang này thường không có slider, xem ghi chú trong code`,
+      };
     }
     return r;
   } catch (e) {
