@@ -84,7 +84,11 @@ def save_snapshot(rows: list[dict]) -> int:
         vals.append((
             r.get("platform"), r.get("market"), str(r["product_id"]), r.get("day"),
             int(sold), r.get("sold_type") or "cumulative", r.get("sold_monthly"),
-            r.get("rank"), r.get("keyword"), r.get("category_code"),
+            # ÉP None → '' CHO HAI CỘT NẰM TRONG KHOÁ CHÍNH. Chúng là NOT NULL, mà câu lệnh
+            # dưới là `INSERT OR IGNORE` — và IGNORE nuốt luôn vi phạm NOT NULL, không chỉ vi
+            # phạm trùng khoá. Để None lọt xuống thì mỗi dòng bị bỏ IM LẶNG và hàm vẫn trả về
+            # số dòng "đã ghi". Vòng cào danh mục truyền `keyword=None` nên cả mẻ sẽ mất trắng.
+            r.get("rank"), r.get("keyword") or "", r.get("category_code") or "",
             r.get("title"), r.get("price"), r.get("currency"), r.get("rating"),
             r.get("reviews"), r.get("favorites"), r.get("shop_id"),
             r.get("image_url"), r.get("url"), now))

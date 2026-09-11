@@ -106,6 +106,18 @@ CREATE INDEX IF NOT EXISTS idx_td_kw ON trends_daily(keyword, region_code, grain
 -- `sold_type` là chốt an toàn, không phải cột thừa: cả Shopee/Taobao/1688 hiện đều trả số
 -- LŨY KẾ. Ngày nào thêm một nguồn chỉ cho bán-theo-tháng, lớp tính nhìn cờ này là biết
 -- ngay, thay vì lặng lẽ trừ hai đại lượng khác loại rồi cho ra một con số trông vẫn hợp lý.
+-- KHOA CHINH CO CA `category_code` VA `keyword`, khong chi (san, nuoc, san_pham, ngay).
+--
+-- Mot san pham nam o HAI nganh thi la HAI dong voi hai thu hang khac nhau. Khoa cu chi co
+-- (platform, market, product_id, day) nen dong thu hai bi `INSERT OR IGNORE` bo di — va
+-- mat luon thu hang cua no o nganh kia. Do ngay 10/09/2026: nhat ky ghi 17.538 dong vn va
+-- 19.125 dong ph, kho chi giu 17.140 va 18.778 — hut 745 dong (2%), im lang.
+--
+-- Duong cao theo TU KHOA cung can `keyword` trong khoa vi ly do y het: cung mot san pham
+-- ra o hai tu khoa la hai lan quan sat khac nhau.
+--
+-- CA HAI COT PHAI NOT NULL. SQLite cho phep NULL trong khoa chinh va coi hai NULL la KHAC
+-- nhau, nen de nullable thi khoa moi khong chan duoc gi ca — no chi thanh mot cai ten dai.
 CREATE TABLE IF NOT EXISTS listings_snapshot (
     platform        TEXT NOT NULL,             -- shopee | taobao | 1688
     market          TEXT NOT NULL,             -- vn | ph | th | id | cn…
@@ -122,7 +134,11 @@ CREATE TABLE IF NOT EXISTS listings_snapshot (
     -- phẩm mạnh nhất. Ngày không có mặt trong bảng = không có dòng, và lớp tính đọc đó
     -- thành 0 điểm. Xem `signal/top10.py`.
     rank            INTEGER,
-    keyword         TEXT,
+    keyword         TEXT NOT NULL DEFAULT '',
+    -- Ngành mà listing được nhìn thấy trong đó. `rank` chỉ có nghĩa KÈM cột này: hạng 1 của
+    -- "Áo Ba Lỗ" và hạng 1 của "Đồ Chơi" là hai thang khác nhau. Nằm trong khoá chính nên
+    -- một sản phẩm ở hai ngành là hai dòng, giữ được cả hai thứ hạng.
+    category_code   TEXT NOT NULL DEFAULT '',
     title           TEXT,
     price           REAL,                      -- TIỀN GỐC của thị trường, không quy đổi
     currency        TEXT,
@@ -133,7 +149,7 @@ CREATE TABLE IF NOT EXISTS listings_snapshot (
     image_url       TEXT,
     url             TEXT,
     crawled_at      TEXT NOT NULL,
-    PRIMARY KEY (platform, market, product_id, day)
+    PRIMARY KEY (platform, market, product_id, day, category_code, keyword)
 );
 CREATE INDEX IF NOT EXISTS idx_ls_part ON listings_snapshot(platform, market, day);
 
@@ -272,6 +288,8 @@ def init_db() -> None:
                 c.execute(_sql)
             except Exception:
                 pass
+        _migrate_snapshot_pk(c)
+
         # Khử trùng rồi tạo UNIQUE index (sàn, url, keyword) để upsert hoạt động.
         c.execute("""DELETE FROM raw_listings WHERE id NOT IN
                      (SELECT MAX(id) FROM raw_listings GROUP BY platform, url, keyword)""")
@@ -509,3 +527,41 @@ def save_report(kind: str, title: str, content_md: str) -> int:
         cur = c.execute("INSERT INTO reports(kind, title, content_md, created_at) VALUES(?,?,?,?)",
                         (kind, title, content_md, _now()))
         return cur.lastrowid
+
+
+def _migrate_snapshot_pk(c) -> None:
+    """
+    Dựng lại `listings_snapshot` khi kho còn dùng khoá chính cũ.
+
+    KHÔNG CỨU ĐƯỢC DÒNG ĐÃ MẤT. Những dòng bị `INSERT OR IGNORE` bỏ đi ở các lần cào trước
+    không còn ở đâu cả — migration này chỉ làm cho các lần cào SAU không mất nữa.
+
+    Chép sang bảng mới rồi đổi tên, không `ALTER TABLE`: SQLite không sửa được khoá chính tại
+    chỗ. `COALESCE(...,'')` vì hai cột mới phải NOT NULL, còn dòng cũ thì đang để NULL.
+    """
+    row = c.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='listings_snapshot'"
+    ).fetchone()
+    if not row or not row[0]:
+        return                                   # bảng chưa tồn tại — SCHEMA vừa tạo bản mới
+    if "category_code, keyword)" in row[0]:
+        return                                   # đã là khoá mới, không làm gì
+
+    cot = [r[1] for r in c.execute("PRAGMA table_info(listings_snapshot)")]
+    if "category_code" not in cot:
+        return                                   # kho quá cũ, để `ALTER TABLE` ở trên lo trước
+
+    chung = [x for x in cot if x not in ("category_code", "keyword")]
+    chon = ", ".join(chung) + ", COALESCE(category_code,''), COALESCE(keyword,'')"
+    dich = ", ".join(chung) + ", category_code, keyword"
+
+    c.execute("DROP TABLE IF EXISTS listings_snapshot__moi")
+    c.executescript(SCHEMA.split("CREATE TABLE IF NOT EXISTS listings_snapshot (")[1]
+                    .split(");")[0]
+                    .join(["CREATE TABLE listings_snapshot__moi (", ");"]))
+    c.execute(f"INSERT INTO listings_snapshot__moi ({dich})"
+              f" SELECT {chon} FROM listings_snapshot")
+    c.execute("DROP TABLE listings_snapshot")
+    c.execute("ALTER TABLE listings_snapshot__moi RENAME TO listings_snapshot")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_ls_part"
+              " ON listings_snapshot(platform, market, day)")

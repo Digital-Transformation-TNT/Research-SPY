@@ -81,6 +81,8 @@ desktop.ini
 backend/hub_data.db
 backend/hub_data.db-journal
 backend/hub_data.db-wal
+# Bản sao trước khi dựng lại bảng — 84MB, không bao giờ commit.
+backend/hub_data.db.bak-*
 
 # Model CLIP cho khớp ảnh (`backend/models/clip-vision.onnx`, ~350MB). Tải lúc chạy, không
 # commit — git không phải nơi chứa trọng số model, và thiếu nó thì luồng tự rơi về pHash.
