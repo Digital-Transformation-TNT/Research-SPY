@@ -162,6 +162,8 @@ async def _items_job(job: str, keyword: str, trace: dict) -> list[dict]:
             "sold_monthly": it.get("monthly"),
             "title": it.get("name"), "price": it.get("price"), "currency": "CNY",
             "rating": it.get("rating"), "reviews": None,
+            # `similar` là link TÌM HÀNG CÙNG MẪU, không phải trang sản phẩm — chỉ dùng khi
+            # không có gì tốt hơn, và đã ghi rõ ở đây để lần sau không ai tưởng nó là link gốc.
             "shop_id": it.get("shop"), "url": it.get("url") or it.get("similar"),
             "image_url": it.get("image"),
         })

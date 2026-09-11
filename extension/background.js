@@ -1155,6 +1155,14 @@ async function search1688(keyword, count) {
             shop: (d.shop && d.shop.text) || d.loginId || '', // tên công ty đầy đủ nếu có
             rating,                                           // điểm shop 0-5
             repurchase,                                       // % khách quay lại
+            // LINK TRANG SẢN PHẨM. `d.linkUrl` là thứ chính trang dùng khi bấm vào thẻ; khi nó
+            // vắng thì dựng từ `offerId` — 1688 định tuyến trang chi tiết thuần bằng mã, không
+            // cần slug. Trước đây trường này KHÔNG được trả về, nên backend rơi về `similar` và
+            // cả kho lưu link 'tìm hàng cùng mẫu' thay vì link sản phẩm; mở ra vẫn thấy hàng nên
+            // không ai nghi ngờ.
+            url: (d.linkUrl && String(d.linkUrl).length > 30)
+                 ? String(d.linkUrl)
+                 : 'https://detail.1688.com/offer/' + d.offerId + '.html',
             similar: d.sameDesignUrl || '',                   // link tìm sản phẩm CÙNG MẪU
           });
         }

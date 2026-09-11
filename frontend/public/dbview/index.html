@@ -54,6 +54,9 @@
   .nut { border: 0; background: none; color: inherit; font: inherit; cursor: pointer;
          text-align: left; padding: 0; text-decoration: underline; text-underline-offset: 3px;
          text-decoration-color: var(--vien); }
+  a { color: inherit; text-decoration: underline; text-underline-offset: 2px;
+      text-decoration-color: var(--vien); }
+  a:hover { text-decoration-color: currentColor; }
   .khung { overflow-x: auto; }
   .ghi { color: var(--mo); font-size: 12px; max-width: 520px; }
   h2 { font-size: 14px; margin: 26px 0 2px; font-weight: 620; }
@@ -111,7 +114,17 @@ function bang(rows, cot, khiBam) {
     // hotlink theo Referer: đo 11/09/2026 thì gọi không header trả HTTP 200 kèm 362KB ảnh, còn
     // gọi kèm `Referer: tntecom.com` trả HTTP 403 dài 304 byte. Trình duyệt tự gửi header ấy
     // nên mọi ảnh 1688 đều hỏng, và hỏng IM LẶNG — ô ảnh chỉ trống, không báo gì.
-    if (kieu === "anh") return `<td>${v ? `<img class="anh" src="${esc(v)}" loading="lazy" referrerpolicy="no-referrer" alt="">` : ""}</td>`;
+    if (kieu === "anh") {
+      // Ảnh BỌC TRONG LINK sản phẩm khi có — chỗ bấm tự nhiên nhất, và không tốn thêm cột.
+      const anh = v ? `<img class="anh" src="${esc(v)}" loading="lazy" referrerpolicy="no-referrer" alt="">` : "";
+      return `<td>${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">${anh}</a>` : anh}</td>`;
+    }
+    // Tên sản phẩm cũng là link. `rel="noopener noreferrer"` không phải cho gọn: `noopener`
+    // chặn trang đích với tay ngược vào tab này qua `window.opener`, `noreferrer` giữ cho ta
+    // không gửi địa chỉ nội bộ của webtool sang Shopee/1688.
+    if (kieu === "ten") {
+      return `<td>${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">${esc(v)}</a>` : esc(v)}</td>`;
+    }
     if (kieu === "ghi") return `<td class="ghi">${esc(v)}</td>`;
     if (kieu === "mo") return `<td class="mo">${esc(Array.isArray(v) ? v.join(", ") : v)}</td>`;
     if (kieu === "bam") return `<td><button class="nut" data-i="${i}">${esc(v)}</button></td>`;
@@ -161,7 +174,7 @@ async function veShopee(nuoc, ngay) {
         const p = await lay(`/api/hub/db/shopee?market=${nuoc}&day=${d.day}&category=${r.category_code}`);
         than.insertAdjacentHTML("beforeend",
           `<h2>${esc(r.ten)} — ${p.products.length} sản phẩm</h2>` +
-          bang(p.products, [["rank", "Hạng", "so"], ["image_url", "", "anh"], ["title", "Tên"],
+          bang(p.products, [["rank", "Hạng", "so"], ["image_url", "", "anh"], ["title", "Tên", "ten"],
                             ["price", "Giá", "so"], ["sold_cumulative", "Đã bán", "so"],
                             ["sold_monthly", "Bán 30 ngày", "so"], ["rating", "Sao"],
                             ["reviews", "Đánh giá", "so"], ["shop_id", "Shop"]]));
@@ -183,7 +196,7 @@ async function ve1688(ngay) {
         const p = await lay(`/api/hub/db/shopee?platform=1688&market=cn&day=${d.day}&category=${encodeURIComponent(r.category_code)}`);
         than.insertAdjacentHTML("beforeend",
           `<h2>${esc(r.category_code)} — ${p.products.length} nguồn hàng</h2>` +
-          bang(p.products, [["image_url", "", "anh"], ["title", "Tên"],
+          bang(p.products, [["image_url", "", "anh"], ["title", "Tên", "ten"],
                             ["price", "Giá CNY", "so"],
                             ["sold_cumulative", "Đã bán", "so"],
                             ["sold_monthly", "Bán 30 ngày", "so"],
