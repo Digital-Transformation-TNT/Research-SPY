@@ -1,17 +1,13 @@
 """Lịch chạy nền — làm tươi toàn bộ database mỗi đêm.
 
-LỊCH ĐÊM (giờ máy chủ):
-  02:00  discover  quét keyword mới từ Google Trends  -> discovered_keywords
-  02:40  listings  cào Etsy/Amazon                    -> raw_listings
-  03:30  trends    lấy chuỗi 12 điểm qua Chrome thật  -> trends_cache
-  03:50  unify     chuẩn hoá 2 sàn về 1 lược đồ       -> listings_unified
-  04:00  report    sinh báo cáo ngày                  -> reports
-  05:00  sigtrends chuỗi Trends ngày+tuần (Hub ①)     -> trends_daily
-  05:40  sigsnap   chụp listing theo từ khoá (Hub ②)    -> listings_snapshot
+LỊCH ĐÊM (giờ máy chủ) — chỉ còn hai job:
   01:00  sigcat    top 100 mỗi ngành shopee, vn ‖ ph song song -> listings_snapshot + crawl_log
-         (đo 11/09: ~3h50, xong ~04:50 — trước giờ làm việc 08:30)
-  09:00  sig1688   top bán chạy 205 ngành trên 1688 (~18 phút)  -> listings_snapshot + crawl_log
-         (đầu giờ làm việc CÓ CHỦ Ý: 1688 đòi giải slider định kỳ, cần người trực)
+                   (đo 11/09: ~3h50, xong ~04:50 — trước giờ làm việc 08:30)
+  09:00  sig1688   top bán chạy 205 ngành trên 1688 (~18 phút) -> listings_snapshot + crawl_log
+                   (đầu giờ làm việc CÓ CHỦ Ý: 1688 đòi giải slider định kỳ, cần người trực)
+
+Bảy job của bản Printway (discover, listings, sales, shopnames, trends, unify, report) cùng
+`sigtrends` và `sigsnap` ĐÃ RA KHỎI LỊCH — xem ghi chú ở `LICH`. Code vẫn còn, gọi tay được.
 
 Tắt bằng biến môi trường: SCHEDULER_ENABLED=0
 Chạy ngay một lần: POST /api/scheduler/run?job=all
@@ -26,14 +22,26 @@ from datetime import datetime, timedelta
 
 log = logging.getLogger("scheduler")
 
-# giờ chạy (0-23) cho từng job
-# `shopnames` chạy trước `unify` để tên shop kịp vào cột chuẩn hoá `shop_name`.
-HOURS = {"discover": 2, "listings": 2, "sales": 3, "shopnames": 3, "trends": 3,
-         "unify": 3, "report": 4,
-         "sigtrends": 5, "sigsnap": 5, "sigcat": 1, "sig1688": 9}
-MINUTES = {"discover": 0, "listings": 40, "sales": 10, "shopnames": 20,
-           "trends": 30, "unify": 50, "report": 0,
-           "sigtrends": 0, "sigsnap": 40, "sigcat": 0, "sig1688": 0}
+# LỊCH CHẠY TỰ ĐỘNG. CHỈ những job có tên ở đây mới chạy theo giờ; mọi job khác trong `JOBS`
+# vẫn gọi tay được qua `POST /api/hub/scheduler/run?job=<tên>`.
+#
+# TÁCH LỊCH KHỎI DANH SÁCH JOB là điều kiện để tắt một job mà không phải xoá code nó. Trước
+# đây vòng lặp duyệt thẳng `JOBS` rồi tra `HOURS[name]`, nên bỏ một job khỏi lịch là làm vỡ
+# scheduler — và cách duy nhất để ngừng chạy nó là xoá hàm, tức mất luôn khả năng chạy tay.
+#
+# VÌ SAO CHỈ CÒN HAI JOB, chốt 11/09/2026. Bảy job cũ (`discover`, `listings`, `sales`,
+# `shopnames`, `trends`, `unify`, `report`) nuôi phần Etsy/Amazon/gallery của bản Printway —
+# thứ đã bỏ khỏi giao diện từ 06/09. Chúng vẫn cào mỗi đêm cho dữ liệu không ai xem, và tệ hơn:
+# `discover` với `trends` mỗi cái mở một Chromium riêng ngay trong lúc Shopee đang cào. Đo
+# 10/09: vòng vn chạy chồng như vậy hụt trang 2 ở 58/199 ngành (29%), trong khi vòng ph chạy
+# một mình chỉ hụt 2%.
+#
+# `sigtrends` và `sigsnap` cũng ra khỏi lịch: Trends đang đóng băng theo yêu cầu, còn `sigsnap`
+# là đường cào-theo-từ-khoá cũ, đã bị `sigcat` (cào theo ngành) thay thế.
+LICH: dict[str, tuple[int, int]] = {
+    "sigcat": (1, 0),      # Shopee vn ‖ ph, ~3h50 → xong ~04:50
+    "sig1688": (9, 0),     # 1688, ~18 phút. Đầu giờ làm việc vì cần người giải slider.
+}
 
 # giới hạn mỗi đêm — đủ tươi mà không đụng trần quota
 MAX_SEEDS = 96          # hạt giống từ catalog
@@ -347,10 +355,10 @@ def _loop():
         try:
             now = datetime.now()
             today = now.strftime("%Y-%m-%d")
-            for name in JOBS:
+            for name, (gio, phut) in LICH.items():
                 if _last_run.get(name) == today:
                     continue
-                if now.hour > HOURS[name] or (now.hour == HOURS[name] and now.minute >= MINUTES[name]):
+                if now.hour > gio or (now.hour == gio and now.minute >= phut):
                     _last_run[name] = today          # đánh dấu trước để không chạy lại
                     run_job(name)
         except Exception as e:  # noqa
@@ -370,6 +378,8 @@ def start():
 
 def status() -> dict:
     return {"enabled": _enabled(), "last_run": dict(_last_run),
-            "schedule": {n: f"{HOURS[n]:02d}:{MINUTES[n]:02d}" for n in JOBS},
+            "schedule": {n: f"{g:02d}:{p:02d}" for n, (g, p) in LICH.items()},
+            # Job có trong `JOBS` mà không có trong `LICH` — chạy tay được, không tự chạy.
+            "chay_tay_duoc": sorted(set(JOBS) - set(LICH)),
             "limits": {"seeds": MAX_SEEDS, "crawl_keywords": MAX_CRAWL_KW,
                        "trends_keywords": MAX_TRENDS_KW, "stale_days": STALE_DAYS}}
