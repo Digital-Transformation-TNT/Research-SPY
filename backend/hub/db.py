@@ -1,6 +1,6 @@
 """SQLite database — nơi Worker ghi RAW data và AI Agent đọc để phân tích.
 
-Dùng sqlite3 chuẩn (không thêm dependency). File db: backend/hub_data.db
+Dùng sqlite3 chuẩn (không thêm dependency). File db: backend/database/hub_data.db
 """
 from __future__ import annotations
 import os
@@ -10,10 +10,17 @@ from pathlib import Path
 from datetime import datetime, timezone
 from contextlib import contextmanager
 
-# Đổi tên từ `data.db` sang `hub_data.db`: file này nằm chung thư mục `backend/` với
-# nhiều kho khác của Research SPY, nên một cái tên chung chung là mời gọi nhầm lẫn.
-# Nó bị gitignore — dựng lại được từ `hub/data/snapshot/dataset.zip`.
-DB_PATH = Path(os.environ.get("HUB_DB_PATH", str(Path(__file__).parent.parent / "hub_data.db")))
+# Kho nằm trong `backend/database/`, không rải ra giữa thư mục `backend/`. Một thư mục riêng
+# để người vận hành biết chính xác phải sao lưu cái gì và phải chừa cái gì lại khi dọn máy —
+# và để bản sao `hub_data.db.bak-*` nằm cạnh bản chính thay vì lẫn với mã nguồn.
+#
+# Cả thư mục bị gitignore. Kho dựng lại được từ `hub/data/snapshot/dataset.zip`, nhưng dữ liệu
+# cào hằng ngày thì KHÔNG — mất là mất, nên đây là thư mục duy nhất cần sao lưu ngoài máy.
+#
+# `HUB_DB_PATH` ghi đè đường dẫn. Dùng nó khi muốn chạy thử trên bản sao mà không đụng kho thật.
+DB_DIR = Path(__file__).parent.parent / "database"
+DB_PATH = Path(os.environ.get("HUB_DB_PATH", str(DB_DIR / "hub_data.db")))
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS raw_listings (
