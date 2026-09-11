@@ -219,12 +219,29 @@ def job_sigcat() -> dict:
         return {"job": "sigcat", "markets": 0, "runs": [],
                 "error": "chưa nạp danh mục — chạy"
                          " `python -m hub.ingestion.shopee_categories`"}
+    # TUẦN TỰ, KHÔNG SONG SONG — và đây là kết luận từ số đo, không phải cho gọn. Ngày
+    # 10/09/2026: vòng cào vn chạy lúc máy còn gánh thêm Trends và trang xem DB thì có 58
+    # ngành chỉ lấy được 60/100 sản phẩm (hụt trang 2); vòng ph chạy một mình chỉ hụt 4.
+    # Hụt này IM LẶNG — `crawl_log` vẫn ghi `ok` vì có dữ liệu.
+    #
+    # Cả ba nguồn dùng CHUNG một tab trình duyệt của máy-thợ, nên chạy chồng còn là giành tab
+    # của nhau. Gộp vào một job thay vì ba job ở ba giờ: hai job khác nhau KHÔNG chặn nhau,
+    # `_job_locks` chỉ chặn hai lượt của cùng một job.
     runs = []
     for mk in markets:
         try:
             runs.append(asyncio.run(market_snapshot.snapshot_categories(mk)))
         except Exception as e:  # noqa
             runs.append({"market": mk, "error": str(e)[:200]})
+
+    # 1688 đi SAU Shopee: Shopee là nguồn chính của bảng Top 10, 1688 là nguồn tra giá vốn.
+    # Đêm nào không kịp thì thứ bị cắt phải là cái ít quan trọng hơn.
+    try:
+        from .ingestion import shopee_categories as _sc  # noqa: F401  (giữ import cũ)
+        runs.append(asyncio.run(market_snapshot.snapshot_keyword_categories("1688", "cn")))
+    except Exception as e:  # noqa
+        runs.append({"platform": "1688", "error": str(e)[:200]})
+
     return {"job": "sigcat", "markets": len(runs), "runs": runs}
 
 

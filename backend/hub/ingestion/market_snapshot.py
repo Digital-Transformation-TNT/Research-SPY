@@ -22,6 +22,7 @@ from datetime import date, datetime, timezone
 
 from lib.core.worker_relay import WorkerOffline, WorkerTimeout, run_on_worker, worker_error
 
+from .. import db
 from ..signal import store
 
 #: Số listing lấy mỗi từ khoá. Trang đầu của Shopee là 60 — lấy sâu hơn thì mỗi ngày một
@@ -264,7 +265,6 @@ async def snapshot_categories(market: str = "ph", only: list[int | str] | None =
     Ngành `error` thì KHÔNG bỏ qua: hỏng là thứ cần thử lại, và `crawl_log` ghi REPLACE nên
     lần chạy sau đè lên lần hỏng trước.
     """
-    from .. import db
     from . import shopee_categories
 
     cats = shopee_categories.active(market)
@@ -318,6 +318,68 @@ async def snapshot_categories(market: str = "ph", only: list[int | str] | None =
             "skipped_done": len(done),
             "source": "shopee_categories",
             "health": store.crawl_health("shopee", market, day),
+            "failures": failures, "trace": trace}
+
+
+async def snapshot_keyword_categories(platform: str = "1688", market: str = "cn",
+                                      redo: bool = False) -> dict:
+    """
+    Cào top bán chạy theo NGÀNH cho sàn mà ngành hàng LÀ một cụm từ khoá — hiện là 1688.
+
+    Khác `snapshot_categories` (Shopee) ở chỗ duy nhất: Shopee định tuyến bằng mã số hai tầng,
+    còn 1688 thì mỗi mục trong menu của sàn trỏ thẳng tới `offer_search.htm?keywords=<tên>`.
+    Nên ở đây "mã ngành" và "từ khoá tìm" là CÙNG một chuỗi, và `RS_1688` đã sắp sẵn theo
+    `sortType=va_rmdarkgmv30rt` — GMV 30 ngày giảm dần, tức đúng nghĩa top bán chạy.
+
+    Ghi cả `category_code` lẫn `keyword` bằng chính tên ngành. Hai cột này nằm trong khoá
+    chính nên phải có giá trị; và ghi cả hai cho phép truy vấn sau này hỏi "ngành nào" mà
+    không cần biết sàn ấy định tuyến bằng gì.
+
+    TÊN NGÀNH PHẢI LÀ TIẾNG TRUNG. Phiên 1688 ở chế độ xuyên biên giới trả về tên tiếng Anh và
+    một cấu trúc sản phẩm KHÔNG CÓ trường số bán nào — mà vẫn `SUCCESS`, vẫn đủ 60 sản phẩm.
+    Nếu ai đó đổi ngôn ngữ tài khoản, vòng cào sẽ im lặng ghi 0 dòng mỗi đêm.
+    """
+    day = _today()
+    with db.connect() as c:
+        cats = [r["code"] for r in c.execute(
+            "SELECT code FROM crawl_categories"
+            " WHERE platform=? AND market=? AND active=1 ORDER BY code",
+            (platform, market))]
+        done = set()
+        if not redo:
+            done = {r["category_code"] for r in c.execute(
+                "SELECT category_code FROM crawl_log"
+                " WHERE source=? AND market_code=? AND day=? AND status='ok'",
+                (platform, market, day))}
+    cats = [x for x in cats if x not in done]
+    if not cats:
+        return {"platform": platform, "market": market, "day": day, "categories": 0,
+                "rows": 0, "skipped_done": len(done),
+                "failures": {} if done else {"danh mục":
+                    "bảng `crawl_categories` chưa có ngành nào — gọi /db/1688-categories?save=true"}}
+
+    total, failures, trace = 0, {}, {}
+    for ten in cats:
+        tr: dict = {}
+        trace[ten] = tr
+        bat_dau = datetime.now(timezone.utc).isoformat()
+        try:
+            rows = await _items_job("RS_" + platform.upper(), ten, tr)
+        except (WorkerOffline, WorkerTimeout, RuntimeError) as e:
+            failures[ten] = str(e)
+            store.log_crawl(platform, market, ten, day, "error", 0, str(e), bat_dau)
+            continue
+        for r in rows:
+            r.setdefault("sold_type", SOLD_TYPE.get(platform, "cumulative"))
+            r.update(platform=platform, market=market, day=day,
+                     keyword=ten, category_code=ten)
+        ghi = store.save_snapshot(rows)
+        total += ghi
+        store.log_crawl(platform, market, ten, day, "ok" if ghi else "empty",
+                        ghi, None, bat_dau)
+
+    return {"platform": platform, "market": market, "day": day,
+            "categories": len(cats), "rows": total, "skipped_done": len(done),
             "failures": failures, "trace": trace}
 
 

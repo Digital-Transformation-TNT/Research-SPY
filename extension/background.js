@@ -1027,13 +1027,34 @@ async function amazonSearch(domain, url) {
 // trả JSON sản phẩm KỂ CẢ ẩn danh (không cần đăng nhập). Chữ ký = md5(token&t&appKey&data), với
 // token = cookie _m_h5_tk (đọc được same-site ở origin h5api.m.1688.com). Không region.
 const ali1688Tab = () => keptTab('ali1688');
+/**
+ * `executeScript` nhung CO HAN GIO. Tra `null` khi qua han thay vi treo mai.
+ *
+ * Vi sao can: mot `func` tra Promise ma tab dieu huong giua chung thi ngu canh trang bi
+ * huy va Promise khong bao gio settle. `await` tran se dung im cho toi khi trang may-tho
+ * het gio, roi bao 'extension chua tra loi' — mot cau khong he chi ve phia thu pham.
+ * Da mat mot buoi vi dung no o buoc sap xep cua Shopee.
+ */
+async function execCoHan(opts, hanMs) {
+  let hetGio;
+  const dongHo = new Promise((r) => { hetGio = setTimeout(() => r('__QUA_HAN__'), hanMs); });
+  try {
+    const kq = await Promise.race([chrome.scripting.executeScript(opts), dongHo]);
+    return kq === '__QUA_HAN__' ? null : kq;
+  } catch (e) {
+    return null;
+  } finally {
+    clearTimeout(hetGio);
+  }
+}
+
 async function search1688(keyword, count) {
   try {
     const tab = await ali1688Tab();
     // h5api.m.1688.com KHÔNG redirect login (khác www/s.1688.com) và là nơi cookie _m_h5_tk same-origin.
     await chrome.tabs.update(tab.id, { url: 'https://h5api.m.1688.com/h5/mtop.relationrecommend.wirelessrecommend.recommend/2.0/' });
     await waitForComplete(tab.id, 12000);
-    const out = await chrome.scripting.executeScript({
+    const out = await execCoHan({
       target: { tabId: tab.id },
       world: 'MAIN',
       args: [keyword, count || 20],
@@ -1141,7 +1162,7 @@ async function search1688(keyword, count) {
         const hut = items.length && items[0].sold == null && items[0].monthly == null;
         return { items, blocked: false, shape: hut ? _mauD : undefined };
       },
-    });
+    }, 100000);
     const r = (out && out[0] && out[0].result) || { items: [], blocked: false };
     // 1688 bắt xác minh (kéo slider) — mở trang xác minh cho user giải 1 lần → set cookie x5sec → lần sau qua.
     if (r.error && /VALIDATE/i.test(r.error)) {
@@ -1336,26 +1357,6 @@ function rsFindVideoUrl(o, depth) {
 
 // Taobao FAST: gọi mtop h5search TRỰC TIẾP trong tab origin h5api.m.taobao.com (không chờ render SPA).
 // Kế thừa cookie session + x5sec của user → có thể qua Baxia khi đã đăng nhập (IP nhà). Nhanh như 1688.
-/**
- * `executeScript` nhung CO HAN GIO. Tra `null` khi qua han thay vi treo mai.
- *
- * Vi sao can: mot `func` tra Promise ma tab dieu huong giua chung thi ngu canh trang bi
- * huy va Promise khong bao gio settle. `await` tran se dung im cho toi khi trang may-tho
- * het gio, roi bao 'extension chua tra loi' — mot cau khong he chi ve phia thu pham.
- * Da mat mot buoi vi dung no o buoc sap xep cua Shopee.
- */
-async function execCoHan(opts, hanMs) {
-  let hetGio;
-  const dongHo = new Promise((r) => { hetGio = setTimeout(() => r('__QUA_HAN__'), hanMs); });
-  try {
-    const kq = await Promise.race([chrome.scripting.executeScript(opts), dongHo]);
-    return kq === '__QUA_HAN__' ? null : kq;
-  } catch (e) {
-    return null;
-  } finally {
-    clearTimeout(hetGio);
-  }
-}
 
 async function searchTaobao(keyword, count) {
   try {
