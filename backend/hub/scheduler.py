@@ -8,8 +8,10 @@ LỊCH ĐÊM (giờ máy chủ):
   04:00  report    sinh báo cáo ngày                  -> reports
   05:00  sigtrends chuỗi Trends ngày+tuần (Hub ①)     -> trends_daily
   05:40  sigsnap   chụp listing theo từ khoá (Hub ②)    -> listings_snapshot
-  00:00  sigcat    top 100 mỗi ngành: shopee vn ‖ ph, rồi 1688 -> listings_snapshot + crawl_log
-         (bắt đầu nửa đêm để xong trước giờ làm việc 08:30; đo 11/09: ~3h50)
+  01:00  sigcat    top 100 mỗi ngành shopee, vn ‖ ph song song -> listings_snapshot + crawl_log
+         (đo 11/09: ~3h50, xong ~04:50 — trước giờ làm việc 08:30)
+  09:00  sig1688   top bán chạy 205 ngành trên 1688 (~18 phút)  -> listings_snapshot + crawl_log
+         (đầu giờ làm việc CÓ CHỦ Ý: 1688 đòi giải slider định kỳ, cần người trực)
 
 Tắt bằng biến môi trường: SCHEDULER_ENABLED=0
 Chạy ngay một lần: POST /api/scheduler/run?job=all
@@ -28,10 +30,10 @@ log = logging.getLogger("scheduler")
 # `shopnames` chạy trước `unify` để tên shop kịp vào cột chuẩn hoá `shop_name`.
 HOURS = {"discover": 2, "listings": 2, "sales": 3, "shopnames": 3, "trends": 3,
          "unify": 3, "report": 4,
-         "sigtrends": 5, "sigsnap": 5, "sigcat": 0}
+         "sigtrends": 5, "sigsnap": 5, "sigcat": 1, "sig1688": 9}
 MINUTES = {"discover": 0, "listings": 40, "sales": 10, "shopnames": 20,
            "trends": 30, "unify": 50, "report": 0,
-           "sigtrends": 0, "sigsnap": 40, "sigcat": 0}
+           "sigtrends": 0, "sigsnap": 40, "sigcat": 0, "sig1688": 0}
 
 # giới hạn mỗi đêm — đủ tươi mà không đụng trần quota
 MAX_SEEDS = 96          # hạt giống từ catalog
@@ -244,15 +246,32 @@ def job_sigcat() -> dict:
 
     runs = list(asyncio.run(_song_song()))
 
-    # 1688 đi SAU Shopee: Shopee là nguồn chính của bảng Top 10, 1688 là nguồn tra giá vốn.
-    # Đêm nào không kịp thì thứ bị cắt phải là cái ít quan trọng hơn.
-    try:
-        from .ingestion import shopee_categories as _sc  # noqa: F401  (giữ import cũ)
-        runs.append(asyncio.run(market_snapshot.snapshot_keyword_categories("1688", "cn")))
-    except Exception as e:  # noqa
-        runs.append({"platform": "1688", "error": str(e)[:200]})
-
     return {"job": "sigcat", "markets": len(runs), "runs": runs}
+
+
+def job_sig1688() -> dict:
+    """
+    Cào top bán chạy theo ngành trên 1688 -> listings_snapshot. Nguồn tra GIÁ VỐN.
+
+    CHẠY 09:00 CHỨ KHÔNG PHẢI NỬA ĐÊM, và đây là quyết định vận hành chứ không phải kỹ thuật.
+    1688 đòi giải slider Baxia định kỳ: cookie `x5sec` hết hiệu lực sau vài giờ, nên một lượt
+    cào lúc 00:00 không ai canh sẽ hỏng SẠCH cả 205 ngành. Đo 11/09/2026: nhịp nghỉ 4 giây giữ
+    được suốt một lượt 18 phút, nhưng lượt sau đó vẫn dính `FAIL_SYS_USER_VALIDATE`.
+
+    Đặt vào đầu giờ làm việc để có người giải một lần khi nó bật lên. Đánh đổi: dữ liệu 1688
+    trễ hơn Shopee 8 tiếng — chấp nhận được, vì đây là nguồn tra giá nhập chứ không phải nguồn
+    của bảng xếp hạng, không cần tươi từng đêm.
+
+    Shopee KHÔNG dùng cơ chế này nên vẫn chạy 01:00 không cần ai trực.
+    """
+    import asyncio
+
+    from .ingestion import market_snapshot
+    try:
+        r = asyncio.run(market_snapshot.snapshot_keyword_categories("1688", "cn"))
+    except Exception as e:  # noqa
+        return {"job": "sig1688", "error": str(e)[:200]}
+    return {"job": "sig1688", **r}
 
 
 def job_sigsnap() -> dict:
@@ -280,14 +299,14 @@ JOBS = {"discover": job_discover, "listings": job_listings, "sales": job_sales,
         "trends": job_trends, "unify": job_unify, "report": job_report,
         "shopnames": job_shopnames,
         "sigtrends": job_sigtrends, "sigsnap": job_sigsnap,
-        "sigcat": job_sigcat}
+        "sigcat": job_sigcat, "sig1688": job_sig1688}
 
 
 # Khoá mỗi job để hai lượt cùng job không chạy chồng nhau (nhất là `unify`).
 _job_locks: dict[str, threading.Lock] = {n: threading.Lock() for n in
                                          ("discover", "listings", "sales",
                                           "trends", "unify", "report",
-                                          "sigtrends", "sigsnap", "sigcat")}
+                                          "sigtrends", "sigsnap", "sigcat", "sig1688")}
 
 
 def run_job(name: str) -> dict:
@@ -316,7 +335,7 @@ def run_all() -> list[dict]:
     """Chạy tuần tự theo đúng thứ tự phụ thuộc."""
     return [run_job(n) for n in ("discover", "listings", "sales", "shopnames",
                                 "trends", "unify", "report",
-                                "sigtrends", "sigsnap", "sigcat")]
+                                "sigtrends", "sigsnap", "sigcat", "sig1688")]
 
 
 # ─────────────────────── vòng lặp lịch ───────────────────────
