@@ -1336,12 +1336,33 @@ function rsFindVideoUrl(o, depth) {
 
 // Taobao FAST: gọi mtop h5search TRỰC TIẾP trong tab origin h5api.m.taobao.com (không chờ render SPA).
 // Kế thừa cookie session + x5sec của user → có thể qua Baxia khi đã đăng nhập (IP nhà). Nhanh như 1688.
+/**
+ * `executeScript` nhung CO HAN GIO. Tra `null` khi qua han thay vi treo mai.
+ *
+ * Vi sao can: mot `func` tra Promise ma tab dieu huong giua chung thi ngu canh trang bi
+ * huy va Promise khong bao gio settle. `await` tran se dung im cho toi khi trang may-tho
+ * het gio, roi bao 'extension chua tra loi' — mot cau khong he chi ve phia thu pham.
+ * Da mat mot buoi vi dung no o buoc sap xep cua Shopee.
+ */
+async function execCoHan(opts, hanMs) {
+  let hetGio;
+  const dongHo = new Promise((r) => { hetGio = setTimeout(() => r('__QUA_HAN__'), hanMs); });
+  try {
+    const kq = await Promise.race([chrome.scripting.executeScript(opts), dongHo]);
+    return kq === '__QUA_HAN__' ? null : kq;
+  } catch (e) {
+    return null;
+  } finally {
+    clearTimeout(hetGio);
+  }
+}
+
 async function searchTaobao(keyword, count) {
   try {
     const tab = await taobaoTab();
     await chrome.tabs.update(tab.id, { url: 'https://h5api.m.taobao.com/h5/mtop.taobao.wsearch.h5search/1.0/' });
     await waitForComplete(tab.id, 12000);
-    const out = await chrome.scripting.executeScript({
+    const out = await execCoHan({
       target: { tabId: tab.id },
       world: 'MAIN',
       args: [keyword, count || 20],
@@ -1365,7 +1386,7 @@ async function searchTaobao(keyword, count) {
         }
         return { text: lastText, ret: lastRet, verifyUrl: verifyUrl };
       },
-    });
+    }, 100000);
     const r = (out && out[0] && out[0].result) || { text: '', ret: 'no-response' };
     if (!/SUCCESS/i.test(r.ret || '')) {
       // Baxia (RGV587_SM) / cần xác minh / chưa đăng nhập → mở trang Taobao cho user kéo slider/login 1 lần.
@@ -1375,7 +1396,13 @@ async function searchTaobao(keyword, count) {
         await openVerifyTab('verify:taobao', vurl);
         return { items: [], blocked: true, error: 'cần đăng nhập/xác minh — đã mở tab Taobao, xong rồi bấm Research lại' };
       }
-      return { items: [], blocked: false, error: r.ret };
+      // KEM MAU THAN PHAN HOI. `no-json` nghia la mtop tra ve thu khong phai JSON —
+      // thuong la mot trang HTML chan hoac chuyen huong. Chi co ma `no-json` thi khong
+      // phan biet duoc trang dang nhap voi trang Baxia voi mot phan hoi rong, ma ba thu
+      // do chua bang ba cach khac nhau.
+      const mau = String(r.text || '').replace(/\s+/g, ' ').slice(0, 260);
+      return { items: [], blocked: false,
+               error: r.ret + (mau ? ' - than=' + mau : ' - than RONG') };
     }
     const items = parseTaobaoTexts([r.text], count);
     // Chưa map được field → trả raw để dev chỉnh (Taobao h5search cấu trúc chưa xác nhận).
