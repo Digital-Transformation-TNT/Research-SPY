@@ -3,6 +3,7 @@
 LỊCH ĐÊM (giờ máy chủ) — chỉ còn hai job:
   01:00  sigcat    top 100 mỗi ngành shopee, vn ‖ ph song song -> listings_snapshot + crawl_log
                    (đo 11/09: ~3h50, xong ~04:50 — trước giờ làm việc 08:30)
+  06:00  dondep    xoá dòng cào cũ hơn 90 ngày           -> listings_snapshot + crawl_log
   09:00  sig1688   top bán chạy 205 ngành trên 1688 (~18 phút) -> listings_snapshot + crawl_log
                    (đầu giờ làm việc CÓ CHỦ Ý: 1688 đòi giải slider định kỳ, cần người trực)
 
@@ -40,6 +41,7 @@ log = logging.getLogger("scheduler")
 # là đường cào-theo-từ-khoá cũ, đã bị `sigcat` (cào theo ngành) thay thế.
 LICH: dict[str, tuple[int, int]] = {
     "sigcat": (1, 0),      # Shopee vn ‖ ph, ~3h50 → xong ~04:50
+    "dondep": (6, 0),      # xoá dòng cũ hơn 90 ngày, sau sigcat và trước sig1688
     "sig1688": (9, 0),     # 1688, ~18 phút. Đầu giờ làm việc vì cần người giải slider.
 }
 
@@ -308,11 +310,23 @@ def job_sigsnap() -> dict:
     return {"job": "sigsnap", "partitions": len(runs), "runs": runs}
 
 
+def job_dondep() -> dict:
+    """
+    Xoá dữ liệu cào cũ hơn `db.GIU_NGAY` ngày.
+
+    Chạy 06:00 — SAU khi `sigcat` xong (~05:20) và TRƯỚC `sig1688` (09:00). Đặt xen vào giữa
+    chứ không gộp vào vòng cào: dọn dẹp mà nằm trong cùng một job với việc cào thì một lần cào
+    hỏng sẽ kéo theo việc dọn không chạy, và kho phình ra âm thầm.
+    """
+    from . import db
+    return {"job": "dondep", **db.don_kho()}
+
+
 JOBS = {"discover": job_discover, "listings": job_listings, "sales": job_sales,
         "trends": job_trends, "unify": job_unify, "report": job_report,
         "shopnames": job_shopnames,
         "sigtrends": job_sigtrends, "sigsnap": job_sigsnap,
-        "sigcat": job_sigcat, "sig1688": job_sig1688}
+        "sigcat": job_sigcat, "sig1688": job_sig1688, "dondep": job_dondep}
 
 
 # Khoá mỗi job để hai lượt cùng job không chạy chồng nhau (nhất là `unify`).

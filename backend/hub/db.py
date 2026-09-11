@@ -315,6 +315,46 @@ def init_db() -> None:
             pass
 
 
+#: Giữ dữ liệu cào bao nhiêu ngày. Chốt 11/09/2026.
+#:
+#: 90 ngày là con số của NGHIỆP VỤ, không phải của đĩa: đủ để nhìn một mùa bán hàng và để tự
+#: tính cửa sổ 30 ngày mà vẫn còn 60 ngày nền so sánh. Đĩa thì thoải mái — đo 11/09, mỗi ngày
+#: ~52.000 dòng × 299 byte ≈ 15 MB, nên 90 ngày chỉ khoảng 1,4 GB dữ liệu (≈2 GB kể cả index)
+#: trên một ổ còn trống 52 GB.
+GIU_NGAY = 90
+
+
+def don_kho(giu_ngay: int = GIU_NGAY, that: bool = True) -> dict:
+    """
+    Xoá dòng cào cũ hơn `giu_ngay`. Trả số dòng đã xoá của từng bảng.
+
+    KHÔNG ĐỤNG `trends_rank`. Bảng đó đang đóng băng theo yêu cầu chủ dự án, và nó nhỏ (794
+    dòng) nên giữ mãi cũng không tốn gì. Một hàm dọn dẹp mà lặng lẽ xoá cả thứ người ta bảo
+    giữ nguyên là kiểu hỏng không sửa lại được.
+
+    KHÔNG VACUUM. `DELETE` của SQLite không trả chỗ về cho hệ thống file, nhưng với cửa sổ
+    trượt thì kích thước file tự ổn định ở mức đỉnh rồi thôi — chỗ trống bên trong được tái
+    dùng cho ngày mới. `VACUUM` thì khoá cả kho và chép lại toàn bộ file; chạy nó mỗi đêm trên
+    một file 2 GB là đánh đổi rất tệ để lấy một con số đẹp trong Explorer.
+
+    `that=False` để đếm thử mà không xoá — luôn chạy nó trước khi đổi `giu_ngay`.
+    """
+    from datetime import date, timedelta
+
+    moc_ngay = (date.today() - timedelta(days=int(giu_ngay))).isoformat()
+    ket: dict = {"giu_ngay": int(giu_ngay), "xoa_truoc_ngay": moc_ngay, "that": that}
+    with connect() as c:
+        for bang in ("listings_snapshot", "crawl_log"):
+            n = c.execute(f"SELECT COUNT(*) FROM {bang} WHERE day < ?", (moc_ngay,)).fetchone()[0]
+            ket[bang] = n
+            if that and n:
+                c.execute(f"DELETE FROM {bang} WHERE day < ?", (moc_ngay,))
+        ket["con_lai"] = c.execute("SELECT COUNT(*) FROM listings_snapshot").fetchone()[0]
+        ket["ngay_som_nhat"] = c.execute(
+            "SELECT MIN(day) FROM listings_snapshot").fetchone()[0]
+    return ket
+
+
 # ---------------- crawl runs ----------------
 def start_run(platform: str, keywords: list[str], backend: str) -> int:
     with connect() as c:
