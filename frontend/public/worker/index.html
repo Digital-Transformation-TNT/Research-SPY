@@ -205,7 +205,23 @@ function deadBridge(result) {
   return typeof err === 'string' && /context invalidated|Extension context/i.test(err);
 }
 
-loop();
+// SỐ LUỒNG CHẠY CÙNG LÚC. Mặc định 1 — giữ nguyên hành vi cũ. Bật nhiều luồng bằng cách
+// mở trang với `?lanes=2`.
+//
+// AN TOÀN NHỜ MỘT BẤT BIẾN, KHÔNG PHẢI NHỜ MAY. Extension dùng `ensureTab(host)` nên mỗi
+// tên miền một tab; hai job CÙNG tên miền chạy song song sẽ giành nhau đúng một tab và
+// làm hỏng cả hai. Điều khiến việc này an toàn là phía backend: mỗi vòng cào (`vn`, `ph`,
+// `1688`) bắn job MỘT-CÁI-MỘT và chờ xong mới bắn tiếp. Nên tại mọi thời điểm hàng đợi có
+// nhiều nhất một job cho mỗi nguồn, và N luồng luôn nhặt được N tên miền khác nhau.
+//
+// HỆ QUẢ PHẢI NHỚ: nếu sau này có ai bắn nhiều job của CÙNG một nguồn cùng lúc, bất biến
+// này gãy và nhiều luồng sẽ phá nhau. Lúc đó phải khoá theo tên miền ở chính extension.
+// MẶC ĐỊNH 2, không phải 1. Đã đo an toàn (xem `job_sigcat`), và quan trọng hơn: nếu mặc
+// định là 1 thì một lần mở tab thiếu `?lanes=2` sẽ âm thầm kéo vòng cào đêm từ 3h50 lên
+// hơn 7 tiếng, vượt qua giờ làm việc, mà không có gì báo.
+const LANES = Math.max(1, Math.min(4, Number(new URLSearchParams(location.search).get('lanes')) || 2));
+log(`Chạy ${LANES} luồng song song.`, LANES > 1 ? 'warn' : 'err');
+for (let i = 0; i < LANES; i++) loop();
 </script>
 </body>
 </html>

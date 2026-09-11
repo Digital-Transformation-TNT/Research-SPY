@@ -8,7 +8,8 @@ LỊCH ĐÊM (giờ máy chủ):
   04:00  report    sinh báo cáo ngày                  -> reports
   05:00  sigtrends chuỗi Trends ngày+tuần (Hub ①)     -> trends_daily
   05:40  sigsnap   chụp listing theo từ khoá (Hub ②)    -> listings_snapshot
-  06:00  sigcat    top 100 mỗi ngành trong sheet (Hub ②) -> listings_snapshot + crawl_log
+  00:00  sigcat    top 100 mỗi ngành: shopee vn ‖ ph, rồi 1688 -> listings_snapshot + crawl_log
+         (bắt đầu nửa đêm để xong trước giờ làm việc 08:30; đo 11/09: ~3h50)
 
 Tắt bằng biến môi trường: SCHEDULER_ENABLED=0
 Chạy ngay một lần: POST /api/scheduler/run?job=all
@@ -27,7 +28,7 @@ log = logging.getLogger("scheduler")
 # `shopnames` chạy trước `unify` để tên shop kịp vào cột chuẩn hoá `shop_name`.
 HOURS = {"discover": 2, "listings": 2, "sales": 3, "shopnames": 3, "trends": 3,
          "unify": 3, "report": 4,
-         "sigtrends": 5, "sigsnap": 5, "sigcat": 6}
+         "sigtrends": 5, "sigsnap": 5, "sigcat": 0}
 MINUTES = {"discover": 0, "listings": 40, "sales": 10, "shopnames": 20,
            "trends": 30, "unify": 50, "report": 0,
            "sigtrends": 0, "sigsnap": 40, "sigcat": 0}
@@ -219,20 +220,29 @@ def job_sigcat() -> dict:
         return {"job": "sigcat", "markets": 0, "runs": [],
                 "error": "chưa nạp danh mục — chạy"
                          " `python -m hub.ingestion.shopee_categories`"}
-    # TUẦN TỰ, KHÔNG SONG SONG — và đây là kết luận từ số đo, không phải cho gọn. Ngày
-    # 10/09/2026: vòng cào vn chạy lúc máy còn gánh thêm Trends và trang xem DB thì có 58
-    # ngành chỉ lấy được 60/100 sản phẩm (hụt trang 2); vòng ph chạy một mình chỉ hụt 4.
-    # Hụt này IM LẶNG — `crawl_log` vẫn ghi `ok` vì có dữ liệu.
+    # CÁC THỊ TRƯỜNG CHẠY SONG SONG, và đây là kết luận từ phép đo chứ không phải phỏng đoán.
     #
-    # Cả ba nguồn dùng CHUNG một tab trình duyệt của máy-thợ, nên chạy chồng còn là giành tab
-    # của nhau. Gộp vào một job thay vì ba job ở ba giờ: hai job khác nhau KHÔNG chặn nhau,
-    # `_job_locks` chỉ chặn hai lượt của cùng một job.
-    runs = []
-    for mk in markets:
-        try:
-            runs.append(asyncio.run(market_snapshot.snapshot_categories(mk)))
-        except Exception as e:  # noqa
-            runs.append({"market": mk, "error": str(e)[:200]})
+    # Đo 11/09/2026, 20 ngành vn ‖ 20 ngành ph cùng lúc với trang máy-thợ mở 2 luồng:
+    #   40/40 ngành ok, 0 lỗi, chỉ 1 ngành hụt trang 2 (2%) — bằng đúng mức khi chạy một mình.
+    #   63–69 giây một ngành, NHANH HƠN cả lúc chạy đơn hôm trước (100–119s).
+    # Mốc xấu để so: vòng vn ngày 10/09 chạy cùng Trends và trang xem DB hụt 58/199 = 29%.
+    # Tức thứ làm hỏng là TẢI MÁY nói chung, không phải việc hai vòng cào chạy cùng nhau.
+    #
+    # AN TOÀN NHỜ MỘT BẤT BIẾN: mỗi vòng cào bắn job một-cái-một và chờ xong mới bắn tiếp, nên
+    # hàng đợi có nhiều nhất một job cho mỗi nguồn, và các luồng của máy-thợ luôn nhặt được
+    # những tên miền khác nhau — mỗi tên miền một tab, không ai giành của ai. Bắn nhiều job của
+    # CÙNG một nguồn cùng lúc sẽ làm gãy bất biến này.
+    #
+    # Vẫn gộp vào MỘT job thay vì ba job ở ba giờ: `_job_locks` chỉ chặn hai lượt của cùng một
+    # job, hai job khác nhau không chặn nhau nên sẽ chồng lên nhau khi một cái chạy quá giờ.
+    async def _song_song():
+        ket = await asyncio.gather(
+            *(market_snapshot.snapshot_categories(mk) for mk in markets),
+            return_exceptions=True)
+        return [r if not isinstance(r, BaseException) else {"market": mk, "error": str(r)[:200]}
+                for mk, r in zip(markets, ket)]
+
+    runs = list(asyncio.run(_song_song()))
 
     # 1688 đi SAU Shopee: Shopee là nguồn chính của bảng Top 10, 1688 là nguồn tra giá vốn.
     # Đêm nào không kịp thì thứ bị cắt phải là cái ít quan trọng hơn.
