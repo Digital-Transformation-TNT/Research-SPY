@@ -43,12 +43,14 @@ def overview() -> dict:
             " FROM crawl_log GROUP BY day, source, market_code"
             " ORDER BY day DESC, source, market_code LIMIT 40")]
 
+        # Nhom theo CA `platform`: kho nay gio co ca 1688, va mot bang chi dem shopee se doc
+        # thanh "1688 khong co du lieu" — dung kieu nham lan ma trang nay sinh ra de chan.
         snapshot = [dict(r) for r in c.execute(
-            "SELECT day, market, COUNT(*) AS rows,"
+            "SELECT day, platform, market, COUNT(*) AS rows,"
             "       COUNT(DISTINCT category_code) AS categories,"
             "       COUNT(DISTINCT product_id) AS products"
-            " FROM listings_snapshot WHERE platform='shopee'"
-            " GROUP BY day, market ORDER BY day DESC LIMIT 20")]
+            " FROM listings_snapshot"
+            " GROUP BY day, platform, market ORDER BY day DESC, platform LIMIT 30")]
 
         trends = [dict(r) for r in c.execute(
             "SELECT day, market_code AS market, COUNT(*) AS rows,"
@@ -82,16 +84,41 @@ def shopee_categories(market: str, day: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def shopee_products(market: str, day: str, category_code: str, limit: int = 100) -> list[dict]:
-    """Sản phẩm của một ngành trong một ngày, theo đúng thứ hạng đã cào."""
+def shopee_products(market: str, day: str, category_code: str, limit: int = 100,
+                    platform: str = "shopee") -> list[dict]:
+    """
+    Sản phẩm của một ngành trong một ngày.
+
+    XẾP THEO `rank` KHI CÓ, không thì theo `sold_monthly`. Shopee ghi thứ hạng vì nó cào một
+    danh sách đã sắp; 1688 trả kết quả tìm kiếm nên không có hạng, và xếp bừa theo `rowid` thì
+    bảng trông như có thứ tự mà thật ra không.
+    """
     with db.connect() as c:
         rows = c.execute(
             "SELECT rank, product_id, title, price, currency, sold_cumulative, sold_monthly,"
-            "       rating, reviews, shop_id, url, image_url"
+            "       sold_type, rating, reviews, shop_id, url, image_url"
             " FROM listings_snapshot"
-            " WHERE platform='shopee' AND market=? AND day=? AND category_code=?"
-            " ORDER BY rank LIMIT ?",
-            (market.lower(), day, str(category_code), int(limit))).fetchall()
+            " WHERE platform=? AND market=? AND day=? AND category_code=?"
+            " ORDER BY COALESCE(rank, 999999), sold_monthly DESC LIMIT ?",
+            (platform, market.lower(), day, str(category_code), int(limit))).fetchall()
+    return [dict(r) for r in rows]
+
+
+def keyword_categories(market: str, day: str, platform: str = "1688") -> list[dict]:
+    """Ngành đã cào của sàn dùng từ khoá làm mã ngành (1688). Đi từ `crawl_log`, như Shopee."""
+    with db.connect() as c:
+        rows = c.execute(
+            "SELECT l.category_code, l.status, l.n_rows, l.note,"
+            "       (SELECT cc.name FROM crawl_categories cc"
+            "         WHERE cc.platform=l.source AND cc.market=l.market_code"
+            "           AND cc.code=l.category_code) AS ung_voi,"
+            "       (SELECT COUNT(*) FROM listings_snapshot s"
+            "         WHERE s.platform=l.source AND s.market=l.market_code"
+            "           AND s.day=l.day AND s.category_code=l.category_code) AS in_db"
+            " FROM crawl_log l"
+            " WHERE l.source=? AND l.market_code=? AND l.day=?"
+            " ORDER BY l.status='ok' DESC, l.n_rows DESC",
+            (platform, market.lower(), day)).fetchall()
     return [dict(r) for r in rows]
 
 

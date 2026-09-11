@@ -781,15 +781,20 @@ def db_overview():
 
 
 @router.get("/db/shopee")
-def db_shopee(market: str = "vn", day: str = "", category: str = ""):
+def db_shopee(market: str = "vn", day: str = "", category: str = "",
+              platform: str = "shopee"):
     """Không có `category` thì liệt kê ngành; có thì mở ra danh sách sản phẩm."""
     from . import dbview
     day = day or (dbview.days() or [""])[0]
     if category:
-        return {"market": market, "day": day, "category": category,
-                "products": dbview.shopee_products(market, day, category)}
-    return {"market": market, "day": day,
-            "categories": dbview.shopee_categories(market, day)}
+        return {"platform": platform, "market": market, "day": day, "category": category,
+                "products": dbview.shopee_products(market, day, category,
+                                                   platform=platform)}
+    if platform == "shopee":
+        return {"platform": platform, "market": market, "day": day,
+                "categories": dbview.shopee_categories(market, day)}
+    return {"platform": platform, "market": market, "day": day,
+            "categories": dbview.keyword_categories(market, day, platform)}
 
 
 @router.get("/db/trends")

@@ -76,6 +76,7 @@
   <div class="tab" role="tablist">
     <button role="tab" data-tab="tong" aria-selected="true">Tổng quan</button>
     <button role="tab" data-tab="shopee" aria-selected="false">Shopee</button>
+    <button role="tab" data-tab="s1688" aria-selected="false">1688</button>
     <button role="tab" data-tab="trends" aria-selected="false">Trends</button>
   </div>
   <div id="than"></div>
@@ -127,8 +128,9 @@ async function veTong() {
     <h2>Số dòng từng bảng</h2>
     ${bang(d.tables, [["name", "Bảng"], ["rows", "Dòng", "so"]])}
     <div class="cot2">
-      <div><h2>Shopee — snapshot theo ngày</h2>
-        ${bang(d.snapshot, [["day", "Ngày"], ["market", "Nước"], ["categories", "Ngành", "so"],
+      <div><h2>Sàn — snapshot theo ngày</h2>
+        ${bang(d.snapshot, [["day", "Ngày"], ["platform", "Sàn"], ["market", "Nước"],
+                            ["categories", "Ngành", "so"],
                             ["products", "Sản phẩm", "so"], ["rows", "Dòng", "so"]])}</div>
       <div><h2>Trends — xếp hạng theo ngày</h2>
         ${bang(d.trends, [["day", "Ngày"], ["market", "Nước"], ["categories", "Danh mục", "so"],
@@ -160,6 +162,30 @@ async function veShopee(nuoc, ngay) {
       });
 }
 
+async function ve1688(ngay) {
+  // 1688 KHÔNG có `market` do người dùng chọn — nó chỉ có một thị trường `cn`. Ép nó theo ô
+  // chọn nước ở đầu trang sẽ cho ra bảng rỗng mỗi khi ai đó đang xem `ph`.
+  const d = await lay(`/api/hub/db/shopee?platform=1688&market=cn&day=${ngay}`);
+  than.innerHTML = `<h2>1688 · ${esc(d.day)}</h2>
+    <p class="mo">Ngành hàng 1688 là một cụm từ khoá tiếng Trung, ánh xạ từ ngành Shopee VN.
+    Cột “Ứng với” cho biết nó phục vụ ngành Shopee nào. Bấm để xem nguồn hàng.</p>` +
+    bang(d.categories, [["category_code", "Ngành (1688)", "bam"], ["ung_voi", "Ứng với ngành Shopee", "mo"],
+                        ["status", "Trạng thái", "trangthai"], ["in_db", "Trong kho", "so"],
+                        ["note", "Lý do nếu hỏng", "ghi"]],
+      async (r) => {
+        const p = await lay(`/api/hub/db/shopee?platform=1688&market=cn&day=${d.day}&category=${encodeURIComponent(r.category_code)}`);
+        than.insertAdjacentHTML("beforeend",
+          `<h2>${esc(r.category_code)} — ${p.products.length} nguồn hàng</h2>` +
+          bang(p.products, [["image_url", "", "anh"], ["title", "Tên"],
+                            ["price", "Giá CNY", "so"],
+                            ["sold_monthly", "Bán 30 ngày", "so"],
+                            ["sold_cumulative", "Đã bán", "so"],
+                            ["sold_type", "Loại số", "mo"],
+                            ["rating", "Điểm shop"], ["shop_id", "Xưởng"]]));
+        than.lastElementChild.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+}
+
 async function veTrends(nuoc, ngay) {
   const d = await lay(`/api/hub/db/trends?market=${nuoc}&day=${ngay}`);
   than.innerHTML = `<h2>Google Trends ${esc(nuoc)} · ${esc(d.day)}</h2>
@@ -185,6 +211,7 @@ async function ve() {
   try {
     if (TAB === "tong") await veTong();
     else if (TAB === "shopee") await veShopee(nuoc, ngay);
+    else if (TAB === "s1688") await ve1688(ngay);
     else await veTrends(nuoc, ngay);
     $("#capnhat").textContent = "cập nhật " + new Date().toLocaleTimeString("vi-VN");
   } catch (e) {

@@ -18,6 +18,8 @@ sẽ ra một số trông hoàn toàn hợp lý, và đó là kiểu sai không 
 
 from __future__ import annotations
 
+import asyncio
+
 from datetime import date, datetime, timezone
 
 from lib.core.worker_relay import WorkerOffline, WorkerTimeout, run_on_worker, worker_error
@@ -31,6 +33,10 @@ PER_KEYWORD = 60
 
 #: Sàn nào ghi cờ gì. Đọc kỹ phần đầu file trước khi sửa bảng này.
 SOLD_TYPE = {"shopee": "cumulative", "1688": "cumulative", "taobao": "monthly"}
+
+#: Giây nghỉ giữa hai lượt cào của sàn dùng-từ-khoá. Xem ghi chú trong
+#: `snapshot_keyword_categories` — đây là thứ chặn slider Baxia của 1688.
+NGHI_GIUA_LUOT = 4.0
 
 
 def _today() -> str:
@@ -359,7 +365,16 @@ async def snapshot_keyword_categories(platform: str = "1688", market: str = "cn"
                     "bảng `crawl_categories` chưa có ngành nào — gọi /db/1688-categories?save=true"}}
 
     total, failures, trace = 0, {}, {}
-    for ten in cats:
+    for i, ten in enumerate(cats):
+        # NGHỈ GIỮA HAI LƯỢT. 1688 gọi API thẳng nên một lượt chỉ mất ~1,2 giây — cào liền mạch
+        # là ~50 request/phút, quá dày và nó bật slider Baxia giữa chừng. Đo 11/09/2026: chạy
+        # 205 ngành không nghỉ thì 30 ngành đầu đã dính `FAIL_SYS_USER_VALIDATE`, và một khi
+        # dính thì mọi ngành sau đều hỏng cho tới khi có người giải bằng tay.
+        #
+        # 4 giây đưa nhịp về ~12 request/phút, và 205 ngành vẫn chỉ mất ~18 phút — rẻ hơn hẳn
+        # một đêm hỏng cần người ngồi kéo slider.
+        if i:
+            await asyncio.sleep(NGHI_GIUA_LUOT)
         tr: dict = {}
         trace[ten] = tr
         bat_dau = datetime.now(timezone.utc).isoformat()
