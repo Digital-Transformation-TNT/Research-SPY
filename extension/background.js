@@ -1622,10 +1622,21 @@ function parseTemuSuggest(text, typed) {
   // Bộ duyệt cây tổng quát bên dưới nhặt được cả nhãn tĩnh của trang ("Explore your
   // interests") và trả nó ra như một từ khoá — đúng một chuỗi cho cả bốn cụm. Đọc thẳng chỗ
   // gợi ý thật thì không dính; bộ duyệt vẫn giữ làm lưới hứng khi Temu đổi cấu trúc.
+  //
+  // GỢI Ý THẬT NẰM Ở `recommend_words`, KHÔNG PHẢI `slice_words`. Đo 13/09/2026 trên Temu Vietnam,
+  // gõ "t shirt": `slice_words` chỉ có đúng chuỗi "t shirt" (cách Temu cắt chính truy vấn), còn
+  // `recommend_words[].recommend` = "t shirts for women", "t shirt for men"… — khớp từng dòng với
+  // khung gợi ý người dùng thấy khi gõ tay. Bản cũ đọc `slice_words`, thấy có chữ là `return`
+  // luôn, nên không bao giờ tới `recommend_words`; backend lọc mảnh đi rồi còn 0–1 gợi ý.
   try {
     const j = JSON.parse(text);
-    const words = ((j && j.result && j.result.data && j.result.data.slice_words) || []);
-    for (const w of words) {
+    const data = (j && j.result && j.result.data) || {};
+    for (const w of (data.recommend_words || [])) {
+      if (!w || typeof w !== 'object') continue;
+      take(w.recommend || w.shade_word || w.query || w.word || w.text);
+    }
+    if (out.length) return out;
+    for (const w of (data.slice_words || [])) {
       if (!w || typeof w !== 'object') continue;
       take(w.slice_word || w.query || w.word || w.text || (w.p_search && w.p_search.query));
     }

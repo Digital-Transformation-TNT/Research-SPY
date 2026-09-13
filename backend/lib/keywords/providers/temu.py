@@ -175,6 +175,9 @@ class Temu(KeywordProvider):
                   [w.keyword for v in by_term.values() for w in v][:5])
         if total < len(terms):
             _LOG.warning("Temu chẩn đoán: %s", _with_debug(result))
+            # Mẫu ĐẦY ĐỦ vào log (câu lỗi trên giao diện chỉ giữ 1.200 ký tự). Phần đầu payload
+            # toàn `slice_words` nên 1.200 ký tự không bao giờ chạm tới chỗ gợi ý thật nằm.
+            _LOG.warning("Temu mẫu payload đầy đủ: %s", dbg.get("sample"))
 
         # LOẠI MẢNH CỦA CHÍNH TRUY VẤN. `slice_words` — cái tên đã nói — là cách Temu CẮT câu
         # truy vấn thành từ, không phải danh sách gợi ý. Đo 07/09/2026 bằng ba phép thử:
