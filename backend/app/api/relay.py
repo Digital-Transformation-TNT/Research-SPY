@@ -34,6 +34,7 @@ from lib.core.worker_relay import (
     queue_depth,
     run_on_worker,
     submit_timeout_for,
+    requeue_job,
     take_job,
     worker_online,
 )
@@ -116,6 +117,13 @@ async def next_job(request: Request) -> JSONResponse:
         return deny
     job = await take_job()
     if job is None:
+        return JSONResponse({"empty": True})
+    # NGƯỜI HỎI ĐÃ BỎ ĐI THÌ ĐỪNG GIAO. F5 tab máy-thợ cắt kết nối long-poll phía trình duyệt, nhưng
+    # lượt chờ ở đây vẫn sống tới khi nhặt được job — rồi giao job vào khoảng không. Job ấy không
+    # ai chạy, không ai trả kết quả, và người dùng chờ đủ 100s để nhận "máy-thợ không trả kết quả
+    # kịp". Gặp hai lần liền ngày 13/09/2026, đúng lượt đầu tiên sau mỗi lần F5.
+    if await request.is_disconnected():
+        requeue_job(job)
         return JSONResponse({"empty": True})
     return JSONResponse({"id": job.id, "type": job.type, "payload": job.payload})
 

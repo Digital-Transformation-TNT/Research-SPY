@@ -281,6 +281,17 @@ async def take_job(timeout_s: float = NEXT_TIMEOUT_S) -> Job | None:
     return None if job.future.done() else job
 
 
+def requeue_job(job: Job) -> None:
+    """
+    Trả một job đã nhặt về hàng đợi, khi người nhặt không còn ở đó để chạy nó.
+
+    Vào CUỐI hàng chứ không lên đầu (`asyncio.Queue` không có đường chen lên), nhưng hàng đợi
+    máy-thợ gần như luôn chỉ có một việc nên thứ tự không đổi gì trong thực tế.
+    """
+    if not job.future.done():
+        _pending.put_nowait(job)
+
+
 def deliver_result(job_id: str, result: Any) -> bool:
     """
     Trả kết quả cho một job. `False` nghĩa là không còn ai chờ kết quả này.
