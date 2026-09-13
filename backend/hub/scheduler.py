@@ -385,18 +385,46 @@ def _loop():
         time.sleep(60)
 
 
+#: Luồng lịch, để `status()` hỏi được nó CÓ THẬT SỰ ĐANG CHẠY không. `None` = chưa từng khởi động.
+_thread: threading.Thread | None = None
+
+
 def start():
-    """Gọi trong startup của FastAPI. Chạy nền, không chặn app."""
+    """
+    Gọi trong startup của FastAPI. Chạy nền, không chặn app.
+
+    KHÔNG CHẠY DỒN KHI VỪA BẬT. Vòng lặp coi mọi job có giờ đã qua trong ngày là "đến hạn",
+    nên backend khởi động lúc 19:48 sẽ lập tức chạy cả `sigcat` (4 tiếng cào Shopee) lẫn
+    `sig1688` (cần người giải slider) — một hành vi không ai yêu cầu, xảy ra đúng lúc người ta
+    chỉ restart để sửa một dòng code. Nên job nào đã qua giờ HÔM NAY thì đánh dấu là đã chạy,
+    để nó đợi tới ngày mai. Muốn bù hôm nay thì gọi tay `/scheduler/run?job=<tên>`.
+    """
+    global _thread
     if not _enabled():
         log.info("scheduler tắt (SCHEDULER_ENABLED=0)")
         return
-    t = threading.Thread(target=_loop, daemon=True, name="scheduler")
-    t.start()
-    log.info("scheduler chạy: discover 02:00 · listings 02:40 · trends 03:30 · report 04:00")
+    now = datetime.now()
+    hom_nay = now.strftime("%Y-%m-%d")
+    for name, (gio, phut) in LICH.items():
+        if now.hour > gio or (now.hour == gio and now.minute >= phut):
+            _last_run[name] = hom_nay
+    _thread = threading.Thread(target=_loop, daemon=True, name="scheduler")
+    _thread.start()
+    log.warning("scheduler CHẠY: %s",
+                " · ".join(f"{n} {g:02d}:{p:02d}" for n, (g, p) in LICH.items()))
 
 
 def status() -> dict:
-    return {"enabled": _enabled(), "last_run": dict(_last_run),
+    # `enabled` MỘT MÌNH ĐÃ NÓI DỐI suốt từ khi dựng máy. Nó đọc `SCHEDULER_ENABLED` (mặc định
+    # bật), trong khi luồng lịch thật sự do `HUB_SCHEDULER` ở `hub/main.py` quyết định (mặc định
+    # TẮT). Kết quả: `/status` báo `enabled: true` suốt nhiều ngày trong khi không một job nào
+    # từng chạy — đo 13/09/2026, `last_run` rỗng trên một tiến trình đã sống 51 giờ.
+    #
+    # `luong_dang_chay` mới là câu trả lời cho "lịch có chạy không". Đọc nó, đừng đọc `enabled`.
+    return {"enabled": _enabled(),
+            "luong_dang_chay": bool(_thread and _thread.is_alive()),
+            "hub_scheduler": os.environ.get("HUB_SCHEDULER", "0"),
+            "last_run": dict(_last_run),
             "schedule": {n: f"{g:02d}:{p:02d}" for n, (g, p) in LICH.items()},
             # Job có trong `JOBS` mà không có trong `LICH` — chạy tay được, không tự chạy.
             "chay_tay_duoc": sorted(set(JOBS) - set(LICH)),

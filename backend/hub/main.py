@@ -53,10 +53,13 @@ def init_hub() -> dict:
             source = "seed"
         n = db.counts()["total"]
 
-    # Lịch cào đêm (Etsy/Amazon/Google Trends) MẶC ĐỊNH TẮT. Ở dự án gốc nó bật sẵn, nhưng
-    # ở đây nó sẽ tự đi lấy dữ liệu ngoài internet từ một backend mà người dùng mở lên chỉ
-    # để tra sản phẩm — một hành vi không ai yêu cầu và không nhìn thấy được. Bật bằng:
-    #   HUB_SCHEDULER=1
+    # Lịch cào đêm MẶC ĐỊNH TẮT, và giữ nguyên như vậy trong code: một máy dev bật backend lên
+    # để sửa giao diện không được tự đi cào Shopee bốn tiếng. Bật RIÊNG trên máy production:
+    #   nssm set ResearchSpyBackend AppEnvironmentExtra HUB_SCHEDULER=1
+    #
+    # CÁI BẪY ĐÃ SẬP: công tắc này KHÁC `SCHEDULER_ENABLED` mà `/scheduler/status` đọc. Máy
+    # production chạy nhiều ngày không có `HUB_SCHEDULER`, lịch không khởi động, còn `/status`
+    # vẫn báo `enabled: true`. Kiểm bằng trường `luong_dang_chay`, không bằng `enabled`.
     scheduler_on = os.environ.get("HUB_SCHEDULER", "0") == "1"
     if scheduler_on:
         from . import scheduler
