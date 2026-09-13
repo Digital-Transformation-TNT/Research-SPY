@@ -2929,38 +2929,59 @@ async function taobaoImageRun(dataUrl, st) {
 
   st.at = 'mở tab Taobao';
   const tab = await keptTab('taobao');
-  await chrome.tabs.update(tab.id, { url: 'https://www.taobao.com/' });
-  await focusTab(tab.id); // SPA nặng chỉ render + bắn XHR khi tab HIỆN TRƯỚC
-  await waitForComplete(tab.id, 16000);
-  await sleep(2500);
 
-  // CHỤP LẠI TAB TAOBAO CÓ SẴN trước khi bấm tìm. Máy-thợ là máy của người thật và họ hoàn
-  // toàn có thể đang mở Taobao của riêng mình; đóng nhầm tab ấy sau mỗi lượt tìm là cách chắc
-  // chắn nhất để không ai chịu để máy-thợ chạy nữa. Chỉ tab XUẤT HIỆN THÊM mới là của ta.
+  // CHỤP LẠI TAB TAOBAO CÓ SẴN trước khi tìm. Máy-thợ là máy của người thật và họ hoàn toàn có
+  // thể đang mở Taobao của riêng mình; đóng nhầm tab ấy sau mỗi lượt tìm là cách chắc chắn nhất
+  // để không ai chịu để máy-thợ chạy nữa. Chỉ tab XUẤT HIỆN THÊM mới là của ta.
   const before = new Set((await chrome.tabs.query({ url: 'https://*.taobao.com/*' }))
     .map((t) => t.id).filter((id) => id != null));
 
-  st.at = 'thả ảnh vào panel tìm-bằng-ảnh';
-  const dropped = await evalInTab(tab.id, tbDropImage, [dataUrl], 20000);
-  if (!dropped || !dropped.ok) {
-    return {
-      items: [],
-      blocked: true,
-      reason: 'ui',
-      error: 'không thao tác được panel tìm-bằng-ảnh (' + ((dropped && dropped.stage) || 'quá hạn') + ')',
-    };
-  }
+  // ĐI THẲNG TRANG KẾT QUẢ, KHÔNG QUA PANEL TRANG CHỦ. Đọc mã `pc-search-2024/main.js` ngày
+  // 13/09/2026: trang `s.taobao.com/search?localImgKey=K` lấy ảnh bằng `sessionStorage.getItem(K)`
+  // (chính nó cất `newImg.dataUrl` vào đó), hoặc xin từ `window.opener` qua postMessage.
+  // Đường panel trang chủ đi nhánh opener: bấm 搜索 thì `window.open` tab kết quả — cú bấm tự
+  // dựng không có user activation nên Chrome chặn popup, còn tự mở URL ấy thì tab mới không có
+  // opener và nhận về `result: [null]`. Cất dataUrl vào sessionStorage của CHÍNH tab s.taobao.com
+  // rồi mở URL có khoá là đúng đường trang tự dùng khi tìm lại ảnh ngay trên trang kết quả.
+  st.at = 'cất ảnh vào trang kết quả Taobao';
+  await chrome.tabs.update(tab.id, { url: 'https://s.taobao.com/search?tab=all' });
+  await focusTab(tab.id); // SPA nặng chỉ render + bắn XHR khi tab HIỆN TRƯỚC
+  await waitForComplete(tab.id, 16000);
+  const key = 'localImgSearchKey' + Date.now();
+  const stored = await evalInTab(tab.id, (k, d) => {
+    try { sessionStorage.setItem(k, d); return { ok: sessionStorage.getItem(k) === d, host: location.host }; }
+    catch (e) { return { ok: false, error: String(e), host: location.host }; }
+  }, [key, dataUrl], 8000);
 
-  // Trang kết quả đã bị trình chặn popup nuốt (xem `tbDropImage`): tự mở URL chộp được ngay
-  // trong tab của mình. Không có URL thì vẫn chờ như cũ — biết đâu Taobao đổi về mở cùng tab.
-  if (dropped.openUrl) {
+  if (stored && stored.ok && /s\.taobao\.com/.test(stored.host || '')) {
     st.at = 'mở trang kết quả tìm ảnh';
-    let url = dropped.openUrl;
-    if (url.startsWith('//')) url = 'https:' + url;
-    else if (url.startsWith('/')) url = 'https://s.taobao.com' + url;
-    await chrome.tabs.update(tab.id, { url });
-    await focusTab(tab.id);
+    await chrome.tabs.update(tab.id, {
+      url: 'https://s.taobao.com/search?localImgKey=' + encodeURIComponent(key) + '&search_type=item&tab=all',
+    });
     await waitForComplete(tab.id, 16000);
+  } else {
+    // Dự phòng: đường panel trang chủ cũ (có thể vướng popup như ghi ở trên, nhưng vẫn hơn bỏ).
+    st.at = 'thả ảnh vào panel tìm-bằng-ảnh';
+    await chrome.tabs.update(tab.id, { url: 'https://www.taobao.com/' });
+    await waitForComplete(tab.id, 16000);
+    await sleep(2500);
+    const dropped = await evalInTab(tab.id, tbDropImage, [dataUrl], 20000);
+    if (!dropped || !dropped.ok) {
+      return {
+        items: [],
+        blocked: true,
+        reason: 'ui',
+        error: 'không cất được ảnh vào s.taobao.com (' + ((stored && (stored.error || stored.host)) || 'quá hạn')
+          + ') và không thao tác được panel tìm-bằng-ảnh (' + ((dropped && dropped.stage) || 'quá hạn') + ')',
+      };
+    }
+    if (dropped.openUrl) {
+      let url = dropped.openUrl;
+      if (url.startsWith('//')) url = 'https:' + url;
+      else if (url.startsWith('/')) url = 'https://s.taobao.com' + url;
+      await chrome.tabs.update(tab.id, { url });
+      await waitForComplete(tab.id, 16000);
+    }
   }
 
   st.at = 'chờ Taobao trả kết quả';
