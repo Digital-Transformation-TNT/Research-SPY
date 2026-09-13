@@ -2683,6 +2683,17 @@ async function shopeeCapture(domain, pageUrl, param, want, mustHave, clickSort) 
 // trước và người dùng nhận "hết giờ" trong khi máy-thợ vẫn đang chạy ngon lành.
 const IMAGE_JOB_BUDGET_MS = 80000;
 
+/**
+ * Vòng chờ kết quả phải DỪNG TRƯỚC hạn tổng của `withStageBudget` một khoảng này.
+ *
+ * Trước đây vòng chờ đặt `deadline = Date.now() + IMAGE_JOB_BUDGET_MS` — tính từ lúc nó bắt đầu,
+ * tức MUỘN hơn hạn tổng vài chục giây (mở tab, thả ảnh đã ăn mất phần đó). Hạn tổng vì vậy luôn
+ * cắt trước, và câu chẩn đoán cuối vòng ("trang chưa gọi API nào", "mtop trả: …") không bao giờ
+ * về tới backend — chỉ còn "treo ở bước chờ Taobao trả kết quả", không phân biệt được Taobao
+ * chậm, chưa bấm được nút tìm hay đã đổi tên API. Gặp thật 13/09/2026.
+ */
+const IMAGE_REPORT_MARGIN_MS = 12000;
+
 // ẢNH ĐẾN DƯỚI DẠNG data URL và phải thành `File` TRONG TRANG. Không có đường nào khác:
 // `chrome.scripting` chỉ truyền được giá trị JSON, còn `File`/`Blob` thì không qua được ranh
 // giới ấy. Dựng trong trang bằng `fetch(dataUrl)` là cách gọn nhất, và cũng là cách duy nhất
@@ -2831,9 +2842,9 @@ function taobaoImageSearch(dataUrl) {
 }
 
 async function taobaoImageRun(dataUrl, st) {
+  const deadline = Date.now() + IMAGE_JOB_BUDGET_MS - IMAGE_REPORT_MARGIN_MS;
   st.at = 'đăng ký page-hook';
   await capped(ensurePageHook(), 5000, null);
-  const deadline = Date.now() + IMAGE_JOB_BUDGET_MS;
 
   // Hỏi cookie TRƯỚC: khách vãng lai thì mọi lượt gọi MTOP đều trả `FAIL_SYS_SESSION_EXPIRED`,
   // và biết trước điều đó tiết kiệm cho người dùng ba mươi giây chờ một kết quả chắc chắn rỗng.
@@ -3091,7 +3102,7 @@ function lensImageSearch(dataUrl, language) {
 
 async function lensImageRun(dataUrl, language, st) {
   st.at = 'mở lớp phủ tìm-bằng-ảnh của Google';
-  const deadline = Date.now() + IMAGE_JOB_BUDGET_MS;
+  const deadline = Date.now() + IMAGE_JOB_BUDGET_MS - IMAGE_REPORT_MARGIN_MS;
   const tab = await keptTab('lens');
   await chrome.tabs.update(tab.id, { url: 'https://www.google.com/?hl=' + encodeURIComponent(language || 'vi') });
   // ĐƯA TAB RA TRƯỚC. Không phải để người dùng xem: lưới kết quả tải ảnh theo kiểu lười, mà
