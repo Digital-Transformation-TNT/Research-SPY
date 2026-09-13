@@ -76,10 +76,21 @@ class Temu(KeywordProvider):
     has_native_score = False
     markets = MARKETS
     geo_targeted = False
-    #: LUÔN hỏi bằng tiếng Anh, bất kể ô Quốc gia. Xem `KeywordProvider.query_market` và ghi chú
-    #: `MARKETS` ngay trên: ô gợi ý của Temu phục vụ bằng tiếng Anh, và hỏi nó bằng tiếng Việt
-    #: không cho ra bảng rỗng mà cho ra tiếng vọng — tệ hơn hẳn.
+    #: Hỏi bằng tiếng Anh cho mọi nước TRỪ Việt Nam — xem `query_market_for` ngay dưới.
     query_market = "US"
+
+    def query_market_for(self, country: str) -> str | None:
+        """
+        Việt Nam → hỏi bằng tiếng Việt; mọi nước khác → tiếng Anh như cũ.
+
+        Chốt 13/09/2026. Phiên Temu trên máy-thợ là TEMU VIETNAM, và đo bằng tay trên chính
+        phiên đó: gõ "áo thun" ra 15 gợi ý tiếng Việt ("áo thun tay dài nữ", "áo thun ôm body"…),
+        gõ "t shirt" ra 15 gợi ý tiếng Anh. Ghi chú cũ "hỏi bằng tiếng Việt chỉ ra tiếng vọng"
+        (05/09) là HỆ QUẢ của lỗi đọc sai `slice_words` bên extension, không phải của Temu —
+        lỗi ấy làm MỌI ngôn ngữ ra 0–1 gợi ý, nên tiếng Việt bị đổ oan.
+        """
+        return None if (country or "").upper() == "VN" else self.query_market
+
     #: Hỏi gộp: xem ghi chú đầu file.
     batches_terms = True
     max_terms = MAX_TERMS

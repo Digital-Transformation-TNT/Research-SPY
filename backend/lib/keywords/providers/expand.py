@@ -404,8 +404,8 @@ async def expand_with_provider(
     # `country` GỐC vẫn được giữ nguyên cho phần còn lại (kiểm thị trường ở trên đã chạy xong,
     # và ô Quốc gia vẫn phải nói đúng thứ người dùng chọn ở mọi chỗ khác).
     market = country
-    if provider.query_market:
-        market = provider.query_market
+    if forced := provider.query_market_for(country):
+        market = forced
         seed = await seed_for_market(seed, market)
 
     # Nguồn không mở rộng được thì hỏi đúng một lần bằng chính từ gốc.

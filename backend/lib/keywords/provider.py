@@ -102,6 +102,16 @@ class KeywordProvider(ABC):
     #: rộng — cả từ gốc lẫn danh sách hậu tố/tiền tố đều phải theo ngôn ngữ này. Xem
     #: `expand_with_provider`.
     query_market: str | None = None
+
+    def query_market_for(self, country: str) -> str | None:
+        """
+        Ngôn ngữ (theo mã thị trường) để hỏi nguồn này KHI người dùng chọn `country`.
+
+        Mặc định là `query_market` cố định. Nguồn nào nói được nhiều thứ tiếng tuỳ nước thì đè
+        hàm này — xem `providers/temu.py`. `None` = hỏi bằng ngôn ngữ của chính ô Quốc gia.
+        """
+        return self.query_market
+
     #: Khoảng cách tối thiểu giữa hai lượt gọi của RIÊNG nguồn này, tính bằng mili giây.
     #:
     #: `None` nghĩa là dùng `CALL_DELAY_MS` chung. Nằm trên provider vì sức chịu đựng là thuộc
