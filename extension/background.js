@@ -2733,6 +2733,21 @@ async function tbDropImage(dataUrl) {
     return { ok: false, stage: 'file', error: String(e) };
   }
 
+  // CHỘP LỆNH MỞ TAB KẾT QUẢ. Đo 13/09/2026: bấm 搜索 trong panel thì Taobao `window.open` trang
+  // `s.taobao.com/search?…localImgKey=…` ở TAB MỚI. Cú bấm của ta là `MouseEvent` tự dựng, không
+  // phải cú bấm thật, nên trình chặn popup của Chrome nuốt lệnh mở tab — trang đứng yên ở trang
+  // chủ, không API tìm ảnh nào được gọi, nguồn treo tới hết giờ. Nên: bọc `window.open` để lấy
+  // URL, rồi background tự mở URL ấy trong tab của mình.
+  window.__rsOpenUrl = '';
+  if (!window.__rsOpenPatched) {
+    const origOpen = window.open;
+    window.open = function (u) {
+      try { if (u) window.__rsOpenUrl = String(u); } catch (e) {}
+      return origOpen.apply(this, arguments);
+    };
+    window.__rsOpenPatched = true;
+  }
+
   // Bấm nút xác nhận. Lấy phần tử KHỚP CHÍNH XÁC nhãn và đang HIỆN — trang có nhiều nút chữ
   // 搜索 (ô tìm kiếm chính cũng vậy), và bấm nhầm cái ở thanh trên là tìm theo chữ rỗng.
   for (let i = 0; i < 12; i++) {
@@ -2742,8 +2757,13 @@ async function tbDropImage(dataUrl) {
       return (t === '搜索' || t === '搜同款') && el.offsetParent !== null;
     });
     if (hits.length) {
-      hits[hits.length - 1].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-      return { ok: true };
+      const btn = hits[hits.length - 1];
+      btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      // Nút có thể là link `target=_blank` thay vì `window.open` — lấy luôn href nếu có.
+      const link = btn.closest && btn.closest('a[href]');
+      for (let k = 0; k < 16 && !window.__rsOpenUrl; k++) await nap(250);
+      const openUrl = window.__rsOpenUrl || (link && /localImgKey|search/i.test(link.href) ? link.href : '');
+      return { ok: true, openUrl };
     }
   }
   return { ok: false, stage: 'submit' };
@@ -2751,7 +2771,10 @@ async function tbDropImage(dataUrl) {
 
 /** Đọc `__rsCap` của một tab: phản hồi recommend CÓ `itemsArray`, cộng dấu hiệu chặn. */
 function tbReadCapture() {
-  const caps = (window.__rsCap || []).filter((c) => /relationrecommend/i.test(c.url || ''));
+  // Bỏ lượt `pc_search_preload` của TRANG CHỦ: nó cũng là relationrecommend, cũng `SUCCESS`, nhưng
+  // chỉ là cấu hình tải sẵn — để lọt vào đây thì nó chiếm chỗ `ret`/mẫu cấu trúc của phản hồi thật.
+  const caps = (window.__rsCap || []).filter((c) => /relationrecommend/i.test(c.url || '')
+    && !/pc_search_preload/.test(c.text || ''));
   let items = null;
   let ret = '';
   // Lượt gọi ĐẦU của chính trang thường dính `RGV587_ERROR` rồi trang tự thử lại, nên phải
@@ -2926,6 +2949,18 @@ async function taobaoImageRun(dataUrl, st) {
       reason: 'ui',
       error: 'không thao tác được panel tìm-bằng-ảnh (' + ((dropped && dropped.stage) || 'quá hạn') + ')',
     };
+  }
+
+  // Trang kết quả đã bị trình chặn popup nuốt (xem `tbDropImage`): tự mở URL chộp được ngay
+  // trong tab của mình. Không có URL thì vẫn chờ như cũ — biết đâu Taobao đổi về mở cùng tab.
+  if (dropped.openUrl) {
+    st.at = 'mở trang kết quả tìm ảnh';
+    let url = dropped.openUrl;
+    if (url.startsWith('//')) url = 'https:' + url;
+    else if (url.startsWith('/')) url = 'https://s.taobao.com' + url;
+    await chrome.tabs.update(tab.id, { url });
+    await focusTab(tab.id);
+    await waitForComplete(tab.id, 16000);
   }
 
   st.at = 'chờ Taobao trả kết quả';
