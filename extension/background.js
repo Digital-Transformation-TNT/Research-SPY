@@ -2929,6 +2929,7 @@ async function taobaoImageRun(dataUrl, st) {
   let keys = [];
   let shape = '';
   let nCap = 0;
+  const hrefs = new Map();   // tab id → địa chỉ đang mở, cho câu chẩn đoán
   while (Date.now() < deadline) {
     await sleep(900);
     let tabs = [];
@@ -2942,6 +2943,7 @@ async function taobaoImageRun(dataUrl, st) {
         await closeExtraTabs(spawned);
         return { items: r.items, blocked: false };
       }
+      if (r.href) hrefs.set(t.id, String(r.href).split('?')[0].slice(0, 90) + (before.has(t.id) ? '' : ' (tab mới)'));
       if (r.ret) lastRet = r.ret;
       for (const u of (r.seen || [])) seen.add(u);
       if (r.dataKeys && r.dataKeys.length) keys = r.dataKeys;
@@ -2966,6 +2968,12 @@ async function taobaoImageRun(dataUrl, st) {
     + (keys.length ? ' · data có các khoá: ' + keys.join(', ') : '');
   else if (seen.size) why += ' · KHÔNG response nào khớp NEEDLES; trang vừa gọi: ' + [...seen].slice(-6).join(' ');
   else why += ' · trang chưa gọi API nào — nhiều khả năng chưa bấm được nút tìm';
+  // LUÔN kèm tab đang mở và API trang đã gọi, kể cả khi đã có `mtop trả`. Đo 13/09/2026: thứ
+  // duy nhất chộp được là lượt `pc_search_preload` của TRANG CHỦ — `SUCCESS` nhưng không phải kết
+  // quả tìm ảnh — và nhánh `lastRet` ở trên giấu mất danh sách API, đúng thứ chỉ ra kết quả thật
+  // đi đường nào (tab mới? API tên khác? JSONP mà hook không bọc được?).
+  if (hrefs.size) why += ' · tab: ' + [...hrefs.values()].join(' | ');
+  if (lastRet && seen.size) why += ' · API trang gọi: ' + [...seen].slice(-10).join(' ');
   return { items: [], blocked: true, reason: 'timeout', error: why };
 }
 
