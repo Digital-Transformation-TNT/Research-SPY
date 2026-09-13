@@ -2827,6 +2827,12 @@ function tbReadCapture() {
     seen,
     dataKeys,
     shape,
+    // HỘP ĐĂNG NHẬP PHỦ TRANG CHỦ. Đo 13/09/2026: cookie `tracknick`/`_nk_` sống lâu hơn phiên
+    // thật, nên phép thử cookie ở `taobaoImageRun` qua, rồi Taobao bung hộp 密码登录 che kín trang
+    // — cú thả ảnh rơi vào dưới hộp, không API nào được gọi, nguồn treo tới hết giờ. Đọc cả
+    // iframe login lẫn chữ trong hộp, vì chữ nằm quá xa 400 ký tự đầu của `body` để lọt vào đó.
+    loginModal: !!document.querySelector("iframe[src*='login.taobao.com'], iframe[src*='login.tmall.com']")
+      || /密码登录|短信登录|扫码登录/.test(document.body ? document.body.innerText || '' : ''),
     nCap: (window.__rsCap || []).length,
     href: location.href,
     body: document.body ? (document.body.innerText || '').slice(0, 400) : '',
@@ -2949,7 +2955,7 @@ async function taobaoImageRun(dataUrl, st) {
       if (r.dataKeys && r.dataKeys.length) keys = r.dataKeys;
       if (r.shape) shape = r.shape;
       if (r.nCap) nCap = Math.max(nCap, r.nCap);
-      if (/login\.taobao/i.test(r.href || '') || /SESSION_EXPIRED|NOT_LOGIN/i.test(r.ret || '')) {
+      if (r.loginModal || /login\.taobao/i.test(r.href || '') || /SESSION_EXPIRED|NOT_LOGIN/i.test(r.ret || '')) {
         await focusTab(t.id);
         return { items: [], blocked: true, reason: 'login' };
       }
