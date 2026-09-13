@@ -1127,6 +1127,62 @@ def signal_partitions():
     return {"partitions": top10.partitions()}
 
 
+@router.get("/scout/san")
+def scout_san():
+    """TREND·SCOUT: ba sàn thật — Shopee VN, Shopee PH, 1688 (demo ghi "TikTok" là viết nhầm)."""
+    from .signal import scout
+    return {"san": [{"key": k, "nhan": v["nhan"]} for k, v in scout.SAN.items()],
+            "lang_kinh": list(scout.LANG_KINH)}
+
+
+def _scout(fn, *a, **kw):
+    from fastapi import HTTPException
+    try:
+        return fn(*a, **kw)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/scout/nganh")
+def scout_nganh(san: str = "shopee_vn"):
+    from .signal import scout
+    return _scout(scout.cay_nganh, san)
+
+
+@router.get("/scout/toplist")
+def scout_toplist(san: str = "shopee_vn", loai: str = "ban_chay", limit: int | None = None):
+    """Top 100 bán chạy / doanh số của cả sàn — số 30 ngày của sàn, không cần lịch sử."""
+    from .signal import scout
+    return _scout(scout.toplist, san, loai, limit)
+
+
+@router.get("/scout/kham-pha")
+def scout_kham_pha(san: str = "shopee_vn", main: str = "", sub: str = "",
+                   lens: str = "ban_chay", limit: int = 100):
+    """Một ngành × một lăng kính, kèm số lượng của cả 7 lăng kính và "tính trên N ngày"."""
+    from .signal import scout
+    return _scout(scout.kham_pha, san, main, sub or None, lens, limit)
+
+
+@router.get("/scout/config")
+def scout_config(san: str = "shopee_vn"):
+    from .signal import scout
+    return {"san": san, "config": _scout(scout.cau_hinh, san), "mac_dinh": scout.NGUONG,
+            "khoang": scout.BOUNDS}
+
+
+@router.post("/scout/config")
+def scout_config_save(payload: dict):
+    """Lưu các số đỏ cho MỘT sàn. Giá trị ngoài khoảng hợp lệ bị bỏ, giữ mức tài liệu."""
+    from .signal import store as sig_store, scout
+    p = dict(payload or {})
+    san = p.pop("san", "shopee_vn")
+    _scout(scout._san, san)
+    cfg = scout.cau_hinh(san, {**sig_store.get_config(f"scout:{san}"), **p})
+    sig_store.set_config(f"scout:{san}", cfg)
+    return {"saved": True, "san": san, "config": cfg}
+
+
 @router.get("/signal/top10")
 def signal_top10(platform: str = "shopee", market: str = "ph"):
     """② Hai bảng Top 10 của MỘT partition. Không gộp sàn, không quy đổi tiền."""

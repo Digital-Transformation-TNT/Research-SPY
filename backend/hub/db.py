@@ -296,6 +296,10 @@ def init_db() -> None:
             except Exception:
                 pass
         _migrate_snapshot_pk(c)
+        # TREND·SCOUT đọc lịch sử THEO NGÀNH (`hub/signal/scout.py`). Tạo sau migration chứ
+        # không nằm trong SCHEMA: kho cũ chưa có cột `category_code` thì SCHEMA sẽ vỡ ngay dòng này.
+        c.execute("CREATE INDEX IF NOT EXISTS idx_ls_cat"
+                  " ON listings_snapshot(platform, market, category_code, day)")
 
         # Khử trùng rồi tạo UNIQUE index (sàn, url, keyword) để upsert hoạt động.
         c.execute("""DELETE FROM raw_listings WHERE id NOT IN
