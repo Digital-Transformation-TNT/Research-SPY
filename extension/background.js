@@ -2757,6 +2757,7 @@ function tbReadCapture() {
   // Lượt gọi ĐẦU của chính trang thường dính `RGV587_ERROR` rồi trang tự thử lại, nên phải
   // duyệt NGƯỢC tìm phản hồi CÓ `itemsArray` — lấy phản hồi đầu tiên khớp tên API là lấy nhầm.
   let dataKeys = [];
+  let shape = '';
   for (let i = caps.length - 1; i >= 0; i--) {
     let j = null;
     try { j = JSON.parse(caps[i].text); } catch (e) { continue; }
@@ -2772,13 +2773,23 @@ function tbReadCapture() {
       // Lùng TẠI CHỖ, không gọi `rsDeepFindArray`: hàm này chạy `world: 'MAIN'` nên nó được
       // tuần tự hoá rồi thả vào TRANG, nơi không có gì của background.js cả. Gọi ra ngoài là
       // ReferenceError, và `evalInTab` nuốt lỗi thành `null` — nguồn chết câm y như cũ.
+      //
+      // NHẬN NHIỀU TÊN TRƯỜNG. Đo 13/09/2026: mtop trả `SUCCESS` với `data = {result, pvid, scm,
+      // version, tpp_trace, tpp_buckets}` và phép thử `item_id`+`title` cứng không khớp mảng nào.
+      // Taobao dùng lẫn `item_id`/`itemId`/`nid`/`auctionId` và `title`/`raw_title`/`itemTitle`
+      // tuỳ API; mảng khớp được đổi về đúng `item_id`+`title` mà `_row` bên backend đòi.
+      const idOf = (x) => x && (x.item_id || x.itemId || x.nid || x.auctionId || x.auction_id);
+      const titleOf = (x) => x && (x.title || x.raw_title || x.rawTitle || x.itemTitle || x.titleText);
       const stack = [j];
-      for (let g = 0; g < 4000 && stack.length && !arr; g++) {
+      for (let g = 0; g < 20000 && stack.length && !arr; g++) {
         const o = stack.pop();
         if (!o || typeof o !== 'object') continue;
         if (Array.isArray(o)) {
-          if (o.length && o.slice(0, 5).every((x) => x && typeof x === 'object' && x.item_id && x.title)) {
-            arr = o;
+          if (o.length && o.slice(0, 5).every((x) => x && typeof x === 'object' && idOf(x) && titleOf(x))) {
+            arr = o.map((x) => Object.assign({}, x, {
+              item_id: String(idOf(x)),
+              title: String(titleOf(x)).replace(/<[^>]+>/g, ''),
+            }));
             break;
           }
           for (let k = 0; k < Math.min(o.length, 40); k++) stack.push(o[k]);
@@ -2788,7 +2799,21 @@ function tbReadCapture() {
       }
     }
     if (Array.isArray(arr) && arr.length) { items = arr.slice(0, 40); break; }
-    if (!dataKeys.length && j && j.data) dataKeys = Object.keys(j.data).slice(0, 12);
+    if (!dataKeys.length && j && j.data) {
+      dataKeys = Object.keys(j.data).slice(0, 12);
+      // MẪU CẤU TRÚC của `data.result`: tên khoá lồng nhau, chuỗi cắt ngắn, mảng chỉ giữ phần tử
+      // đầu. Để lần sau Taobao đổi chỗ để hàng, câu báo lỗi tự chỉ ra chỗ mới — không phải đoán.
+      const shapeOf = (o, d) => {
+        if (o == null || typeof o !== 'object') return typeof o === 'string' ? o.slice(0, 24) : o;
+        if (d > 4) return '…';
+        if (Array.isArray(o)) return o.length ? [shapeOf(o[0], d + 1), `×${o.length}`] : [];
+        const out = {};
+        for (const k of Object.keys(o).slice(0, 14)) out[k] = shapeOf(o[k], d + 1);
+        return out;
+      };
+      try { shape = JSON.stringify(shapeOf(j.data.result !== undefined ? j.data.result : j.data, 0)).slice(0, 900); }
+      catch (e) { shape = ''; }
+    }
   }
   // Không có `items` thì kèm SỔ TÊN các API trang vừa gọi. Đó là thứ duy nhất phân biệt
   // "Taobao chưa trả kịp" với "Taobao đổi tên API nên `NEEDLES` hết khớp" — hai nguyên nhân
@@ -2801,6 +2826,7 @@ function tbReadCapture() {
     ret,
     seen,
     dataKeys,
+    shape,
     nCap: (window.__rsCap || []).length,
     href: location.href,
     body: document.body ? (document.body.innerText || '').slice(0, 400) : '',
@@ -2901,6 +2927,7 @@ async function taobaoImageRun(dataUrl, st) {
   let lastRet = '';
   const seen = new Set();
   let keys = [];
+  let shape = '';
   let nCap = 0;
   while (Date.now() < deadline) {
     await sleep(900);
@@ -2918,6 +2945,7 @@ async function taobaoImageRun(dataUrl, st) {
       if (r.ret) lastRet = r.ret;
       for (const u of (r.seen || [])) seen.add(u);
       if (r.dataKeys && r.dataKeys.length) keys = r.dataKeys;
+      if (r.shape) shape = r.shape;
       if (r.nCap) nCap = Math.max(nCap, r.nCap);
       if (/login\.taobao/i.test(r.href || '') || /SESSION_EXPIRED|NOT_LOGIN/i.test(r.ret || '')) {
         await focusTab(t.id);
@@ -2932,7 +2960,8 @@ async function taobaoImageRun(dataUrl, st) {
   await closeExtraTabs(spawned);
   let why = 'Taobao không trả kết quả trong ' + Math.round(IMAGE_JOB_BUDGET_MS / 1000) + 's';
   if (lastRet) why += ' · mtop trả: ' + lastRet
-    + (keys.length ? ' · nhưng data chỉ có: ' + keys.join(', ') : '');
+    + (keys.length ? ' · nhưng data chỉ có: ' + keys.join(', ') : '')
+    + (shape ? ' · mẫu data.result: ' + shape : '');
   else if (nCap) why += ' · chộp được ' + nCap + ' response nhưng không cái nào chứa mục có item_id+title'
     + (keys.length ? ' · data có các khoá: ' + keys.join(', ') : '');
   else if (seen.size) why += ' · KHÔNG response nào khớp NEEDLES; trang vừa gọi: ' + [...seen].slice(-6).join(' ');
