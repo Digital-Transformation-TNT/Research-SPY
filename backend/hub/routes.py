@@ -1213,13 +1213,12 @@ async def signal_snapshot(payload: dict):
 
 @router.post("/signal/ask")
 async def signal_ask(payload: dict):
-    """③ One-shot AI — hỏi đáp nhiều lượt, ground trên chính ① và ②."""
+    """One-shot AI — hỏi đáp nhiều lượt, ground trên Top sản phẩm của sàn đang chọn."""
     from .signal import ask as ask_engine
     p = payload or {}
     return await ask_engine.ask(
         turns=[t for t in (p.get("messages") or []) if isinstance(t, dict)],
-        region=p.get("region") or "VN",
-        platform=p.get("platform"), market=p.get("market"))
+        san=p.get("san"))
 
 
 #: DANH SÁCH THEO DÕI — thứ duy nhất người dùng phải khai, và là đầu vào của cả ① lẫn ②.

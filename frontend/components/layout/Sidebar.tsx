@@ -96,7 +96,7 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
       {
         href: '/trend-signal',
         label: 'Trend Signal Hub',
-        hint: 'Tín hiệu Google Trends · Top 10 sàn · One-shot AI',
+        hint: 'Top sản phẩm Shopee VN · Shopee PH · 1688, và One-shot AI',
         icon: 'signal',
       },
     ],

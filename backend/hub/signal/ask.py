@@ -1,14 +1,13 @@
 """
-③ ONE-SHOT AI — một ô hỏi đáp duy nhất cho cả Hub.
+ONE-SHOT AI — một ô hỏi đáp duy nhất cho cả Hub.
 
 Gộp từ chatbot mục "Cơ hội". Vòng hội thoại giữ nguyên `lib/opportunity/demand_map.py`
-(đề xuất → hỏi sàn → chấm lại); ở đây thêm hai việc nó không biết:
+(đề xuất → hỏi sàn → chấm lại); ở đây chèn thêm, trước khi hỏi, một lượt tóm tắt TOP SẢN PHẨM
+của sàn đang chọn (TREND·SCOUT, `scout.py`) để đề xuất bám vào thứ đang bán thật.
 
-    trước  — chèn một lượt tóm tắt tín hiệu của Hub vào đầu hội thoại, để đề xuất bám vào
-             thứ đang thật sự tăng chứ không phải thứ mô hình nhớ là hay tăng
-    sau    — đối chiếu ngược từng món với `trends_daily`, gắn số thật vào món Hub đã đo
-
-Món không khớp gì thì `signal` để None và giao diện hiện "chưa đo" — không suy ra con số.
+ĐỔI 13/09/2026: Google Trends bỏ khỏi Hub, nên lượt tóm tắt không còn đọc `trendsig` (dữ liệu
+Trends vẫn đóng băng trong kho). Bước "gắn số Trends vào từng món" cũng thôi — `signal` của mọi
+món là None, và giao diện không vẽ dòng đó nữa.
 """
 
 from __future__ import annotations
@@ -19,13 +18,14 @@ from lib.keywords.types import SearchContext
 from lib.core.model import dump
 from lib.opportunity.demand_map import ChatTurn, map_demand
 
-from . import store, top10, trendsig
+from . import scout
 
-#: Bao nhiêu từ khoá tín hiệu được đưa vào lượt tóm tắt. Đủ để định hướng, không đủ để
-#: nhấn chìm câu hỏi thật của người dùng.
-MAX_SIGNAL_HINTS = 12
-#: Bao nhiêu dòng Top 10 đi kèm.
-MAX_TOP_HINTS = 6
+#: Bao nhiêu dòng mỗi bảng Top đi vào lượt tóm tắt. Đủ để định hướng, không đủ để nhấn chìm
+#: câu hỏi thật của người dùng.
+MAX_TOP_HINTS = 8
+
+#: Thị trường đối chiếu ô tìm kiếm của sàn, theo từng sàn của TREND·SCOUT.
+REGION = {"shopee_vn": "VN", "shopee_ph": "PH", "1688": "CN"}
 
 
 def _fold(s: str) -> str:
@@ -34,79 +34,26 @@ def _fold(s: str) -> str:
     return "".join(c for c in s if unicodedata.category(c) != "Mn").replace("đ", "d").strip()
 
 
-def digest(trends_region: str, platform: str | None, market: str | None) -> dict:
-    """
-    Những gì Hub đang biết, gói lại thành một khối đọc được.
-
-    `trends_region` là KHOÁ LƯU của `trends_daily` ('ALL', 'VN-HN'…), KHÔNG phải mã quốc gia
-    của thị trường — truyền nhầm 'VN' vào đây thì `build` trả 0 dòng và One-shot AI mất sạch
-    phần ground mà vẫn trả lời trôi chảy.
-
-    Trả cả `text` (cho prompt) lẫn `index` (cho bước đối chiếu ngược) từ cùng một bộ số:
-    dựng riêng hai lần là mở đường cho lời đáp nói một đằng, bảng hiện một nẻo.
-    """
-    watch = (store.get_config("watchlist") or {}).get("keywords") or []
-    sig = trendsig.build(trends_region, store.get_config("trends"),
-                         up_only=True, only=watch)
-    lines: list[str] = []
-    index: dict[str, dict] = {}
-
-    for row in sig["rows"][:MAX_SIGNAL_HINTS]:
-        pct = lambda x: "—" if x is None else f"{x * 100:+.0f}%"  # noqa: E731
-        lines.append(
-            f"- {row['keyword']} · {row['kind']} · chỉ số 7 ngày {row['L']} "
-            f"· tăng bền {pct(row['m_sustain'])} · vọt ngắn {pct(row['m_short'])} "
-            f"· cùng kỳ năm ngoái {pct(row['yoy'])}")
-        index[_fold(row["keyword"])] = {
-            "source": "trends", "keyword": row["keyword"],
-            "kind": row["kind"], "heat": row["heat"],
-            "L": row["L"], "mSustain": row["m_sustain"], "mShort": row["m_short"],
-            "yoy": row["yoy"],
-        }
-
-    top_lines: list[str] = []
-    if platform and market:
-        tk = top10.build(platform, market, store.get_config(f"{platform}:{market}"))
-        # ĐỌC BẰNG `.get`, KHÔNG BẰNG `[...]`. Hai bảng đổi chỉ số theo chế độ: nhánh 2 mang
-        # `spike_pct` khi đo thật và `recent_share_pct` khi ước lượng, nhánh 1 nay mang
-        # `rank_score` chứ không còn `growth_long_pct`. Bám tên cứng ở đây làm cả mục ③ trả
-        # HTTP 500 — một KeyError trong phần DỰNG NGỮ CẢNH, tức chết trước cả khi kịp hỏi AI.
-        for row in tk["hot"][:MAX_TOP_HINTS]:
-            spike, share = row.get("spike_pct"), row.get("recent_share_pct")
-            if spike is not None:
-                what = f"đột biến {spike:+.0f}%"
-            elif share is not None:
-                what = f"{share:.0f}% doanh số cả đời rơi vào 30 ngày qua"
-            else:
-                what = "đang nổi"
-            top_lines.append(f"- [nổi bật] {row.get('title') or row['product_id']} "
-                             f"· {what} · đã bán {row['sold_cumulative']:,}")
-            # KHÔNG nhét một mục chỉ có `source` vào sổ đối chiếu. `_attach` sẽ gắn nó vào
-            # món đề xuất, và giao diện vẽ ra một dòng tín hiệu toàn dấu gạch — trông như đã
-            # đo mà rỗng, tệ hơn hẳn so với ghi thẳng "chưa đo". Sổ này chỉ chứa những mục
-            # có số thật của mục ①.
-        for row in tk["main"][:MAX_TOP_HINTS]:
-            score, rank = row.get("rank_score"), row.get("last_rank")
-            what = f"điểm hạng {score:.0f}" if score is not None else "trong top bán chạy"
-            if rank:
-                what += f", hạng #{rank} ngành của nó"
-            top_lines.append(f"- [chính] {row.get('title') or row['product_id']} "
-                             f"· {what} · đã bán {row['sold_cumulative']:,}")
-
-    parts = []
-    if lines:
-        parts.append("TỪ KHOÁ ĐANG LÊN (Google Trends, đã lọc bỏ đi ngang & đi xuống):\n"
-                     + "\n".join(lines))
-    if top_lines:
-        parts.append(f"TOP SẢN PHẨM {platform}·{market} (từ snapshot bán lũy kế):\n"
-                     + "\n".join(top_lines))
-    return {
-        "text": "\n\n".join(parts),
-        "index": index,
-        "n_signals": len(sig["rows"]),
-        "value_kind": sig["value_kind"],
-        "comparable": sig["comparable"],
-    }
+def digest(san: str | None) -> dict:
+    """Top bán chạy + Top doanh số của một sàn, gói thành một khối đọc được."""
+    if not san or san not in scout.SAN:
+        return {"text": "", "index": {}, "n_top": 0, "ngay": None}
+    parts: list[str] = []
+    n, ngay = 0, None
+    for loai, nhan in (("ban_chay", "bán 30 ngày"), ("doanh_so", "doanh số 30 ngày")):
+        tl = scout.toplist(san, loai, MAX_TOP_HINTS)
+        ngay = tl.get("ngay_moi_nhat") or ngay
+        dong = []
+        for it in tl["items"]:
+            nganh = " › ".join(x for x in (it.get("main_name"), it.get("sub_name")) if x)
+            dong.append(f"- {it.get('title') or it['product_id']} · {nganh or 'không rõ ngành'}"
+                        f" · giá {it.get('price') or 0:,.0f} {it.get('currency') or ''}"
+                        f" · {nhan} {it['ban_30'] if loai == 'ban_chay' else round(it['doanh_so_30']):,}")
+        if dong:
+            n += len(dong)
+            parts.append(f"TOP {'BÁN CHẠY' if loai == 'ban_chay' else 'DOANH SỐ'} "
+                         f"{scout.SAN[san]['nhan']} (quét ngày {ngay}):\n" + "\n".join(dong))
+    return {"text": "\n\n".join(parts), "index": {}, "n_top": n, "ngay": ngay}
 
 
 def _lookup(cand: str, index: dict[str, dict]) -> dict | None:
@@ -152,25 +99,19 @@ def _attach(items: list[dict], index: dict[str, dict]) -> list[dict]:
     return items
 
 
-async def ask(turns: list[dict], region: str = "VN",
-              platform: str | None = None, market: str | None = None) -> dict:
+async def ask(turns: list[dict], san: str | None = None) -> dict:
     """
     Một lượt hỏi đáp. `turns` là cả lịch sử, đúng như giao diện đang giữ.
 
     Không ném lỗi: `map_demand` đã cam kết mọi kết cục đều kèm `message`, và lượt tóm tắt
-    tín hiệu chỉ là thêm ngữ cảnh — thiếu nó thì câu trả lời nghèo hơn chứ không hỏng.
+    chỉ là thêm ngữ cảnh — thiếu nó thì câu trả lời nghèo hơn chứ không hỏng.
     """
     chat: list[ChatTurn] = []
-    # Vùng LƯU của chuỗi Trends lấy từ danh sách theo dõi, không lấy từ `region` của lượt
-    # hỏi: `region` ở đây là thị trường để đối chiếu sàn ('VN', 'PH'), còn chuỗi Trends
-    # được lưu dưới khoá do người dùng khai (mặc định 'ALL'). Xem `digest`.
-    trends_region = (store.get_config("watchlist") or {}).get("region") or "ALL"
-    dg = digest(trends_region, platform, market)
+    dg = digest(san)
     if dg["text"]:
         # Lượt này do HUB nói, không phải người dùng: đặt vai assistant để mô hình đọc nó
         # như dữ kiện đã có trên bàn, chứ không như một yêu cầu phải trả lời.
-        chat.append(ChatTurn(role="assistant", text=dg["text"],
-                             items=list(dg["index"].keys())[:MAX_SIGNAL_HINTS]))
+        chat.append(ChatTurn(role="assistant", text=dg["text"], items=[]))
     for t in turns:
         chat.append(ChatTurn(
             role="assistant" if t.get("role") == "assistant" else "user",
@@ -180,14 +121,8 @@ async def ask(turns: list[dict], region: str = "VN",
     if not chat or chat[-1].role != "user" or not chat[-1].text:
         return {"error": "Thiếu câu hỏi"}
 
-    result = await map_demand(chat, SearchContext(country=(region or "VN").upper()))
+    result = await map_demand(chat, SearchContext(country=REGION.get(san or "", "VN")))
     payload = dump(result)
     payload["items"] = _attach(payload.get("items") or [], dg["index"])
-    payload["grounding"] = {
-        "nSignals": dg["n_signals"],
-        "valueKind": dg["value_kind"],
-        "comparable": dg["comparable"],
-        "region": trends_region,
-        "partition": (f"{platform}·{market}" if platform and market else None),
-    }
+    payload["grounding"] = {"san": san, "nTop": dg["n_top"], "ngay": dg["ngay"]}
     return payload

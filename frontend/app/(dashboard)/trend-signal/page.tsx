@@ -1,25 +1,22 @@
 import type { Metadata } from 'next'
 
-import { withBase } from '@/lib/basePath'
+import TrendScout from '@/components/trendscout/TrendScout'
 
 export const metadata: Metadata = {
   title: 'Trend Signal Hub — Research SPY',
 }
 
 /**
- * Trang Trend Signal Hub — ba mục: ① Tín hiệu Google Trends · ② Top 10 chính & nổi bật ·
- * ③ One-shot AI (đã gộp chatbot của mục "Cơ hội" cũ).
+ * Trend Signal Hub — Toplist · Khám phá & Tùy chỉnh · One-shot AI.
  *
- * Vẫn nhúng bằng iframe đúng như trang Sản phẩm (`app/ads/page.tsx`) và vì đúng lý do đó:
- * file HTML tự chứa cả CSS lẫn JS, khai `body`, `table`, `.card`… trùng tên với `styles/`
- * của webtool. Viết lại thành React thì phải đổi tên hàng trăm lớp CSS mà không được gì.
+ * ĐỔI 13/09/2026: bỏ bản nhúng iframe `public/hub/trend-signal-hub.html` (Google Trends + Top 10)
+ * và dựng lại bằng React như Keyword/Image Search. Lý do nhúng iframe trước đây là file HTML tự
+ * mang CSS trùng tên với `styles/`; nay trang dùng thẳng khung của webtool nên lý do đó hết.
+ * Google Trends bỏ khỏi giao diện; dữ liệu Trends vẫn đóng băng trong kho.
  *
- * Dữ liệu đi qua `/api/hub/signal/*` (xem `backend/hub/routes.py` và `backend/hub/signal/`).
- *
- * ĐÃ SỬA MỘT ĐIỀU TỪNG PHẢI CẢNH BÁO Ở ĐÂY: bản cũ khi backend không trả lời thì KHÔNG báo
- * lỗi — nó rơi về bộ dữ liệu mẫu nhúng cứng và hiện đầy số trông như thật. Trang mới không
- * có dữ liệu mẫu; mục nào không đọc được thì nói ra là nó không đọc được.
+ * Dữ liệu: `/api/hub/scout/*` (`backend/hub/signal/scout.py`) và `/api/hub/signal/ask`.
+ * Không hỏi backend lúc dựng trang, nên trang vẫn mở được khi backend chưa chạy.
  */
 export default function TrendSignalPage() {
-  return <iframe src={withBase('/hub/trend-signal-hub.html')} className="research-frame" title="Trend Signal Hub" />
+  return <TrendScout />
 }

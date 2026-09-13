@@ -81,9 +81,21 @@ function reviveTurns(value: unknown): Turn[] {
   return out
 }
 
-export default function OpportunityWorkspace() {
+/**
+ * Chế độ nhúng trong Trend Signal Hub (tab One-shot AI).
+ *
+ * Cùng khung trò chuyện, khác ba chỗ: hỏi `/api/hub/signal/ask` để backend chèn Top sản phẩm của
+ * SÀN ĐANG CHỌN vào đầu hội thoại; ô Quốc gia biến mất vì sàn đã quyết định thị trường; và cuộc
+ * trò chuyện cất ở khoá riêng — dùng chung khoá thì mở Hub sẽ hiện lại cuộc trò chuyện của trang
+ * Cơ hội cũ, vốn không hề đọc Top sản phẩm.
+ */
+export type HubMode = { san: string; country: string }
+
+export default function OpportunityWorkspace({ hub }: { hub?: HubMode } = {}) {
   const router = useRouter()
-  const [country, setCountry] = useState(DEFAULT_COUNTRY)
+  const storageKey = hub ? 'hub-oneshot-v1' : STORAGE_KEY
+  const [countryState, setCountry] = useState(DEFAULT_COUNTRY)
+  const country = hub ? hub.country : countryState
   const [turns, setTurns] = useState<Turn[]>([])
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(false)
@@ -105,7 +117,7 @@ export default function OpportunityWorkspace() {
   // lúc dựng sẽ làm HTML của server khác HTML của trình duyệt — React vứt cả cây đi dựng lại.
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY)
+      const raw = window.localStorage.getItem(storageKey)
       if (raw) {
         const saved = JSON.parse(raw) as { country?: unknown; turns?: unknown }
         const revived = reviveTurns(saved.turns)
@@ -120,19 +132,19 @@ export default function OpportunityWorkspace() {
       // Cả hai đều chỉ có nghĩa là bắt đầu bằng một cuộc trò chuyện trống.
     }
     restored.current = true
-  }, [])
+  }, [storageKey])
 
   useEffect(() => {
     if (!restored.current) return
     try {
       window.localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ country, turns: turns.slice(-STORED_TURNS) }),
+        storageKey,
+        JSON.stringify({ country: countryState, turns: turns.slice(-STORED_TURNS) }),
       )
     } catch {
       // Hết chỗ hoặc bị chặn: mất phần lưu, không mất phiên đang chạy.
     }
-  }, [turns, country])
+  }, [turns, countryState, storageKey])
 
   useEffect(() => {
     tail.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -175,10 +187,9 @@ export default function OpportunityWorkspace() {
       )
 
       try {
-        const answer = await browserPostJson<Answer>('/api/opportunity/ask', {
-          messages,
-          geo: country,
-        })
+        const answer = hub
+          ? await browserPostJson<Answer>('/api/hub/signal/ask', { messages, san: hub.san })
+          : await browserPostJson<Answer>('/api/opportunity/ask', { messages, geo: country })
         const next: Turn[] = [...asked, { role: 'assistant', answer }]
         history.current = next
         setTurns(next)
@@ -190,7 +201,7 @@ export default function OpportunityWorkspace() {
         setLoading(false)
       }
     },
-    [country, loading],
+    [country, loading, hub],
   )
 
   /**
@@ -211,11 +222,11 @@ export default function OpportunityWorkspace() {
     setTurns([])
     setError(null)
     try {
-      window.localStorage.removeItem(STORAGE_KEY)
+      window.localStorage.removeItem(storageKey)
     } catch {
       // Không xoá được thì effect lưu ở trên vẫn ghi đè bằng danh sách rỗng ngay sau đây.
     }
-  }, [confirming])
+  }, [confirming, storageKey])
 
   useEffect(() => {
     if (!confirming) return
@@ -235,11 +246,13 @@ export default function OpportunityWorkspace() {
 
   return (
     <>
-      <div className="page-head opp-head">
-        <div>
-          <h1>Cơ hội</h1>
+      {!hub && (
+        <div className="page-head opp-head">
+          <div>
+            <h1>Cơ hội</h1>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="chat" data-empty={empty}>
         {empty ? (
@@ -290,13 +303,15 @@ export default function OpportunityWorkspace() {
             placeholder={empty ? 'Hỏi bất cứ điều gì về việc nên bán gì…' : 'Hỏi tiếp…'}
           />
           <div className="chat-tools">
-            <Dropdown
-              value={country}
-              options={countries}
-              onChange={setCountry}
-              searchable
-              searchPlaceholder="Tìm nước…"
-            />
+            {!hub && (
+              <Dropdown
+                value={country}
+                options={countries}
+                onChange={setCountry}
+                searchable
+                searchPlaceholder="Tìm nước…"
+              />
+            )}
             {/* Nút xoá nằm TRONG ô nhập chứ không ở tiêu đề trang. Ở tiêu đề thì nó cuộn mất
                 ngay khi cuộc trò chuyện dài hơn một màn hình — đúng lúc người ta cần nó nhất.
                 Ô nhập thì `position: sticky` nên luôn ở trong tầm mắt. */}

@@ -355,30 +355,102 @@ _LY_DO = {
 }
 
 
-def kham_pha(san: str, main_id: str, sub_id: str | None = None, lens: str = "ban_chay",
-             limit: int = 100, cfg: dict | None = None) -> dict:
+#: Kết quả tính của từng ngành, giữ trong tiến trình. Khoá gồm dấu thời gian lượt cào mới nhất
+#: của sàn, nên một lượt cào xong (hay đang chạy dở) là tự tính lại — không cần xoá tay.
+#: Cần vì "Tất cả ngành" tính lại ~200 ngành mỗi lần bấm: đủ 90 ngày là ~1 triệu dòng một lượt.
+_CACHE: dict[tuple, tuple[list[dict], list[str]]] = {}
+_CACHE_MAX = 3000
+
+
+def _dau_cao(platform: str, market: str) -> str:
+    with db.connect() as c:
+        row = c.execute("SELECT MAX(finished_at) FROM crawl_log WHERE source=? AND market_code=?",
+                        (platform, market)).fetchone()
+    return row[0] or ""
+
+
+def _tinh_nganh(s: dict, codes: list[str], cfg: dict, dau: str | None = None) -> tuple[list[dict], list[str]]:
+    """Thẻ của mọi sản phẩm trong MỘT ngành, và các ngày ngành đó đã được quét."""
+    dau = _dau_cao(s["platform"], s["market"]) if dau is None else dau
+    khoa = (s["platform"], s["market"], tuple(codes), tuple(sorted(cfg.items())), dau)
+    if khoa in _CACHE:
+        the, ngay = _CACHE[khoa]
+        # Bản sao nông từng thẻ: `kham_pha` gắn thêm `diem`, `ly_do`, tên ngành vào thẻ, và sửa
+        # thẳng lên bản trong bộ đệm thì lần bấm sau thấy điểm của lăng kính trước.
+        return [{**t, "lang_kinh": dict(t["lang_kinh"])} for t in the], ngay
+    the, ngay = _tinh_nganh_that(s, codes, cfg)
+    if len(_CACHE) >= _CACHE_MAX:
+        _CACHE.clear()
+    _CACHE[khoa] = ([{**t, "lang_kinh": dict(t["lang_kinh"])} for t in the], ngay)
+    return the, ngay
+
+
+def _tinh_nganh_that(s: dict, codes: list[str], cfg: dict) -> tuple[list[dict], list[str]]:
+    sp, ngay = _nap(s["platform"], s["market"], codes)
+    if not ngay:
+        return [], ngay
+    # Chỉ sản phẩm CÓ MẶT ở lần quét mới nhất: rớt khỏi danh sách hôm nay thì không còn
+    # "đang tăng tốc" hay "đột biến" nữa, và chuỗi của nó dừng ở một ngày cũ.
+    moi = ngay[-1]
+    return [_tinh(pts, s["platform"], ngay[0], moi, cfg)
+            for pts in sp.values() if pts[-1]["day"] == moi], ngay
+
+
+def kham_pha(san: str, main_id: str | None = None, sub_id: str | None = None,
+             lens: str = "ban_chay", limit: int = 100, cfg: dict | None = None) -> dict:
+    """
+    Một ngành × một lăng kính. `main_id` rỗng = TẤT CẢ NGÀNH.
+
+    "Tất cả ngành" vẫn TÍNH RIÊNG TỪNG NGÀNH CON rồi mới gộp, đúng câu "tính riêng cho từng
+    ngành" của tài liệu: một sản phẩm "tăng tốc" là so với chính nó, còn "tân binh" là mới
+    xuất hiện trong ngành của nó. Sản phẩm hiện ở hai ngành thì giữ một thẻ, lăng kính nào
+    cũng lấy điểm cao hơn.
+    """
     s = _san(san)
     if lens not in LANG_KINH:
         raise ValueError(f"lăng kính không hợp lệ: {lens!r}")
     cfg = cfg or cau_hinh(san)
-    codes, nguon = _ma_nganh(san, main_id, sub_id)
-    sp, ngay = _nap(s["platform"], s["market"], codes)
-    out = {"san": san, "nhan": s["nhan"], "main_id": str(main_id), "sub_id": sub_id,
-           "nguon": nguon, "ngay_quet": ngay, "so_lan_quet": len(ngay),
+
+    if main_id:
+        codes, nguon = _ma_nganh(san, main_id, sub_id)
+        the, ngay = _tinh_nganh(s, codes, cfg)
+        so_lan = len(ngay)
+    else:
+        nguon = "tat_ca_nganh_con"
+        mains, ma = _cay(san)
+        gop: dict[str, dict] = {}
+        tat_ca_ngay: set[str] = set()
+        so_lan = 0
+        dau = _dau_cao(s["platform"], s["market"])
+        for m in mains:
+            for sub in m["subs"]:
+                the_i, ngay_i = _tinh_nganh(s, ma[sub["sub_id"]], cfg, dau)
+                tat_ca_ngay.update(ngay_i)
+                so_lan = max(so_lan, len(ngay_i))
+                for t in the_i:
+                    t.update(main_id=m["main_id"], main_name=m["main_name"],
+                             sub_id=sub["sub_id"], sub_name=sub["sub_name"])
+                    cu = gop.get(t["product_id"])
+                    if cu is None:
+                        gop[t["product_id"]] = t
+                        continue
+                    for k, v in t["lang_kinh"].items():
+                        cu["lang_kinh"][k] = max(v, cu["lang_kinh"].get(k, v))
+        the, ngay = list(gop.values()), sorted(tat_ca_ngay)
+
+    out = {"san": san, "nhan": s["nhan"], "main_id": main_id or None, "sub_id": sub_id,
+           "nguon": nguon, "ngay_quet": ngay, "so_lan_quet": so_lan,
            "so_ngay": ((date.fromisoformat(ngay[-1]) - date.fromisoformat(ngay[0])).days
                        if len(ngay) >= 2 else 0),
-           "nguong": cfg, "lens": lens, "dem": {k: 0 for k in LANG_KINH}, "items": []}
+           "nguong": cfg, "lens": lens, "dem": {k: 0 for k in LANG_KINH},
+           "tong_san_pham": len(the), "items": []}
     if not ngay:
         out["ghi_chu"] = "Ngành này chưa có dữ liệu."
         return out
-    if len(ngay) < cfg["min_lan_quet"]:
-        out["ghi_chu"] = (f"Mới có {len(ngay)} lần quét — cần ≥ {cfg['min_lan_quet']} để so sánh. "
+    if so_lan < cfg["min_lan_quet"]:
+        out["ghi_chu"] = (f"Mới có {so_lan} lần quét — cần ≥ {cfg['min_lan_quet']} để so sánh. "
                           "Chỉ lăng kính Bán chạy có số.")
 
-    # Chỉ sản phẩm CÓ MẶT ở lần quét mới nhất: rớt khỏi danh sách hôm nay thì không còn
-    # "đang tăng tốc" hay "đột biến" nữa, và chuỗi của nó dừng ở một ngày cũ.
-    moi = ngay[-1]
-    the = [_tinh(pts, s["platform"], ngay[0], moi, cfg) for pts in sp.values() if pts[-1]["day"] == moi]
     for t in the:
         for k in t["lang_kinh"]:
             out["dem"][k] += 1
