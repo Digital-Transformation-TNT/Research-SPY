@@ -274,3 +274,13 @@
   .ts-card-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ts-grid { grid-template-columns: 1fr; }
 }
+
+/* Trang One-shot AI riêng: ô Sàn đứng cùng cột 780px với khung chat và tiêu đề (`.opp-head`),
+   để ba khối thẳng mép với nhau thay vì ô Sàn trải hết bề ngang còn chat nằm giữa. */
+.ts-oneshot-san {
+  max-width: 780px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.ts-oneshot-san .ts-meta { margin: var(--s-3) 0 0; }

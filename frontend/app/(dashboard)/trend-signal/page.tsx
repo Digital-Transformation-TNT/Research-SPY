@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 }
 
 /**
- * Trend Signal Hub — Toplist · Khám phá & Tùy chỉnh · One-shot AI.
+ * Trend Signal Hub — Toplist · Khám phá & Tùy chỉnh. (One-shot AI tách ra `/oneshot` 13/09/2026.)
  *
  * ĐỔI 13/09/2026: bỏ bản nhúng iframe `public/hub/trend-signal-hub.html` (Google Trends + Top 10)
  * và dựng lại bằng React như Keyword/Image Search. Lý do nhúng iframe trước đây là file HTML tự

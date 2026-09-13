@@ -96,8 +96,15 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
       {
         href: '/trend-signal',
         label: 'Trend Signal Hub',
-        hint: 'Top sản phẩm Shopee VN · Shopee PH · 1688, và One-shot AI',
+        hint: 'Top sản phẩm Shopee VN · Shopee PH · 1688: Toplist và Khám phá',
         icon: 'signal',
+      },
+      // Tách khỏi Trend Signal Hub 13/09/2026: trước là tab thứ ba trong trang Hub.
+      {
+        href: '/oneshot',
+        label: 'One-shot AI',
+        hint: 'Hỏi AI nên bán gì — AI đọc Top sản phẩm của sàn trước khi trả lời',
+        icon: 'idea',
       },
     ],
   },

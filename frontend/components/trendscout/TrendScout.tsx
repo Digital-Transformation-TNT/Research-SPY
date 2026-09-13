@@ -2,18 +2,16 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Dropdown from '@/components/keywords/Dropdown'
-import OpportunityWorkspace from '@/components/opportunity/OpportunityWorkspace'
 import { browserGet } from '@/lib/api'
 import { LENSES, SAN, type CategoryTree, type LensKey, type SanKey } from '@/lib/trendscout'
 import ExploreView from './ExploreView'
 import ToplistView from './ToplistView'
 
-type View = 'toplist' | 'explore' | 'ai'
+type View = 'toplist' | 'explore'
 
 const VIEWS: Array<{ key: View; label: string }> = [
   { key: 'toplist', label: 'Toplist' },
   { key: 'explore', label: 'Khám phá' },
-  { key: 'ai', label: 'One-shot AI' },
 ]
 
 /**
@@ -24,13 +22,15 @@ const VIEWS: Array<{ key: View; label: string }> = [
 const STORAGE_KEY = 'trend-scout-v1'
 
 /**
- * TREND·SCOUT trong Trend Signal Hub: Toplist · Khám phá & Tùy chỉnh · One-shot AI.
+ * TREND·SCOUT trong Trend Signal Hub: Toplist · Khám phá & Tùy chỉnh.
+ *
+ * One-shot AI TỪNG là tab thứ ba ở đây; 13/09/2026 tách thành mục riêng `/oneshot` trong sidebar.
  *
  * Bố cục lấy từ file demo `Trend Signal Hub/research-tool-demo (1).html` nhưng dựng bằng chính
  * khung của webtool (tiêu đề trang, `.panel`, chip, `Dropdown`, `.img-list`) để trang này đọc
  * giống Keyword và Image Search chứ không như một sản phẩm khác nhúng vào.
  *
- * Ô Sàn nằm chung cho cả ba tab. Quốc gia không có ô riêng — nó nằm trong lựa chọn sàn.
+ * Ô Sàn nằm chung cho cả hai tab. Quốc gia không có ô riêng — nó nằm trong lựa chọn sàn.
  */
 export default function TrendScout() {
   const [view, setView] = useState<View>('toplist')
@@ -74,7 +74,6 @@ export default function TrendScout() {
     }
   }, [san])
 
-  const sanInfo = SAN.find((s) => s.key === san)!
   const mains = tree?.nganh ?? []
   const main = mains.find((m) => m.main_id === mainId)
 
@@ -192,16 +191,6 @@ export default function TrendScout() {
       )}
 
       {view === 'explore' && <ExploreView san={san} mainId={mainId} subId={subId} lens={lens} onLens={setLens} />}
-
-      {view === 'ai' && (
-        <div className="ts-ai">
-          <p className="ts-meta">
-            AI đọc Top bán chạy và Top doanh số của <b>{sanInfo.label}</b> trước khi đề xuất, rồi hỏi ô tìm kiếm của sàn
-            xem món đó có bán thật không.
-          </p>
-          <OpportunityWorkspace hub={{ san, country: sanInfo.country }} />
-        </div>
-      )}
     </>
   )
 }
