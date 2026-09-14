@@ -515,3 +515,134 @@ def toplist(san: str, loai: str = "ban_chay", limit: int | None = None) -> dict:
     items.sort(key=lambda x: x[khoa], reverse=True)
     return {"san": san, "nhan": s["nhan"], "loai": loai, "ngay_moi_nhat": moi, "tu_ngay": tu,
             "items": items[:limit]}
+
+
+# ═══════════════ TRA CỨU CHO ONE-SHOT AI ═══════════════
+#
+# One-shot AI KHÔNG gửi cả kho cho Gemini — 69.780 dòng ≈ 3 triệu token, vượt cửa sổ model và
+# đốt sạch hạn mức miễn phí. Thay vào đó backend LỌC TRƯỚC ngay tại đây: sắp xếp là việc của
+# kho (0 token), Gemini chỉ đọc phần đã lọc (~vài trăm token) rồi diễn giải. Chốt 14/09/2026.
+
+import re as _re
+import unicodedata as _ud
+
+
+def _fold(s: str) -> str:
+    """
+    Bỏ dấu + thường hoá + BỎ DẤU CÂU, để so khớp tên ngành với câu hỏi gõ không dấu.
+
+    Dấu câu phải thành khoảng trắng chứ không được giữ: "đồ mẹ và bé, sắp tựu trường" tách ra
+    chữ "be," có dính dấu phẩy, không khớp "bé" của ngành "Mẹ & Bé" — cả ngành biến mất khỏi
+    phần lọc chỉ vì một dấu phẩy. Đo 14/09/2026. Tên ngành cũng đầy "&", "/", "," nên cùng một
+    phép chuẩn hoá phải chạy cho cả hai phía.
+    """
+    s = _ud.normalize("NFD", (s or "").lower())
+    s = "".join(c for c in s if _ud.category(c) != "Mn").replace("đ", "d")
+    return _re.sub(r"[^0-9a-z]+", " ", s).strip()
+
+
+#: Chữ quá chung, xuất hiện ở nhiều tên ngành nên không dùng để nhận diện ngành được.
+#: CHỈ từ nối và chữ vô nghĩa khi nhận diện ngành. Đừng nhét chữ CÓ NGHĨA vào đây: từng bỏ
+#: "nữ", "thể thao" và hậu quả là "Giày Dép Nữ" teo còn {giày, dép}, hoà điểm với "Phụ kiện giày
+#: dép" rồi thua nó — câu hỏi "giày dép nữ" trả về phụ kiện. Đo 14/09/2026.
+_CHU_CHUNG = set("va cac cho do dung loai khac online other others"
+                 # Chữ của CÂU HỎI chứ không của ngành: "sản phẩm nào bán chạy nhất" từng khớp
+                 # nhầm ngành "Bộ sản phẩm làm đẹp" chỉ vì hai chữ "sản phẩm".
+                 " san pham hang shop mua ban gia".split())
+
+
+def top_ban_chay_gop(limit: int = 12, moi_san_it_nhat: int = 3) -> list[dict]:
+    """
+    Top bán chạy GỘP CẢ BA SÀN, xếp theo LƯỢT BÁN 30 ngày.
+
+    Lượt bán là số đếm — so được giữa ba sàn, khác doanh số (VND/PHP/CNY không cộng nổi). Mỗi
+    dòng vẫn kèm nhãn sàn và tiền gốc để không ai đọc nhầm là đã quy đổi. Chốt 14/09/2026.
+
+    MỖI SÀN CÓ SUẤT TỐI THIỂU. Xếp thuần theo lượt bán thì 1688 chiếm sạch bảng: đó là sàn SỈ,
+    một dòng khăn giấy bán 4,6 triệu cái trong khi quán quân Shopee VN ở mức vài trăm nghìn —
+    đúng số, nhưng một bảng toàn hàng sỉ Trung Quốc không trả lời được câu "bán chạy nhất" của
+    người bán lẻ Việt Nam. Nên giữ `moi_san_it_nhat` dòng đầu bảng của mỗi sàn, phần còn lại mới
+    xếp theo lượt bán chung. Đo 14/09/2026: không có chốt này thì 12/12 dòng là 1688.
+    """
+    theo_san: dict[str, list[dict]] = {}
+    for san, info in SAN.items():
+        theo_san[san] = [{**it, "san": san, "nhan_san": info["nhan"]}
+                         for it in toplist(san, "ban_chay", 60)["items"]]
+    ra: list[dict] = []
+    for rows in theo_san.values():
+        ra += rows[:moi_san_it_nhat]
+    con_lai = [it for san, rows in theo_san.items() for it in rows[moi_san_it_nhat:]]
+    con_lai.sort(key=lambda x: x.get("ban_30") or 0, reverse=True)
+    ra += con_lai[: max(0, limit - len(ra))]
+    ra.sort(key=lambda x: x.get("ban_30") or 0, reverse=True)
+    return ra[:limit]
+
+
+def top_doanh_so_tung_san(limit: int = 5) -> list[dict]:
+    """Top doanh số TÁCH RIÊNG từng sàn — tiền không gộp được nên không trộn."""
+    out = []
+    for san, info in SAN.items():
+        items = toplist(san, "doanh_so", limit)["items"]
+        if items:
+            out.append({"san": san, "nhan": info["nhan"], "items": items})
+    return out
+
+
+def nganh_lien_quan(cau_hoi: str, toi_da: int = 3) -> list[dict]:
+    """
+    Ngành mà câu hỏi nhắc tới — khớp tên ngành (lớn + con) với chữ trong câu hỏi.
+
+    Chỉ nhận diện được ngành gọi bằng tên trùng cây ngành: cây VN (dùng cho Shopee VN và 1688)
+    là tiếng Việt, cây PH là tiếng Anh — nên câu hỏi tiếng Việt thường khớp VN/1688, ít khớp PH.
+    PH vẫn hiện ở phần top toàn cảnh. Trả về mỗi ngành kèm sàn tìm thấy nó.
+    """
+    q = set(t for t in _fold(cau_hoi).split() if len(t) >= 2)
+    if not q:
+        return []
+    ung: dict[tuple, dict] = {}
+    for san in SAN:
+        mains, _ = _cay(san)
+        for m in mains:
+            for cap, mid, sid, ten in ((0, m["main_id"], None, m["main_name"]),
+                                       *[(1, m["main_id"], s["sub_id"], s["sub_name"]) for s in m["subs"]]):
+                # TẬP HỢP, không phải danh sách: "Giày Oxfords & Giày Buộc Dây" có chữ "giày"
+                # hai lần, đếm trùng thành 2 và lọt lưới "≥ 2 chữ trùng" chỉ với mỗi chữ "giày".
+                toks = {t for t in _fold(ten).split() if len(t) >= 2 and t not in _CHU_CHUNG}
+                if not toks:
+                    continue
+                trung = {t for t in toks if t in q}
+                # Khớp NGUYÊN CHỮ, không khớp chuỗi con: tên một chữ ("Áo") phải có đúng chữ đó
+                # trong câu, tên nhiều chữ cần ≥ 2 chữ trùng. Khớp chuỗi con làm "nào" nuốt "áo",
+                # "muốn" nuốt "mũ" — đo 14/09/2026, "sản phẩm bán chạy nhất" khớp nhầm ngành "Áo".
+                if (len(toks) == 1 and len(trung) == 1) or len(trung) >= 2:
+                    # Xếp theo TỶ LỆ PHỦ trước, rồi mới tới SỐ CHỮ TRÙNG. Chỉ dùng số chữ thì tên
+                    # dài dễ lên đầu; chỉ dùng tỷ lệ phủ thì "Giày Thể Thao" (còn đúng chữ "giày"
+                    # sau khi bỏ chữ chung, phủ 1/1) đứng trên "Giày Dép Nữ" (phủ 3/3) — đo 14/09.
+                    diem = (len(trung) / len(toks), len(trung), cap)
+                    khoa = (mid, sid)
+                    if khoa not in ung or diem > ung[khoa]["diem"]:
+                        ung[khoa] = {"main_id": mid, "sub_id": sid, "ten": ten, "cap": cap,
+                                     "diem": diem, "san": []}
+                    if san not in ung[khoa]["san"]:
+                        ung[khoa]["san"].append(san)
+    xep = sorted(ung.values(), key=lambda x: x["diem"], reverse=True)
+    return xep[:toi_da]
+
+
+def top_theo_nganh(main_id: str, sub_id: str | None, sans: list[str], moi_san: int = 5,
+                   ten_nganh: str = "") -> list[dict]:
+    """Top bán chạy của một ngành trên các sàn có nó — cho câu hỏi nhắm vào một ngành."""
+    rows: list[dict] = []
+    for san in sans:
+        try:
+            r = kham_pha(san, main_id, sub_id, "ban_chay", moi_san)
+        except ValueError:
+            continue
+        for it in r["items"]:
+            # Tên ngành lấy từ CHÍNH lựa chọn đang hỏi: `kham_pha` chỉ gắn `main_name`/`sub_name`
+            # khi duyệt tất cả ngành, nên không gắn ở đây thì mọi dòng thành "chưa rõ ngành".
+            rows.append({**it, "san": san, "nhan_san": SAN[san]["nhan"],
+                         "main_name": it.get("main_name") or ten_nganh,
+                         "sub_name": it.get("sub_name")})
+    rows.sort(key=lambda x: x.get("sold_monthly") or 0, reverse=True)
+    return rows

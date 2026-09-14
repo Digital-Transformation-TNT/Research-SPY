@@ -89,13 +89,14 @@ function reviveTurns(value: unknown): Turn[] {
  * trò chuyện cất ở khoá riêng — dùng chung khoá thì mở Hub sẽ hiện lại cuộc trò chuyện của trang
  * Cơ hội cũ, vốn không hề đọc Top sản phẩm.
  */
-export type HubMode = { san: string; country: string }
-
-export default function OpportunityWorkspace({ hub }: { hub?: HubMode } = {}) {
+export default function OpportunityWorkspace({ hub = false }: { hub?: boolean } = {}) {
   const router = useRouter()
   const storageKey = hub ? 'hub-oneshot-v1' : STORAGE_KEY
   const [countryState, setCountry] = useState(DEFAULT_COUNTRY)
-  const country = hub ? hub.country : countryState
+  // Chế độ Hub KHÔNG có ô Quốc gia: backend tự đọc cả ba sàn và tự chọn thị trường đối chiếu
+  // theo chính câu hỏi (`hub/signal/ask.py::_thi_truong`). Ô Quốc gia ở đây chỉ còn phục vụ
+  // trang Cơ hội cũ, và là nơi mục Keyword được mở ra khi bấm một dòng.
+  const country = countryState
   const [turns, setTurns] = useState<Turn[]>([])
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(false)
@@ -188,7 +189,7 @@ export default function OpportunityWorkspace({ hub }: { hub?: HubMode } = {}) {
 
       try {
         const answer = hub
-          ? await browserPostJson<Answer>('/api/hub/signal/ask', { messages, san: hub.san })
+          ? await browserPostJson<Answer>('/api/hub/signal/ask', { messages })
           : await browserPostJson<Answer>('/api/opportunity/ask', { messages, geo: country })
         const next: Turn[] = [...asked, { role: 'assistant', answer }]
         history.current = next

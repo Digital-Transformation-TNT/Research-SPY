@@ -31,6 +31,29 @@ export type OpportunityItem = {
  * còn ở đây thứ component cầm là MỘT LƯỢT trong luồng trò chuyện, và phần lớn lượt thì không
  * có bản đồ nào cả.
  */
+/**
+ * Một sản phẩm THẬT trong kho Trend Signal Hub mà One-shot AI đã đọc trước khi trả lời.
+ *
+ * Giao diện vẽ thẻ từ CHÍNH những con số này, không lấy số trong câu chữ của AI: mô hình gõ lại
+ * một con số là mô hình có thể gõ sai, còn đây là số kho trả về.
+ */
+export type HubProduct = {
+  product_id: string
+  title: string | null
+  url: string | null
+  image_url: string | null
+  price: number | null
+  currency: string | null
+  rating: number | null
+  sold_monthly: number | null
+  ban_30: number | null
+  doanh_so_30: number | null
+  main_name: string | null
+  sub_name: string | null
+  nhan_san: string | null
+  san: string | null
+}
+
 export type Answer = {
   /** Câu hỏi đã sinh ra lượt này, chép nguyên văn. */
   seed: string
@@ -43,6 +66,9 @@ export type Answer = {
   message?: string
   tookMs?: number
   cached?: boolean
+  /** Chỉ có ở One-shot AI: dữ liệu kho đã lọc theo câu hỏi và đưa cho AI đọc. */
+  hubProducts?: HubProduct[]
+  grounding?: { nTop?: number; ngay?: string | null; nganh?: string[] }
 }
 
 /** Một lượt trong luồng trò chuyện đang hiện trên màn hình. */

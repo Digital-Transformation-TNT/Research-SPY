@@ -1,7 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import type { Answer, OpportunityItem, OpportunityStatus } from '@/lib/opportunity/types'
+import ProductThumb from '@/components/trendscout/ProductThumb'
+import { money, short } from '@/lib/trendscout'
+import type { Answer, HubProduct, OpportunityItem, OpportunityStatus } from '@/lib/opportunity/types'
 
 /**
  * MỘT lượt trả lời của trợ lý.
@@ -80,6 +82,52 @@ function Row({ item, onPick }: { item: OpportunityItem; onPick: (term: string) =
   )
 }
 
+/**
+ * Dữ liệu kho mà One-shot AI đã đọc trước khi trả lời.
+ *
+ * SỐ LẤY TỪ KHO, KHÔNG LẤY TỪ CÂU CHỮ CỦA AI. Mô hình chép lại một con số là mô hình có thể chép
+ * sai, và một con số sai trông y hệt một con số đúng. Khối này để người đọc đối chiếu ngay: câu
+ * trả lời nói gì thì bảng bên dưới phải đỡ được.
+ *
+ * Đóng sẵn: phần lớn lượt hỏi người ta chỉ cần câu trả lời. Mở ra khi muốn kiểm.
+ */
+function HubData({ products }: { products: HubProduct[] }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="hubp">
+      <button className="hubp-toggle" onClick={() => setOpen((v) => !v)}>
+        {open ? '▾' : '▸'} Dữ liệu kho AI đã đọc ({products.length} sản phẩm)
+      </button>
+      {open && (
+        <div className="img-list hubp-list">
+          {products.map((p) => (
+            <div className="hubp-row" key={`${p.san}:${p.product_id}`}>
+              <ProductThumb src={p.image_url} />
+              <div className="img-info">
+                {p.url ? (
+                  <a className="ts-title" href={p.url} target="_blank" rel="noopener noreferrer">
+                    {p.title ?? p.product_id}
+                  </a>
+                ) : (
+                  <b>{p.title ?? p.product_id}</b>
+                )}
+                <small>
+                  {p.nhan_san}
+                  {p.main_name ? ` · ${[p.main_name, p.sub_name].filter(Boolean).join(' › ')}` : ''}
+                </small>
+              </div>
+              <div className="hubp-num">
+                <b>{money(p.price, p.currency)}</b>
+                <small>bán 30 ngày {short(p.ban_30 ?? p.sold_monthly)}</small>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function AnswerBlock({
   answer,
   onPick,
@@ -116,6 +164,10 @@ export default function AnswerBlock({
             </button>
           )}
         </div>
+      )}
+
+      {answer.hubProducts && answer.hubProducts.length > 0 && (
+        <HubData products={answer.hubProducts} />
       )}
 
       {answer.followUps.length > 0 && (
