@@ -3,10 +3,15 @@
 import { useEffect, useState } from 'react'
 import { browserGet } from '@/lib/api'
 import { dayLabel, money, short, type SanKey, type Toplist } from '@/lib/trendscout'
+import Pager from './Pager'
 import ProductThumb from './ProductThumb'
 
+/** 200 sản phẩm chia 3 trang — cùng trần với Khám phá. Số lượng lấy về do backend (`top_n`) quyết. */
+const SO_TRANG = 3
+const TOI_THIEU_MOI_TRANG = 50
+
 /**
- * Toplist — Top 100 bán chạy / Top 100 doanh số của TẤT CẢ ngành trên một sàn.
+ * Toplist — bán chạy / doanh số của TẤT CẢ ngành trên một sàn.
  *
  * Dùng số 30 ngày của chính sàn nên chỉ cần một lần quét. Bấm một dòng thì sang Khám phá, mở
  * đúng ngành của sản phẩm đó; bấm tên thì mở trang sản phẩm trên sàn.
@@ -22,9 +27,11 @@ export default function ToplistView({
 }) {
   const [data, setData] = useState<Toplist | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [trang, setTrang] = useState(1)
 
   useEffect(() => {
     let live = true
+    setTrang(1)
     // Dọn bảng cũ ngay khi đổi sàn: để bảng Shopee VN nằm lại trong lúc chờ 1688 là để hai
     // loại tiền đứng cạnh nhau trên màn hình với một nhãn sàn sai.
     setData(null)
@@ -47,6 +54,13 @@ export default function ToplistView({
   if (!data.items.length) return <div className="empty">{data.ghi_chu ?? 'Sàn này chưa có dữ liệu.'}</div>
 
   const bySold = loai === 'ban_chay'
+  // Sàn đủ 200 dòng thì chia đúng 3 trang; sàn mới cào được vài chục dòng thì `TOI_THIEU` giữ
+  // tất cả trên một trang, thay vì bẻ 5 sản phẩm thành ba trang 2/2/1.
+  const moiTrang = Math.max(TOI_THIEU_MOI_TRANG, Math.ceil(data.items.length / SO_TRANG))
+  const soTrang = Math.max(1, Math.ceil(data.items.length / moiTrang))
+  const trangHienTai = Math.min(Math.max(1, trang), soTrang)
+  const bat = (trangHienTai - 1) * moiTrang
+  const dangXem = data.items.slice(bat, bat + moiTrang)
 
   return (
     <>
@@ -54,11 +68,17 @@ export default function ToplistView({
         {bySold
           ? 'Xếp theo lượt bán 30 ngày của sàn, gộp mọi ngành.'
           : 'Xếp theo doanh số 30 ngày (giá × lượt bán), để hàng giá rẻ bán số lượng lớn không lấn át hàng giá trị cao.'}{' '}
-        <b>{data.items.length}</b> sản phẩm · quét {dayLabel(data.ngay_moi_nhat)} · bấm một dòng để soi ngành ở Khám phá.
+        <b>{data.items.length}</b> sản phẩm · trang {trangHienTai}/{soTrang} · quét{' '}
+        {dayLabel(data.ngay_moi_nhat)}
+        {/* Số hàng ảo đã loại nói ra chứ không giấu: bảng "bán chạy" của sàn vốn đầy ô quà tặng
+            bán hàng chục nghìn lượt, người quen nhìn bảng cũ sẽ thắc mắc chúng đi đâu mất. */}
+        {Boolean(data.da_loc) && <> · đã loại {short(data.da_loc)} listing quà tặng/hàng ảo</>}
+        {' '}· bấm một dòng để soi ngành ở Khám phá.
       </p>
 
       <div className="img-list ts-list">
-        {data.items.map((it, i) => {
+        {dangXem.map((it, idx) => {
+          const i = bat + idx
           const canExplore = Boolean(it.main_id)
           return (
             <div
@@ -101,6 +121,8 @@ export default function ToplistView({
           )
         })}
       </div>
+
+      <Pager trang={trangHienTai} soTrang={soTrang} onTrang={setTrang} />
     </>
   )
 }

@@ -12,11 +12,14 @@ import {
   type LensKey,
   type SanKey,
 } from '@/lib/trendscout'
+import Pager from './Pager'
 import ProductThumb from './ProductThumb'
 import { Stat } from './ToplistView'
 
-/** Trần thẻ mỗi lăng kính, như demo. Nhiều hơn thì thu hẹp bằng ô ngành. */
-const CAP = 60
+/** Trần thẻ mỗi lăng kính: 200 sản phẩm chia 3 trang. Nhiều hơn thì thu hẹp bằng ô ngành. */
+const CAP = 200
+const SO_TRANG = 3
+const MOI_TRANG = Math.ceil(CAP / SO_TRANG)
 
 /**
  * Khám phá & Tùy chỉnh — một ngành × bảy lăng kính.
@@ -43,11 +46,15 @@ export default function ExploreView({
   const [error, setError] = useState<string | null>(null)
   const [tuning, setTuning] = useState(false)
   const [reload, setReload] = useState(0)
+  const [trang, setTrang] = useState(1)
 
   useEffect(() => {
     let live = true
     setLoading(true)
     setError(null)
+    // Đổi lăng kính hay đổi ngành là đổi hẳn danh sách: ở lại trang 3 của danh sách cũ thì
+    // danh sách mới chỉ có 12 dòng sẽ hiện ra trống trơn.
+    setTrang(1)
     const q = new URLSearchParams({ san, main: mainId, sub: subId, lens, limit: String(CAP) })
     browserGet<Explore>(`/api/hub/scout/kham-pha?${q}`)
       .then((d) => live && setData(d))
@@ -63,6 +70,13 @@ export default function ExploreView({
   const fresh = data && data.san === san && (data.main_id ?? '') === mainId && (data.sub_id ?? '') === subId
   const current = LENSES.find((l) => l.key === lens)!
 
+  const items = fresh && data.lens === lens ? data.items : []
+  const soTrang = Math.max(1, Math.ceil(items.length / MOI_TRANG))
+  // Kẹp lại thay vì tin `trang`: lần tải mới có thể ít trang hơn lần trước, và giữa lúc `setTrang(1)`
+  // của effect với lượt vẽ này vẫn có một nhịp `trang` còn là số cũ.
+  const trangHienTai = Math.min(Math.max(1, trang), soTrang)
+  const dangXem = items.slice((trangHienTai - 1) * MOI_TRANG, trangHienTai * MOI_TRANG)
+
   return (
     <>
       <div className="ts-lenses" role="tablist">
@@ -75,8 +89,10 @@ export default function ExploreView({
             data-on={l.key === lens}
             onClick={() => onLens(l.key)}
           >
+            {/* Không có bộ đếm cạnh tên lăng kính: chủ dự án chốt 14/09/2026 bỏ, vì con số đó
+                là "bao nhiêu sản phẩm lọt lăng kính này trong ngành đang chọn" chứ không phải
+                thứ hạng hay số sản phẩm đang xem — đứng cạnh tên nhãn thì ai cũng đọc nhầm. */}
             <span aria-hidden>{l.icon}</span> {l.label}
-            <em>{fresh ? short(data.dem[l.key]) : '…'}</em>
           </button>
         ))}
       </div>
@@ -121,7 +137,7 @@ export default function ExploreView({
         data.items.length ? (
           <>
             <div className="ts-grid" data-loading={loading}>
-              {data.items.map((it) => (
+              {dangXem.map((it) => (
                 <article className="ts-card" key={it.product_id}>
                   <div className="ts-card-head">
                     <ProductThumb src={it.image_url} className="ts-card-thumb" />
@@ -153,11 +169,14 @@ export default function ExploreView({
                 </article>
               ))}
             </div>
-            {data.dem[lens] > data.items.length && (
-              <p className="ts-meta">
-                Hiển thị {data.items.length}/{short(data.dem[lens])} — chọn ngành hẹp hơn để xem gọn.
-              </p>
-            )}
+            <Pager trang={trangHienTai} soTrang={soTrang} onTrang={setTrang} />
+            <p className="ts-meta">
+              Trang {trangHienTai}/{soTrang} · đang xem {dangXem.length} trong {short(items.length)} sản phẩm
+              {data.dem[lens] > items.length && (
+                <> trên tổng {short(data.dem[lens])} đạt mức — chọn ngành hẹp hơn để xem gọn</>
+              )}
+              .
+            </p>
           </>
         ) : (
           // Chưa đủ lần quét thì câu nhắc ngay phía trên đã nói lý do — lặp lại nó trong một khung

@@ -28,6 +28,31 @@ tntecom.com {
 	# một mình KHÔNG khớp `/research` trơn — mà đó lại đúng là địa chỉ trang chủ webtool.
 	@researchspy path /research /research/* /api /api/*
 	handle @researchspy {
+		# ════ CACHE ════
+		#
+		# Next gắn `Cache-Control: s-maxage=31536000` cho trang tĩnh — cache MỘT NĂM. Hệ quả đã
+		# đo 14/09/2026: deploy xong, người đã từng mở trang vẫn thấy giao diện cũ cho tới khi
+		# tự bấm Ctrl+Shift+R, vì HTML cũ nằm trong cache và HTML cũ thì trỏ tới tên file JS/CSS
+		# cũ. F5 thường KHÔNG đủ. Mất gần một tiếng tưởng code chưa lên server.
+		#
+		# Sửa ở Caddy chứ không ở next.config.mjs vì sửa Next thì phải build lại và restart
+		# `ResearchSpyFrontend` — mà việc đó cắt đứt tab máy thợ đang cào. Caddy thì `reload`
+		# được, không đụng tới tiến trình Next.
+		#
+		# Hai luật, và thứ tự không quan trọng vì hai matcher loại trừ nhau:
+		#   · `_next/static/*` — tên file ĐÃ CÓ HASH nội dung, đổi nội dung là đổi tên. Cache
+		#     vĩnh viễn ở đây là an toàn tuyệt đối và là thứ giữ cho trang nạp nhanh.
+		#   · mọi thứ còn lại (HTML, `/api/*`) — KHÔNG cache. HTML phải luôn lấy mới để nó trỏ
+		#     đúng tên file hash hiện hành; còn API là dữ liệu sống, cache lại là hiện số cũ.
+		# Tiền tố `>` là BẮT BUỘC: nó nghĩa là "đặt, thay thế giá trị đang có". Không có `>` thì
+		# Caddy CỘNG THÊM vào header của Next, ra `Cache-Control: no-store,s-maxage=31536000` —
+		# hai chỉ thị đá nhau trong cùng một dòng, và file bundle thì lặp lại chính nó hai lần.
+		@bundle path /research/_next/static/*
+		header @bundle >Cache-Control "public, max-age=31536000, immutable"
+
+		@dong not path /research/_next/static/*
+		header @dong >Cache-Control "no-store"
+
 		reverse_proxy 127.0.0.1:3000 {
 			# PHẢI nới trần thời gian. Mặc định của Caddy là không giới hạn, nhưng đặt tường minh
 			# ở đây để khớp với PROXY_TIMEOUT_MS = 300_000 trong frontend/next.config.mjs: nhiều

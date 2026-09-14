@@ -4,13 +4,33 @@
  * (`.panel`, `.chip`, `.img-list`, `.img-info`, `.notice`, `.empty`) dùng lại nguyên của webtool.
  * File này chỉ thêm những gì demo có mà webtool chưa có: dòng xếp hạng, dãy lăng kính, thẻ sản phẩm. */
 
-/* Công tắc tab nằm bên phải tiêu đề trang, cùng dáng "Một sàn / Nhiều sàn" của Image Search. */
+/* Công tắc tab NẰM SÁT TIÊU ĐỀ, không dạt sang mép phải: `.page-head` mặc định là
+   `space-between` nên nó đẩy công tắc ra góc đối diện, cách tiêu đề gần cả màn hình rộng. */
+.ts-head {
+  justify-content: flex-start;
+  gap: var(--s-6);
+}
+
+/* To hơn hẳn dáng "Một sàn / Nhiều sàn" của Image Search, vì đây không phải một bộ lọc phụ mà
+   là công tắc ĐỔI CẢ MÀN HÌNH — hai màn hình khác nhau về cả dữ liệu lẫn bố cục. */
 .ts-views {
   align-self: center;
+  border-width: 1.5px;
+  border-radius: var(--r-md);
+  overflow: hidden;
 }
 
 .ts-views button {
-  padding: 7px 16px;
+  padding: 10px 28px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  transition: background 0.12s, color 0.12s;
+}
+
+.ts-views button:not([data-on='true']):hover {
+  background: var(--surface-2);
+  color: var(--text);
 }
 
 .ts-meta {
@@ -115,15 +135,23 @@
   gap: 6px;
 }
 
-.ts-lens em {
-  font-style: normal;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-mute);
-  font-variant-numeric: tabular-nums;
+/* ===== Phân trang (Toplist · Khám phá) ===== */
+
+.ts-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: var(--s-4) 0 var(--s-3);
 }
 
-.ts-lens[data-on='true'] em { color: var(--brand); }
+.ts-pager .chip { font-variant-numeric: tabular-nums; }
+
+.ts-pager .chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 
 .ts-lens-note {
   display: flex;
@@ -224,8 +252,7 @@
   background: var(--brand-soft);
 }
 
-.ts-badge[data-lens='hot_gmv'],
-.ts-badge[data-lens='hot_sold'] { color: var(--warn); background: var(--warn-soft); }
+.ts-badge[data-lens='hot'] { color: var(--warn); background: var(--warn-soft); }
 .ts-badge[data-lens='steady'] { color: var(--good); background: var(--good-soft); }
 .ts-badge[data-lens='spike'] { color: var(--info); background: var(--info-soft); }
 .ts-badge[data-lens='gap'] { color: var(--recon-ink); background: var(--recon-soft); }
@@ -285,33 +312,55 @@
 
 .ts-oneshot-san .ts-meta { margin: var(--s-3) 0 0; }
 
-/* ==================== One-shot AI: dữ liệu kho AI đã đọc ==================== */
+/* ==================== One-shot AI: sản phẩm thật của kho ====================
+ *
+ * Đây là PHẦN CHÍNH của câu trả lời (xem `AnswerBlock.HubProducts`), nên nó được bày thẳng ra
+ * chứ không nấp sau nút gấp, và mỗi sàn là một nhóm có tiêu đề riêng. */
 
-.hubp { margin-top: var(--s-3); }
+.hubp { margin-top: var(--s-4); }
 
-.hubp-toggle {
-  border: 0;
-  background: none;
-  padding: 0;
-  font: inherit;
+.hubp-cap {
+  margin: 0 0 var(--s-2);
   font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text-dim);
-  cursor: pointer;
+  color: var(--text-mute);
 }
 
-.hubp-toggle:hover { color: var(--brand); }
+.hubp-group + .hubp-group { margin-top: var(--s-4); }
 
-.hubp-list { margin-top: var(--s-2); }
+/* Tên sàn phải đọc ra là MỘT NHÓM RIÊNG chứ không phải thêm một dòng trong cùng bảng: ba sàn
+   khác thang đo, thứ hạng chỉ có nghĩa bên trong một sàn. */
+.hubp-san {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 var(--s-2);
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.hubp-san span {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-mute);
+}
 
 .hubp-row {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) auto;
+  grid-template-columns: 24px 56px minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
   padding: 8px 12px;
   background: var(--surface);
   font-size: 13px;
+}
+
+.hubp-rank {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-mute);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .hubp-num {
@@ -324,3 +373,8 @@
 
 .hubp-num b { font-variant-numeric: tabular-nums; }
 .hubp-num small { color: var(--text-mute); font-size: 11.5px; }
+
+@media (max-width: 640px) {
+  .hubp-row { grid-template-columns: 24px 56px minmax(0, 1fr); }
+  .hubp-num { grid-column: 3 / -1; align-items: flex-start; }
+}

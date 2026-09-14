@@ -1158,8 +1158,8 @@ def scout_toplist(san: str = "shopee_vn", loai: str = "ban_chay", limit: int | N
 
 @router.get("/scout/kham-pha")
 def scout_kham_pha(san: str = "shopee_vn", main: str = "", sub: str = "",
-                   lens: str = "ban_chay", limit: int = 100):
-    """Một ngành × một lăng kính, kèm số lượng của cả 7 lăng kính và "tính trên N ngày"."""
+                   lens: str = "ban_chay", limit: int | None = None):
+    """Một ngành × một lăng kính, kèm số lượng của cả 6 lăng kính và "tính trên N ngày"."""
     from .signal import scout
     return _scout(scout.kham_pha, san, main, sub or None, lens, limit)
 
@@ -1173,13 +1173,20 @@ def scout_config(san: str = "shopee_vn"):
 
 @router.post("/scout/config")
 def scout_config_save(payload: dict):
-    """Lưu các số đỏ cho MỘT sàn. Giá trị ngoài khoảng hợp lệ bị bỏ, giữ mức tài liệu."""
+    """
+    Lưu các số đỏ cho MỘT sàn. Giá trị ngoài khoảng hợp lệ bị bỏ, giữ mức tài liệu.
+
+    CHỈ GHI NHỮNG SỐ KHÁC MỨC TÀI LIỆU. Trước đây ghi cả 18 số, kể cả những số y hệt mặc định —
+    nên một lần bấm "Về mức tài liệu" rồi "Áp dụng" là đóng băng vĩnh viễn mức của ngày hôm đó:
+    14/09/2026 đổi cửa sổ 7→5 ngày và rating 3.0→4.0★ mà Shopee VN vẫn chạy mức cũ, vì bản ghi
+    tháng trước đang đè lên. Ghi diff thì sàn nào không chỉnh tay sẽ tự đi theo mức tài liệu.
+    """
     from .signal import store as sig_store, scout
     p = dict(payload or {})
     san = p.pop("san", "shopee_vn")
     _scout(scout._san, san)
     cfg = scout.cau_hinh(san, {**sig_store.get_config(f"scout:{san}"), **p})
-    sig_store.set_config(f"scout:{san}", cfg)
+    sig_store.set_config(f"scout:{san}", {k: v for k, v in cfg.items() if v != scout.NGUONG[k]})
     return {"saved": True, "san": san, "config": cfg}
 
 

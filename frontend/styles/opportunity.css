@@ -111,9 +111,39 @@
 /* Cột theo TỶ LỆ chứ không theo `auto`. Mỗi hàng là một lưới riêng, nên một cột `auto` co
    giãn theo đúng hàng đó — và cột nhu cầu bên cạnh sẽ bắt đầu ở một chỗ khác nhau trên từng
    dòng, đọc thành một danh sách bị lệch chứ không thành một danh sách có cột. */
+/* ===== "Đã hiểu: …" — hệ thống bày ra cách nó đọc câu hỏi =====
+ *
+ * Đứng TRƯỚC câu trả lời chứ không phải sau: nếu nó hiểu sai câu hỏi thì mọi thứ bên dưới đều
+ * vô nghĩa, và người đọc cần biết điều đó trước khi mất công đọc hết. */
+.dahieu { margin-bottom: var(--s-2); }
+
+.dahieu-line {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--text-mute);
+  cursor: pointer;
+  text-align: left;
+}
+
+.dahieu-line:hover { color: var(--brand); }
+
+.dahieu-ly-do {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-mute);
+}
+
 .ans-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) 12px;
+  /* Cột thứ ba là SỐ THẬT CỦA KHO cho món ở cột một — cái phân biệt trang này với một chatbot
+     thuần. Cho nó chiều rộng cố định để mọi dòng thẳng cột, đọc lướt được cả bảng theo chiều
+     dọc thay vì phải dò từng dòng. */
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr) minmax(0, 230px) 12px;
   align-items: center;
   gap: 14px;
   width: 100%;
@@ -123,6 +153,30 @@
   text-align: left;
   cursor: pointer;
   transition: background 0.12s;
+}
+
+/* Số kho: chữ nhỏ, số nổi. Không dùng màu thương hiệu cho cả cụm — nó là dữ kiện phụ trợ cho
+   tên món, không phải thứ phải đọc trước. */
+.ans-kho {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-mute);
+}
+
+.ans-kho b {
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.ans-kho em { font-style: normal; opacity: 0.8; }
+
+/* "kho chưa đo" phải đọc ra là VẮNG SỐ, không phải một kết luận thị trường. */
+.ans-kho[data-empty] { opacity: 0.55; font-style: italic; }
+
+@media (max-width: 900px) {
+  .ans-row { grid-template-columns: minmax(0, 1fr) 12px; }
+  .ans-pain, .ans-kho { grid-column: 1 / 2; }
 }
 
 /* Không có bằng chứng từ sàn thì không có cụm nào để mang sang mục Keyword — dòng đó chỉ để

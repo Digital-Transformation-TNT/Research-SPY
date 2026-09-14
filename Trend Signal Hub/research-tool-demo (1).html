@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Research Tool · Toplist + Khám phá</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#EEF1F4; --surface:#FFFFFF; --ink:#181B23; --muted:#5A6472; --faint:#8A93A0;
+    --line:#DDE2E8; --line-soft:#EAEDF1; --brand:#0B4F52;
+    --hot:#E8590C; --new:#1C7ED6; --steady:#2F9E44; --spike:#7048E8; --gap:#0C8599; --gold:#B8860B;
+    --warn:#E8850C;
+    --radius:14px; --radius-sm:9px;
+    --shadow:0 1px 2px rgba(24,27,35,.04), 0 6px 20px rgba(24,27,35,.06);
+    --font:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    --mono:"Space Grotesk",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font-family:var(--font);background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;line-height:1.45;font-size:15px}
+  .num{font-family:var(--mono);font-feature-settings:"tnum" 1;letter-spacing:-.01em}
+  button{font-family:inherit}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 20px}
+
+  header.top{position:sticky;top:0;z-index:40;background:rgba(238,241,244,.9);backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--line)}
+  .top-inner{max-width:1180px;margin:0 auto;padding:12px 20px 0;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  .logo{display:flex;align-items:baseline;gap:9px;margin-right:auto}
+  .logo .mark{font-family:var(--mono);font-weight:700;font-size:19px;color:var(--brand);letter-spacing:-.02em}
+  .logo .mark b{color:var(--hot)}
+  .logo .sub{font-size:12px;color:var(--faint)}
+  .selectors{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field label{font-size:11px;color:var(--muted);font-weight:600;padding-left:2px}
+  .req{color:var(--hot)}
+  select{appearance:none;-webkit-appearance:none;background:var(--surface);border:1px solid var(--line);color:var(--ink);font-size:14px;font-weight:500;padding:9px 34px 9px 12px;border-radius:var(--radius-sm);min-width:140px;cursor:pointer;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%235A6472' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");background-repeat:no-repeat;background-position:right 12px center}
+  select:focus-visible{outline:2px solid var(--brand);outline-offset:1px;border-color:var(--brand)}
+  select:hover{border-color:#c7cfd8}
+  select:disabled{opacity:.55;cursor:not-allowed}
+
+  .tabs{display:flex;gap:4px;padding:14px 20px 0;max-width:1180px;margin:0 auto}
+  .tab{border:0;background:transparent;padding:11px 20px;font-size:15px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2.5px solid transparent;display:flex;align-items:center;gap:8px}
+  .tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--brand)}
+  .tab:hover{color:var(--ink)}
+  .tab:focus-visible{outline:2px solid var(--brand);outline-offset:-4px;border-radius:6px}
+
+  .ctx{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:20px 0 6px}
+  .ctx h1{font-size:22px;margin:0;font-weight:700;letter-spacing:-.02em}
+  .ctx .meta{margin-left:auto;font-size:12.5px;color:var(--muted)}
+  .ctx .meta b{font-family:var(--mono);color:var(--ink);font-weight:600}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--steady);display:inline-block;margin-right:5px;vertical-align:1px}
+
+  .subtabs{display:flex;gap:8px;padding:6px 0 2px;flex-wrap:wrap}
+  .subtab{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:9px 17px;font-size:13.5px;font-weight:600;color:var(--ink);cursor:pointer;display:inline-flex;gap:8px;align-items:center}
+  .subtab .ic{font-size:15px}
+  .subtab[aria-selected="true"]{color:#fff;border-color:transparent}
+  .subtab.sold[aria-selected="true"]{background:var(--new)}
+  .subtab.gmv[aria-selected="true"]{background:var(--gold)}
+  .subtab:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+
+  .filters{display:flex;gap:10px;flex-wrap:wrap;padding:14px 0 4px;align-items:flex-end}
+  .hint{font-size:12.5px;color:var(--faint);padding:2px 0 14px}
+
+  .list{display:flex;flex-direction:column;gap:7px;padding-bottom:56px}
+  .row{display:grid;grid-template-columns:44px 60px 1fr auto;gap:14px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px;cursor:pointer;transition:border-color .12s, box-shadow .12s}
+  .row:hover{box-shadow:var(--shadow);border-color:#cfd6de}
+  .row:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+  .rank{font-family:var(--mono);font-size:20px;font-weight:700;color:var(--faint);text-align:center}
+  .row.tp1 .rank{color:var(--gold)} .row.tp2 .rank{color:#7c8593} .row.tp3 .rank{color:#b06a2c}
+  .rthumb{width:60px;height:60px;border-radius:9px;overflow:hidden;background:#f2f4f7}
+  .rthumb svg{width:100%;height:100%;display:block}
+  .rmid{min-width:0}
+  .rname{font-size:14px;font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .rtag{display:inline-block;font-size:11px;color:var(--muted);background:var(--paper);border:1px solid var(--line-soft);padding:1px 8px;border-radius:6px;margin-top:5px}
+  .rstats{display:flex;gap:18px;text-align:right}
+  .rstat{display:flex;flex-direction:column;gap:1px;min-width:64px}
+  .rstat .k{font-size:10px;color:var(--faint);font-weight:600}
+  .rstat .v{font-size:14px;font-weight:600}
+  .rstat .v.num{font-size:15px}
+  .rstat.lead .v{color:var(--brand)}
+  @media(max-width:720px){
+    .row{grid-template-columns:36px 52px 1fr;gap:10px}
+    .rstats{grid-column:1/-1;justify-content:flex-start;text-align:left;padding-top:6px;border-top:1px solid var(--line-soft);gap:14px}
+    .rstat{align-items:flex-start;min-width:0}
+  }
+
+  .lenses{display:flex;gap:8px;overflow-x:auto;padding:14px 0 12px;scrollbar-width:none}
+  .lenses::-webkit-scrollbar{display:none}
+  .lens{flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:8px 15px 8px 12px;font-size:13.5px;font-weight:600;color:var(--ink);cursor:pointer;white-space:nowrap}
+  .lens .ic{font-size:15px}
+  .lens .ct{font-family:var(--mono);font-size:12px;color:var(--faint)}
+  .lens:hover{border-color:#c7cfd8}
+  .lens:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+  .lens[aria-selected="true"]{color:#fff}
+  .lens[aria-selected="true"] .ct{color:rgba(255,255,255,.72)}
+  .lens[data-c="hot"][aria-selected="true"]{background:var(--hot);border-color:var(--hot)}
+  .lens[data-c="steady"][aria-selected="true"]{background:var(--steady);border-color:var(--steady)}
+  .lens[data-c="spike"][aria-selected="true"]{background:var(--spike);border-color:var(--spike)}
+  .lens[data-c="gap"][aria-selected="true"]{background:var(--gap);border-color:var(--gap)}
+  .lens[data-c="new"][aria-selected="true"]{background:var(--new);border-color:var(--new)}
+  .lens-note{font-size:13px;color:var(--muted);padding:2px 0 16px;max-width:74ch}
+  .lens-note b{color:var(--ink)}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding-bottom:56px}
+  @media(max-width:940px){.grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:620px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;gap:11px;cursor:pointer;text-align:left;transition:border-color .12s, box-shadow .12s, transform .12s}
+  .card:hover{box-shadow:var(--shadow);border-color:#cfd6de;transform:translateY(-2px)}
+  .card:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+  .card .head{display:flex;gap:12px}
+  .thumb{width:76px;height:76px;flex:0 0 76px;border-radius:10px;overflow:hidden;background:#f2f4f7}
+  .thumb svg{width:100%;height:100%;display:block}
+  .card .name{font-size:14px;font-weight:600;line-height:1.32;margin:1px 0 6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px}
+  .why{font-size:13.5px;line-height:1.5;color:#2b3038}
+  .why b{font-weight:700}
+  .stats{display:flex;flex-wrap:wrap;gap:4px 16px;border-top:1px solid var(--line-soft);margin-top:1px;padding-top:11px}
+  .stat{display:flex;flex-direction:column;gap:1px}
+  .stat .k{font-size:10.5px;color:var(--faint);font-weight:600}
+  .stat .v{font-size:14px;font-weight:600}
+  .stat .v.num{font-size:15px}
+
+  .empty{padding:56px 20px;text-align:center;color:var(--muted)}
+  .empty.big{padding:80px 20px}
+  .foot-note{max-width:1180px;margin:0 auto;padding:8px 20px 40px;font-size:12px;color:var(--faint)}
+  @media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <div class="logo"><span class="mark">TREND<b>·</b>SCOUT</span><span class="sub">công cụ research cho đội sale</span></div>
+    <div class="selectors">
+      <div class="field"><label for="platform">Sàn <span class="req">*</span></label><select id="platform"></select></div>
+    </div>
+  </div>
+  <div class="tabs" role="tablist" aria-label="Khu vực">
+    <button class="tab" role="tab" data-tab="toplist"><span>📊</span> Toplist</button>
+    <button class="tab" role="tab" data-tab="discover"><span>🔎</span> Khám phá</button>
+  </div>
+</header>
+
+<div class="wrap"><div id="view"></div></div>
+<div class="foot-note">Bản demo · dữ liệu mẫu tự sinh để minh hoạ bố cục · số liệu không phải thật · quét mô phỏng 02:00 hằng ngày.</div>
+
+<script>
+const CATS = {"vn": {"Thời Trang Nam": ["Áo Hoodie, Áo Len & Áo Nỉ", "Quần Dài/Quần Âu", "Quần Jeans", "Quần Short", "Áo", "Áo Ba Lỗ", "Đồ Lót", "Đồ Ngủ", "Đồ Bộ", "Vớ/Tất", "Trang Sức Nam", "Kính Mắt Nam", "Thắt Lưng Nam", "Cà vạt & Nơ cổ", "Phụ Kiện Nam"], "Thời Trang Nữ": ["Quần", "Quần đùi", "Chân váy", "Quần jeans", "Đồ liền thân", "Áo len & Cardigan", "Hoodie và Áo nỉ", "Bộ", "Đồ lót", "Đồ ngủ", "Áo", "Đồ tập", "Đồ Bầu", "Vải", "Vớ/ Tất", "Khác"], "Điện Thoại & Phụ Kiện": ["Ốp lưng, bao da, Miếng dán điện thoại", "Đế giữ điện thoại", "Phụ kiện khác"], "Mẹ & Bé": ["Đồ dùng du lịch cho bé", "Đồ dùng ăn dặm cho bé", "Phụ kiện cho mẹ", "Chăm sóc sức khỏe mẹ", "Đồ dùng phòng tắm & Chăm sóc cơ thể bé", "Đồ dùng phòng ngủ cho bé", "An toàn cho bé", "Chăm sóc sức khỏe bé", "Đồ chơi", "Bộ & Gói quà tặng"], "Thiết Bị Điện Tử": ["Tai nghe nhét tai"], "Nhà Cửa & Đời Sống": ["Trang trí nhà cửa", "Dụng cụ & Thiết bị tiện ích", "Đồ dùng nhà bếp và hộp đựng thực phẩm", "Đèn", "Ngoài trời & Sân vườn", "Đồ dùng phòng tắm", "Vật phẩm thờ cúng", "Đồ trang trí tiệc", "Chăm sóc nhà cửa và giặt ủi", "Sắp xếp nhà cửa", "Dụng cụ pha chế", "Tinh dầu thơm phòng", "Đồ dùng phòng ăn"], "Sắc Đẹp": ["Chăm sóc da mặt", "Tắm & chăm sóc cơ thể", "Trang điểm", "Chăm sóc tóc", "Dụng cụ & Phụ kiện Làm đẹp", "Vệ sinh răng miệng", "Nước hoa", "Chăm sóc nam giới", "Khác", "Chăm sóc phụ nữ", "Bộ sản phẩm làm đẹp"], "Sức Khỏe": ["Vật tư y tế", "Chống muỗi & xua đuổi côn trùng", "Tã người lớn", "Hỗ trợ làm đẹp", "Dụng cụ massage và trị liệu", "Khác"], "Đồng Hồ": ["Đồng Hồ Nam", "Đồng Hồ Nữ", "Bộ Đồng Hồ & Đồng Hồ Cặp", "Đồng Hồ Trẻ Em", "Phụ Kiện Đồng Hồ", "Khác"], "Giày Dép Nữ": ["Bốt", "Giày Thể Thao/ Sneaker", "Giày Đế Bằng", "Giày Cao Gót", "Giày Đế Xuồng", "Xăng-đan Và Dép", "Phụ Kiện Giày", "Giày Khác"], "Giày Dép Nam": ["Bốt", "Giày Thể Thao/ Sneakers", "Giày Sục", "Giày Tây Lười", "Giày Oxfords & Giày Buộc Dây", "Xăng-đan và Dép", "Phụ kiện giày dép", "Khác"], "Túi Ví Nữ": ["Ba Lô Nữ", "Cặp Laptop", "Ví Dự Tiệc & Ví Cầm Tay", "Túi Đeo Hông & Túi Đeo Ngực", "Túi Tote", "Túi Quai Xách", "Túi Đeo Chéo & Túi Đeo Vai", "Ví/Bóp Nữ", "Phụ Kiện Túi", "Khác"], "Thiết Bị Điện Gia Dụng": ["Đồ gia dụng nhà bếp", "Thiết bị chăm sóc quần áo", "Khác", "Máy xay, ép, máy đánh trứng trộn bột, máy xay thực phẩm"], "Phụ Kiện & Trang Sức Nữ": ["Nhẫn", "Bông tai", "Khăn choàng", "Găng tay", "Phụ kiện tóc", "Vòng tay & Lắc tay", "Lắc chân", "Mũ", "Dây chuyền", "Kính mắt", "Thắt lưng", "Cà vạt & Nơ cổ", "Phụ kiện thêm", "Bộ phụ kiện", "Khác", "Vớ/ Tất", "Ô/Dù"], "Thể Thao & Du Lịch": ["Vali", "Túi du lịch", "Phụ kiện du lịch", "Dụng Cụ Thể Thao & Dã Ngoại", "Giày Thể Thao", "Thời Trang Thể Thao & Dã Ngoại", "Phụ Kiện Thể Thao & Dã Ngoại", "Khác"], "Bách Hóa Online": ["Đồ chế biến sẵn", "Nhu yếu phẩm", "Nguyên liệu nấu ăn", "Đồ làm bánh", "Đồ uống", "Ngũ cốc & mứt", "Bộ quà tặng", "Khác"], "Ô Tô & Xe Máy & Xe Đạp": ["Mũ bảo hiểm", "Phụ kiện xe máy", "Phụ kiện xe đạp", "Phụ kiện bên trong ô tô", "Dầu nhớt & dầu nhờn", "Phụ tùng ô tô", "Phụ tùng xe máy", "Phụ kiện bên ngoài ô tô", "Chăm sóc ô tô", "Dịch vụ cho xe"], "Nhà Sách Online": ["Sách Tiếng Việt", "Sách ngoại văn", "Gói Quà", "Bút viết", "Dụng cụ học sinh & văn phòng", "Màu, Họa Cụ và Đồ Thủ Công", "Sổ và Giấy Các Loại", "Quà Lưu Niệm", "Nhạc cụ và phụ kiện âm nhạc"], "Balo & Túi Ví Nam": ["Ba Lô Nam", "Ba Lô Laptop Nam", "Túi & Cặp Đựng Laptop", "Túi Chống Sốc Laptop Nam", "Túi Tote Nam", "Cặp Xách Công Sở Nam", "Ví Cầm Tay Nam", "Túi Đeo Hông & Túi Đeo Ngực Nam", "Túi Đeo Chéo Nam", "Bóp/Ví Nam", "Khác"], "Thời Trang Trẻ Em": ["Trang phục bé trai", "Trang phục bé gái", "Giày dép bé trai", "Giày dép bé gái", "Khác", "Quần áo em bé", "Giày tập đi & Tất sơ sinh", "Phụ kiện trẻ em"], "Đồ Chơi": ["Sở thích & Sưu tầm", "Đồ chơi giải trí", "Đồ chơi giáo dục", "Đồ chơi cho trẻ sơ sinh & trẻ nhỏ", "Đồ chơi vận động & ngoài trời", "Búp bê & Đồ chơi nhồi bông"], "Giặt Giũ & Chăm Sóc Nhà Cửa": ["Giặt giũ & Chăm sóc nhà cửa", "Giấy vệ sinh, khăn giấy", "Vệ sinh nhà cửa", "Vệ sinh bát đĩa", "Dụng cụ vệ sinh", "Chất khử mùi, làm thơm", "Thuốc diệt côn trùng", "Túi, màng bọc thực phẩm", "Bao bì, túi đựng rác"], "Chăm Sóc Thú Cưng": ["Phụ kiện cho thú cưng", "Vệ sinh cho thú cưng", "Quần áo thú cưng", "Chăm sóc sức khỏe", "Làm đẹp cho thú cưng", "Khác"], "Dụng cụ và thiết bị tiện ích": ["Dụng cụ cầm tay", "Thiết bị mạch điện", "Thiết bị và phụ kiện xây dựng"]}, "ph": {"Men's Apparel": ["Tops", "Shorts", "Underwear", "Socks", "Sleepwear", "Sets", "Others"], "Women's Apparel": ["Dresses", "Tops", "Tees", "Shorts", "Pants", "Jeans", "Skirts", "Jumpsuits & Rompers", "Lingerie & Nightwear", "Sets", "Swimsuit", "Plus Size", "Maternity Wear", "Socks & Stockings", "Fabric"], "Mobiles & Gadgets": ["Portable Audio", "Wearables"], "Health & Personal Care": ["Medical Supplies", "Men's Grooming", "Slimming", "Suncare", "Whitening", "Personal Care", "Bath & Body", "Hair Care", "Skin Care", "Others"], "Mobiles Accessories": ["Others Mobile Accessories", "Attachments", "Cases & Covers"], "Makeup & Fragrances": ["Palettes & Makeup Sets", "Tools & Accessories", "Nails", "Fragrances", "Face Makeup", "Lip Makeup", "Eye Makeup", "Others"], "Home Appliances": ["Small Household Appliances", "Home Appliance Parts & Accessories", "Vacuum Cleaners & Floor Care", "Humidifier & Air Purifier", "Small kitchen Appliances", "Garment Care", "Others"], "Babies & Kids": ["Baby Detergent", "Babies' Fashion", "Rain Gear", "Nursery", "Moms & Maternity", "Baby Gear", "Health & Safety", "Bath & Skin Care", "Boys' Fashion", "Girls' Fashion", "Feeding & Nursing", "Diapers & Wipes", "Others"], "Home & Living": ["Hand Warmers, Hot Water Bags & Ice Bags", "Home Maintenance", "Furniture", "Lighting", "Party Supplies", "Beddings", "Bath", "Glassware & Drinkware", "Dinnerware", "Bakeware", "Kitchenware", "Sinkware", "Power Tools", "Home Improvement", "Storage & Organization", "Home Decor", "Garden Decor", "Outdoor & Garden", "Others"], "Groceries": ["Seasoning, Staple Foods & Baking Ingredients", "Superfoods & Healthy Foods", "Breakfast Food", "Snack & Sweets", "Laundry & Household Care", "Others"], "Sports & Travel": ["Travel Bags", "Travel Accessories", "Travel Organizer", "Kid's Activewear", "Weather Protection", "WinterSports Gear", "Outdoor Recreation", "Leisure Sports & Game Room", "Golf", "Racket Sports", "Sports Bags", "Women's Activewear", "Men's Activewear", "Cycling, Skates & Scooters", "Team Sports", "Water Sports", "Camping & Hiking", "Weightlifting", "Fitness Accessory", "Yoga", "Exercise & Fitness", "Others"], "Toys, Games & Collectibles": ["Dress Up & Pretend", "Blasters & Toy Guns", "Sports & Outdoor Toys", "Dolls", "Educational Toys", "Electronic Toys", "Boards & Family Games", "Collectibles", "Character", "Action Figure", "Others"], "Men's Bags & Accessories": ["Hats & Caps", "Wallets", "Eyewear", "Accessories", "Jewelry", "Watches", "Men's Bags", "Accessories Sets & Packages"], "Women's Bags": ["Shoulder Bags", "Tote Bags", "Handbags", "Clutches", "Backpacks", "Drawstrings", "Accessories", "Others"], "Men's Shoes": ["Loafer & Boat Shoes", "Sneakers", "Sandals & Flip Flops", "Boots", "Formal", "Shoe Care & Accessories", "Others"], "Women Accessories": ["Jewelry", "Watches", "Hair Accessories", "Eyewear", "Wallets & Pouches", "Hats & Caps", "Belts & Scarves", "Gloves", "Accessories Sets & Packages", "Additional Accessories", "Watch & Jewelry Organizers", "Others"], "Motors": ["Car Care & Detailing", "Automotive Parts", "Ignition", "Exterior Car Accessories", "Oils, Coolants, & Fluids", "Car Electronics", "Moto Riding & Protective Gear", "Tools & Garage", "Motorcycle Accessories", "Motorcycle & ATV Parts", "Interior Car Accessories", "Others", "Motorcycles"], "Women's Shoes": ["Flats", "Heels", "Flip Flops", "Sneakers", "Wedges & Platforms", "Boots", "Shoe Care & Accessories", "Others"], "Hobbies & Stationery": ["E-Books", "Books and Magazines", "Paper Supplies", "Writing Materials", "Religious Artifacts", "Packaging & Wrapping", "Arts & Crafts", "School & Office Supplies", "Musical Instruments", "Others"], "Pet Care": ["Toys & Accessories", "Litter & Toilet", "Pet Essentials", "Pet Clothing & Accessories", "Pet Grooming Supplies", "Pet Toys & Accessories", "Pet Food & Treats", "Others"]}};
+const TREE = CATS.vn;            // bỏ quốc gia — dùng cây ngành VN
+const CUR = 'vnd';
+const PLATFORMS=[{key:'shopee',label:'Shopee'},{key:'tiktok',label:'TikTok'}];
+const ALL='__all__';
+
+const LENSES=[
+  {k:'ban_chay',c:'sold',  ic:'📈', name:'Bán chạy'},
+  {k:'hot_gmv', c:'hot',   ic:'🔥', name:'Tăng tốc · doanh số'},
+  {k:'hot_sold',c:'hot',   ic:'🔥', name:'Tăng tốc · lượt bán'},
+  {k:'steady',  c:'steady',ic:'💰', name:'Sức bán ổn định'},
+  {k:'spike',   c:'spike', ic:'⚡', name:'Đột biến'},
+  {k:'gap',     c:'gap',   ic:'🎯', name:'Khe hở'},
+  {k:'new',     c:'new',   ic:'🆕', name:'Tân binh bán chạy'},
+];
+const LC={sold:'var(--new)',hot:'var(--hot)',steady:'var(--steady)',spike:'var(--spike)',gap:'var(--gap)',new:'var(--new)'};
+const LENS_NOTE={
+  ban_chay:'Danh sách bán chạy lấy nguyên ranking theo lượt bán từ sàn về — xếp theo lượt bán 30 ngày.',
+  hot_gmv:'Doanh thu 30 ngày đang tăng nhanh so với kỳ trước (giá × lượt bán). Đã bán ≥ 1.000 để loại buff đơn.',
+  hot_sold:'Lượt bán đang tăng nhanh so với kỳ trước. Đã bán ≥ 1.000 để loại buff đơn/seeding.',
+  steady:'Bán đều mỗi ngày, không có ngày chết, không tụt mấy hôm gần đây — cầu đã được chứng minh.',
+  spike:'Bán vọt bất thường trong 1–2 ngày so với nền ~10 ngày. Đang có sóng.',
+  gap:'Cầu cao nhưng shop dẫn đầu còn yếu (rating thấp / ít đánh giá) — còn khe để chen vào.',
+  new:'Lần đầu lọt vào tầm quét gần đây mà đã bán tốt. Chỉ đáng tin sau khi tool quét đủ ~3 tuần.',
+};
+
+function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
+function rngOf(s){let a=hash(s);return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+
+const BR=['DOHAGO','Hanama','Maprick','LAZA','MINGDU','Vunos','BAGGIO','KAKA','Senko','Yuumy','ZAVA','Lecas','Coolo','Nira'];
+const ADJ=['chống nước','đa năng','cao cấp','local brand','bản mới','ulzzang','đi học đi làm','form rộng','nhiều ngăn','unisex','minimal','2025'];
+function nounFromSub(sub){let s=sub.split(/[\/,&]/)[0].trim();return s.length>22?s.slice(0,22):s;}
+
+function money(v){ return v.toLocaleString('vi-VN')+'đ'; }
+function short(v){ if(v>=1e6)return (v/1e6).toFixed(v>=1e7?0:1).replace('.0','')+'tr'; if(v>=1000)return (v/1000).toFixed(v>=10000?0:1).replace('.0','')+'k'; return String(v); }
+function moneyShort(v){ if(v>=1e9)return (v/1e9).toFixed(1).replace('.0','')+' tỷ'; if(v>=1e6)return (v/1e6).toFixed(0)+' tr'; return v.toLocaleString('vi-VN')+'đ'; }
+function thumb(seed,tint){
+  const c=tint||'var(--brand)'; const rng=rngOf(seed); const id='g'+Math.floor(rng()*99999);
+  return `<svg viewBox="0 0 76 76" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c}" stop-opacity="0.14"/><stop offset="1" stop-color="${c}" stop-opacity="0.30"/></linearGradient></defs><rect width="76" height="76" fill="url(#${id})"/><g fill="none" stroke="${c}" stroke-width="2.4" stroke-linejoin="round" opacity="0.68"><path d="M27 30 h22 a4 4 0 0 1 4 4 v22 a4 4 0 0 1 -4 4 h-22 a4 4 0 0 1 -4 -4 v-22 a4 4 0 0 1 4 -4 z"/><path d="M31 30 v-4 a7 7 0 0 1 14 0 v4"/></g></svg>`;
+}
+
+/* ---------- Toplist pool: 100 tốt nhất toàn bộ ngành ---------- */
+const poolCache={};
+function toplistPool(platform){
+  if(poolCache[platform]) return poolCache[platform];
+  const rng=rngOf('pool|'+platform); const mains=Object.keys(TREE); const out=[];
+  for(let i=0;i<100;i++){
+    const main=mains[Math.floor(rng()*mains.length)];
+    const subs=TREE[main]; const sub=subs[Math.floor(rng()*subs.length)];
+    const cheapVolume=rng()<0.45;
+    let price,s30;
+    if(cheapVolume){ price=Math.round(25000+rng()*160000); s30=Math.round(18000+rng()*180000); }
+    else { price=Math.round(220000+rng()*1500000); s30=Math.round(1500+rng()*40000); }
+    const total=Math.round(s30*(1.6+rng()*6));
+    const stars=Math.round((4.1+rng()*0.85)*100)/100;
+    const rev=Math.round(s30*(0.006+rng()*0.02));
+    out.push({id:platform+'-'+i,main,sub,name:BR[Math.floor(rng()*BR.length)]+' '+nounFromSub(sub)+' '+ADJ[Math.floor(rng()*ADJ.length)],price,s30,total,stars,rev,gmv:price*s30});
+  }
+  poolCache[platform]=out; return out;
+}
+
+/* ---------- Discover products ---------- */
+function genProducts(platform, sub){
+  const rng=rngOf(platform+'|'+sub); const noun=nounFromSub(sub);
+  const n=13+Math.floor(rng()*4);
+  const forced=['gap','spike','new','hot','steady','hot','steady','new','gap','spike'];
+  const list=[];
+  for(let i=0;i<n;i++){
+    let prof=i<forced.length?forced[i]:['hot','steady','new','spike','gap','plain'][Math.floor(rng()*6)];
+    let total=Math.round(3000+rng()*145000);
+    if(prof==='steady')total=Math.round(total*1.6+30000);
+    if(prof==='new')total=Math.round(total*0.25+2500);
+    let s30=Math.round(total*(0.22+rng()*0.5)); if(prof==='new')s30=Math.round(total*(0.55+rng()*0.3));
+    let gU=prof==='hot'?(45+rng()*90):prof==='steady'?(2+rng()*10):Math.round(rng()*30);
+    let priceTrend=prof==='hot'&&rng()<0.5?-(10+rng()*20):(rng()*10-3);
+    let gR=Math.round((1+gU/100)*(1+priceTrend/100)*100-100);
+    let price=Math.round(90000+rng()*560000);
+    let stars=4.2+rng()*0.79; if(prof==='gap')stars=3.55+rng()*0.6;
+    let rev=Math.round(s30*(0.008+rng()*0.02)); if(prof==='gap')rev=Math.round(rev*0.4);
+    let firstSeen=prof==='new'?(3+Math.floor(rng()*17)):(30+Math.floor(rng()*400));
+    let spike=prof==='spike'?(500+Math.floor(rng()*900)):Math.floor(rng()*180);
+    list.push({id:platform+sub+i,sub,name:BR[Math.floor(rng()*BR.length)]+' '+noun+' '+ADJ[Math.floor(rng()*ADJ.length)],
+      price,total,s30,stars:Math.round(stars*100)/100,rev,firstSeen,prof,
+      gU:Math.round(gU),gR,spike,gmv:price*s30,launch:Math.round(s30/Math.max(1,Math.min(firstSeen,21)))});
+  }
+  return list;
+}
+// gộp theo lựa chọn ngành / ngành hàng
+function poolForDiscover(platform,main,sub){
+  if(main!==ALL && sub!==ALL) return genProducts(platform,sub);
+  let subs=[];
+  if(main!==ALL){ subs=TREE[main]; }
+  else { Object.keys(TREE).forEach(m=>{ subs=subs.concat(TREE[m].slice(0,2)); }); } // mẫu 2 ngành hàng mỗi ngành
+  let all=[]; subs.forEach(s=>{ all=all.concat(genProducts(platform,s)); });
+  return all;
+}
+function inLens(p,lens){
+  switch(lens){
+    case 'ban_chay':return true;
+    case 'hot_gmv': return p.total>=1000 && p.gR>=40;
+    case 'hot_sold':return p.total>=1000 && p.gU>=40;
+    case 'steady':  return p.total>=2000 && p.prof==='steady';
+    case 'spike':   return p.total>=1000 && p.spike>=500;
+    case 'gap':     return p.prof==='gap';
+    case 'new':     return p.firstSeen<=21 && p.total>=300;
+  }
+}
+function whyText(p,lens){
+  switch(lens){
+    case 'ban_chay':return `Bán <b>${short(p.s30)}</b>/tháng, ${p.stars}★ (${short(p.rev)} đánh giá). Doanh thu ~${moneyShort(p.gmv)}.`;
+    case 'hot_gmv': return `Doanh thu 30 ngày tăng <b>+${p.gR}%</b> so với kỳ trước. Đang lên nhanh về tiền, đáng test sớm.`;
+    case 'hot_sold':return `Lượt bán tăng <b>+${p.gU}%</b> so với kỳ trước${p.gR<p.gU?' (dù có giảm giá để đẩy số)':''}. Đang lên nhanh về lượng.`;
+    case 'steady':  return `Bán đều lâu ngày, luỹ kế <b>${short(p.total)}</b> lượt, ${p.stars}★. Doanh thu ~${moneyShort(p.gmv)}/tháng — cầu chắc.`;
+    case 'spike':   return `2 ngày gần đây bán vọt <b>+${p.spike}%</b> so với nền. Đang có sóng — soi ngay.`;
+    case 'gap':     return `Cầu tốt (~<b>${moneyShort(p.gmv)}</b>/tháng) nhưng shop dẫn đầu chỉ ${p.stars}★. Có khe để làm tốt hơn.`;
+    case 'new':     return `Mới lọt tầm quét <b>${p.firstSeen} ngày</b> trước, đã bán ${short(p.s30)}/tháng. Tân binh bán chạy.`;
+  }
+}
+
+/* ---------- state ---------- */
+let TAB='toplist', PLATFORM=PLATFORMS[0], TOP_MODE='sold',
+    D_MAIN=ALL, D_SUB=ALL, LENS='ban_chay';
+const $=id=>document.getElementById(id);
+
+function initHeader(){
+  $('platform').innerHTML=PLATFORMS.map(p=>`<option value="${p.key}">${p.label}</option>`).join('');
+  $('platform').onchange=()=>{PLATFORM=PLATFORMS.find(p=>p.key==$('platform').value);render();};
+  document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{TAB=t.dataset.tab;render();});
+}
+function selHTML(id,opts,val,label){
+  return `<div class="field"><label for="${id}">${label}</label><select id="${id}">${opts.map(o=>`<option value="${o.v}"${o.v===val?' selected':''}>${o.t}</option>`).join('')}</select></div>`;
+}
+
+function render(){
+  document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected', t.dataset.tab===TAB));
+  const upd=new Date(),dd=String(upd.getDate()).padStart(2,'0'),mm=String(upd.getMonth()+1).padStart(2,'0');
+  if(TAB==='toplist') renderToplist(dd,mm); else renderDiscover(dd,mm);
+}
+
+function renderToplist(dd,mm){
+  const pool=toplistPool(PLATFORM.key);
+  const metric=TOP_MODE==='sold'?(p=>p.s30):(p=>p.gmv);
+  const items=[...pool].sort((a,b)=>metric(b)-metric(a)).slice(0,100);
+  const title=TOP_MODE==='sold'?'Top 100 Bán chạy':'Top 100 Doanh số';
+  const rows=items.map((p,i)=>{
+    const rk=i+1,tp=rk<=3?'tp'+rk:'';
+    const lead=TOP_MODE==='sold'
+      ?`<div class="rstat lead"><span class="k">Bán 30 ngày</span><span class="v num">${short(p.s30)}</span></div>`
+      :`<div class="rstat lead"><span class="k">Doanh số 30 ngày</span><span class="v num">${moneyShort(p.gmv)}</span></div>`;
+    const second=TOP_MODE==='sold'
+      ?`<div class="rstat"><span class="k">Doanh số</span><span class="v num">${moneyShort(p.gmv)}</span></div>`
+      :`<div class="rstat"><span class="k">Bán 30 ngày</span><span class="v num">${short(p.s30)}</span></div>`;
+    return `<div class="row ${tp}" tabindex="0" data-main="${p.main}" data-sub="${p.sub}">
+      <div class="rank">${rk}</div><div class="rthumb">${thumb(p.id,'var(--brand)')}</div>
+      <div class="rmid"><div class="rname">${p.name}</div><span class="rtag">${p.main} › ${p.sub}</span></div>
+      <div class="rstats">
+        <div class="rstat"><span class="k">Giá</span><span class="v num">${money(p.price)}</span></div>
+        ${lead}${second}
+        <div class="rstat"><span class="k">Đánh giá</span><span class="v num">${p.stars}★</span></div>
+      </div></div>`;
+  }).join('');
+  $('view').innerHTML=`
+    <div class="ctx"><h1>${title}</h1>
+      <div class="meta"><span>tổng hợp mọi ngành · <b class="num">${items.length}</b> sp</span> · <span><span class="dot"></span>${dd}/${mm} · 02:00</span></div></div>
+    <div class="subtabs" role="tablist">
+      <button class="subtab sold" role="tab" aria-selected="${TOP_MODE==='sold'}" data-m="sold"><span class="ic">📈</span> Top Bán chạy</button>
+      <button class="subtab gmv" role="tab" aria-selected="${TOP_MODE==='gmv'}" data-m="gmv"><span class="ic">💰</span> Top Doanh số</button>
+    </div>
+    <div class="hint">${TOP_MODE==='sold'?'Xếp theo tổng lượt bán 30 ngày — gộp toàn bộ ngành hàng, không cần chọn ngành.':'Xếp theo doanh thu 30 ngày (giá × lượt bán) — tránh hàng giá rẻ bán số lượng lớn lấn át hàng giá trị cao.'} Bấm 1 dòng để soi sâu ở tab Khám phá.</div>
+    <div class="list">${rows}</div>`;
+  document.querySelectorAll('.subtab').forEach(b=>b.onclick=()=>{TOP_MODE=b.dataset.m;render();});
+  document.querySelectorAll('.row').forEach(r=>{const go=()=>{TAB='discover';D_MAIN=r.dataset.main;D_SUB=r.dataset.sub;render();};r.onclick=go;r.onkeydown=e=>{if(e.key==='Enter')go();};});
+}
+
+function renderDiscover(dd,mm){
+  const mains=Object.keys(TREE);
+  if(D_MAIN!==ALL && !mains.includes(D_MAIN)) D_MAIN=ALL;
+  const subs = D_MAIN===ALL? [] : TREE[D_MAIN];
+  if(D_SUB!==ALL && !subs.includes(D_SUB)) D_SUB=ALL;
+  const prods=poolForDiscover(PLATFORM.key,D_MAIN,D_SUB);
+  const lensCounts={}; LENSES.forEach(l=>lensCounts[l.k]=prods.filter(p=>inLens(p,l.k)).length);
+  const lensBtns=LENSES.map(l=>`<button class="lens" data-c="${l.c}" role="tab" aria-selected="${l.k===LENS}" data-k="${l.k}"><span class="ic">${l.ic}</span>${l.name}<span class="ct">${lensCounts[l.k]}</span></button>`).join('');
+  let items=prods.filter(p=>inLens(p,LENS));
+  const sorter={ban_chay:(a,b)=>b.s30-a.s30,hot_gmv:(a,b)=>b.gR-a.gR,hot_sold:(a,b)=>b.gU-a.gU,steady:(a,b)=>b.gmv-a.gmv,spike:(a,b)=>b.spike-a.spike,gap:(a,b)=>b.gmv-a.gmv,new:(a,b)=>b.launch-a.launch};
+  items.sort(sorter[LENS]);
+  const CAP=60; const shown=items.slice(0,CAP);
+  const aggregated=(D_SUB===ALL);
+  const cards=shown.map(p=>{const l=LENSES.find(x=>x.k===LENS),col=LC[l.c];
+    return `<div class="card">
+      <div class="head"><div class="thumb">${thumb(p.id,col)}</div>
+        <div style="min-width:0;flex:1"><div class="name">${p.name}</div>
+        <span class="badge" style="color:${col};background:${col}18">${l.ic} ${l.name}</span>
+        ${aggregated?`<div class="rtag" style="margin-top:6px">${p.sub}</div>`:''}</div></div>
+      <div class="why">${whyText(p,LENS)}</div>
+      <div class="stats">
+        <div class="stat"><span class="k">Giá</span><span class="v num">${money(p.price)}</span></div>
+        <div class="stat"><span class="k">Bán 30 ngày</span><span class="v num">${short(p.s30)}</span></div>
+        <div class="stat"><span class="k">Doanh số 30 ngày</span><span class="v num">${moneyShort(p.gmv)}</span></div>
+        <div class="stat"><span class="k">Đánh giá</span><span class="v num">${p.stars}★ · ${short(p.rev)}</span></div>
+      </div></div>`;}).join('');
+  const mainOpts=[{v:ALL,t:'Tất cả ngành'}].concat(mains.map(m=>({v:m,t:m})));
+  const subOpts=[{v:ALL,t:'Tất cả ngành hàng'}].concat(subs.map(s=>({v:s,t:s})));
+  $('view').innerHTML=`
+    <div class="ctx"><h1>${D_SUB===ALL?(D_MAIN===ALL?'Tất cả ngành hàng':D_MAIN):D_SUB}</h1>
+      <div class="meta"><b class="num">${prods.length}</b> sp theo dõi · <span class="dot"></span>${dd}/${mm} · 02:00</div></div>
+    <div class="filters">
+      ${selHTML('dMain',mainOpts,D_MAIN,'Chọn ngành')}
+      ${selHTML('dSub',subOpts,D_SUB,'Ngành hàng')}
+    </div>
+    <div class="lenses" role="tablist">${lensBtns}</div>
+    <div class="lens-note">${LENS_NOTE[LENS]}</div>
+    ${cards?`<div class="grid">${cards}</div>${items.length>CAP?`<div class="hint">Hiển thị ${CAP}/${items.length} — thu hẹp bằng bộ lọc ngành để xem gọn hơn.</div>`:''}`:`<div class="empty">Không có sản phẩm ở lăng kính này với bộ lọc hiện tại.</div>`}`;
+  $('dMain').onchange=()=>{D_MAIN=$('dMain').value;D_SUB=ALL;render();};
+  $('dSub').onchange=()=>{D_SUB=$('dSub').value;render();};
+  document.querySelectorAll('.lens').forEach(b=>b.onclick=()=>{LENS=b.dataset.k;render();});
+}
+
+initHeader();
+render();
+
+</script>
+</body>
+</html>

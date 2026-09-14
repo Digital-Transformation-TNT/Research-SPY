@@ -98,7 +98,10 @@ export default function TrendScout() {
 
   return (
     <>
-      <div className="page-head">
+      {/* Hai nút Toplist / Khám phá đứng NGAY CẠNH TIÊU ĐỀ, không dạt sang mép phải. Chúng là
+          công tắc đổi cả màn hình — thứ người dùng bấm đầu tiên — nên phải nằm trong tầm mắt
+          đang đọc tiêu đề, chứ không nấp ở góc đối diện. */}
+      <div className="page-head ts-head">
         <div>
           <h1>Trend Signal Hub</h1>
         </div>
@@ -127,12 +130,15 @@ export default function TrendScout() {
           {view === 'toplist' && (
             <div className="field">
               <label>Xếp theo</label>
+              {/* Không gắn con số vào nhãn ("Top 100 bán chạy"): trần hiển thị chỉnh được ở
+                  `top_n` nên nhãn cứng sẽ nói sai ngay lần đầu ai đó đổi mức. Số thật nằm ở
+                  dòng meta ngay dưới bảng. */}
               <div className="chips">
                 <button className="chip" data-on={loai === 'ban_chay'} onClick={() => setLoai('ban_chay')}>
-                  Top 100 bán chạy
+                  Bán chạy
                 </button>
                 <button className="chip" data-on={loai === 'doanh_so'} onClick={() => setLoai('doanh_so')}>
-                  Top 100 doanh số
+                  Doanh số
                 </button>
               </div>
             </div>

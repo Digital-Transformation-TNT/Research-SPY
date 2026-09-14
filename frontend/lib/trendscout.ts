@@ -15,11 +15,16 @@ export const SAN = [
 
 export type SanKey = (typeof SAN)[number]['key']
 
-export type LensKey = 'ban_chay' | 'hot_gmv' | 'hot_sold' | 'steady' | 'spike' | 'gap' | 'new'
+export type LensKey = 'ban_chay' | 'hot' | 'steady' | 'spike' | 'gap' | 'new'
 
 /**
- * Bảy lăng kính, đúng thứ tự và tên của demo. `knobs` là các số đỏ của tài liệu mà lăng kính
- * đó dùng — ô Tùy chỉnh chỉ bày đúng những số này, không bày cả 18 số cùng lúc.
+ * Sáu lăng kính, đúng thứ tự và tên của tài liệu 14/09/2026 — Tân binh ĐỂ CUỐI.
+ *
+ * "Tăng tốc" trước đây là HAI lăng kính (`hot_gmv` doanh số và `hot_sold` lượt bán) cho ra hai
+ * bảng gần trùng nhau; nay là MỘT, phải đạt cả hai điều kiện lũy kế + tốc độ.
+ *
+ * `knobs` là các số đỏ của tài liệu mà lăng kính đó dùng — ô Tùy chỉnh chỉ bày đúng những số
+ * này, không bày cả 19 số cùng lúc.
  */
 export const LENSES: Array<{
   key: LensKey
@@ -36,21 +41,10 @@ export const LENSES: Array<{
     knobs: [],
   },
   {
-    key: 'hot_gmv',
+    key: 'hot',
     icon: '🔥',
-    label: 'Tăng tốc · doanh số',
-    note: 'Doanh số mỗi ngày của 7 ngày gần nhất so với 7 ngày trước đó. Tăng từ mức đặt ra trở lên và đã bán lũy kế đủ mức tối thiểu.',
-    knobs: [
-      { key: 'tang_toc_pct', label: 'Tăng từ', unit: '%' },
-      { key: 'tang_toc_luy_ke', label: 'Đã bán lũy kế từ', unit: 'sp' },
-      { key: 'tang_toc_cua_so', label: 'Cửa sổ so sánh', unit: 'ngày' },
-    ],
-  },
-  {
-    key: 'hot_sold',
-    icon: '🔥',
-    label: 'Tăng tốc · lượt bán',
-    note: 'Lượt bán mỗi ngày của 7 ngày gần nhất so với 7 ngày trước đó. Tăng từ mức đặt ra trở lên và đã bán lũy kế đủ mức tối thiểu.',
+    label: 'Đang tăng tốc',
+    note: 'Tốc độ bán mỗi ngày của 5 ngày gần nhất cao hơn hẳn 5 ngày trước đó. Phải đạt CẢ HAI: tăng từ 40% trở lên VÀ đã bán lũy kế tối thiểu 1.000 sản phẩm. Xếp theo mức tăng.',
     knobs: [
       { key: 'tang_toc_pct', label: 'Tăng từ', unit: '%' },
       { key: 'tang_toc_luy_ke', label: 'Đã bán lũy kế từ', unit: 'sp' },
@@ -61,27 +55,29 @@ export const LENSES: Array<{
     key: 'steady',
     icon: '💰',
     label: 'Bán khoẻ ổn định',
-    note: 'Ngày tệ nhất vẫn bán kha khá (sàn = ngày thấp thứ 6 trong 30 ngày) và chưa hạ nhiệt. Xếp theo doanh thu sàn 30 ngày.',
+    note: 'Ngày tệ nhất vẫn bán được kha khá — hầu như không có ngày chết, và hiện vẫn chưa hạ nhiệt (TB 3 ngày gần nhất ≥ 80% TB 5 ngày). Cầu đã được chứng minh, nhập về không sợ ôm hàng. Xếp theo doanh thu sàn 5 ngày.',
     knobs: [
       { key: 'on_dinh_moc', label: 'Sàn tối thiểu', unit: 'sp/ngày' },
-      { key: 'on_dinh_giu_nhiet', label: 'TB 7 ngày ≥', unit: '% TB 30 ngày' },
+      { key: 'on_dinh_giu_nhiet', label: 'TB 3 ngày ≥', unit: '% TB 5 ngày' },
+      { key: 'on_dinh_cua_so', label: 'Cửa sổ', unit: 'ngày' },
     ],
   },
   {
     key: 'spike',
     icon: '⚡',
     label: 'Đột biến',
-    note: 'Bán mỗi ngày của 2 ngày cuối vọt lên so với nền ~10 ngày trước đó, và đã bán đủ lũy kế để loại tăng ảo.',
+    note: 'Tốc độ bán trong 1 ngày gần nhất vọt lên từ 500% trở lên so với nền 5 ngày trước đó, và đã bán ít nhất 1.000 lượt để loại tăng ảo. Xếp theo mức vọt.',
     knobs: [
       { key: 'dot_bien_pct', label: 'Vọt từ', unit: '%' },
       { key: 'dot_bien_luy_ke', label: 'Đã bán lũy kế từ', unit: 'sp' },
+      { key: 'dot_bien_nen', label: 'Nền trước', unit: 'ngày' },
     ],
   },
   {
     key: 'gap',
     icon: '🎯',
     label: 'Khe hở',
-    note: 'Cầu đã chứng minh (bán nhiều và đều) nhưng listing dẫn đầu yếu vì rating thấp. Xếp theo doanh số 30 ngày.',
+    note: 'Cầu đã chứng minh (bán nhiều và đều) nhưng listing dẫn đầu ngách lại yếu vì rating quá thấp — cửa đang mở để nhảy vào làm hàng tốt hơn. Xếp theo doanh thu 5 ngày.',
     knobs: [
       { key: 'khe_ho_luy_ke', label: 'Đã bán lũy kế trên', unit: 'sp' },
       { key: 'khe_ho_deu', label: 'Sàn ≥', unit: '% mức thường' },
@@ -92,10 +88,11 @@ export const LENSES: Array<{
     key: 'new',
     icon: '🆕',
     label: 'Tân binh bán chạy',
-    note: 'Mới xuất hiện trong ngành không quá số ngày đặt ra mà đã bán đủ mức. Xếp theo bán mỗi ngày kể từ khi xuất hiện.',
+    note: 'Mới xuất hiện trong ngành không quá 21 ngày mà đã bán được từ 300 lượt trở lên. Xếp theo bán được bao nhiêu một ngày kể từ khi xuất hiện. Hàng cũ vừa mới leo vào top ngành bị loại bằng phép thử lũy kế ≈ lượt bán 30 ngày.',
     knobs: [
       { key: 'tan_binh_ngay', label: 'Xuất hiện không quá', unit: 'ngày' },
       { key: 'tan_binh_da_ban', label: 'Đã bán từ', unit: 'sp' },
+      { key: 'tan_binh_ty_le', label: 'Lũy kế tối đa', unit: '× bán 30 ngày' },
     ],
   },
 ]
@@ -128,6 +125,8 @@ export type Toplist = {
   san: SanKey
   loai: 'ban_chay' | 'doanh_so'
   ngay_moi_nhat?: string
+  /** Số listing hàng ảo (quà tặng, ô bù tiền…) đã bị loại trước khi xếp hạng. */
+  da_loc?: number
   items: ToplistItem[]
   ghi_chu?: string
 }
@@ -155,8 +154,15 @@ export type ScoutItem = {
   dot_bien_nen?: number
   san_ngay?: number | null
   muc_thuong?: number | null
-  doanh_thu_san_30?: number
-  doanh_so_30?: number
+  /** Số ngày THẬT trong cửa sổ ổn định — có thể nhỏ hơn 5 khi lịch sử còn ngắn. */
+  on_dinh_cua_so?: number
+  on_dinh_gan_day?: number
+  tb_gan?: number | null
+  tb_cua_so?: number | null
+  /** Doanh thu sàn = sàn/ngày × số ngày cửa sổ × giá. Xếp hạng Bán khoẻ ổn định. */
+  doanh_thu_san?: number
+  /** Doanh thu cả cửa sổ = tổng bán trong cửa sổ × giá. Xếp hạng Khe hở. */
+  doanh_so_cua_so?: number
   ngay_xuat_hien?: number
   main_name?: string
   sub_name?: string
@@ -235,16 +241,16 @@ export function whyText(item: ScoutItem, lens: LensKey): string {
   switch (lens) {
     case 'ban_chay':
       return `Sàn ghi bán ${short(item.sold_monthly)} trong 30 ngày, doanh số ~${money(item.doanh_so_30_san, cur, true)}.`
-    case 'hot_gmv':
-      return `Doanh số/ngày ${item.tang_toc_cua_so} ngày gần nhất ${pct(item.tang_doanh_so_pct)} so với ${item.tang_toc_cua_so} ngày trước.`
-    case 'hot_sold':
-      return `Bán/ngày ${item.tang_toc_cua_so} ngày gần nhất ${pct(item.tang_ban_pct)} so với ${item.tang_toc_cua_so} ngày trước.`
+    case 'hot':
+      // Lũy kế nhắc lại ngay trong câu: đây là lăng kính có HAI điều kiện, đọc mỗi % tăng thì
+      // tưởng một dòng tăng 900% từ nền 3 sản phẩm cũng lọt được.
+      return `Bán/ngày ${item.tang_toc_cua_so} ngày gần nhất ${pct(item.tang_ban_pct)} so với ${item.tang_toc_cua_so} ngày trước, trên nền đã bán ${short(item.sold_cumulative)}.`
     case 'steady':
-      return `Ngày thấp vẫn bán ${short(item.san_ngay)}/ngày. Doanh thu sàn 30 ngày ~${money(item.doanh_thu_san_30, cur, true)}.`
+      return `Ngày thấp vẫn bán ${short(item.san_ngay)}/ngày. Doanh thu sàn ${item.on_dinh_cua_so} ngày ~${money(item.doanh_thu_san, cur, true)}.`
     case 'spike':
       return `${item.dot_bien_nhanh} ngày cuối bán vọt ${pct(item.dot_bien_pct)} so với nền ${item.dot_bien_nen} ngày trước.`
     case 'gap':
-      return `Cầu đều (ngày thấp ${short(item.san_ngay)}/ngày) nhưng rating chỉ ${item.rating}★. Doanh số 30 ngày ~${money(item.doanh_so_30, cur, true)}.`
+      return `Cầu đều (ngày thấp ${short(item.san_ngay)}/ngày) nhưng rating chỉ ${item.rating}★. Doanh thu ${item.on_dinh_cua_so} ngày ~${money(item.doanh_so_cua_so, cur, true)}.`
     case 'new':
       return `Xuất hiện ${item.ngay_xuat_hien} ngày, đã bán ${short(item.sold_cumulative)} → ${short(item.diem)}/ngày.`
   }

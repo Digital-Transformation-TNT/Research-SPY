@@ -22,6 +22,26 @@ export type OpportunityItem = {
   status: OpportunityStatus
   /** Cụm mang sang mục Từ khoá. Rỗng nghĩa là không có bằng chứng — khi đó dòng không bấm được. */
   searchTerm: string
+  /**
+   * Số THẬT của kho cho món này. `null` = kho chưa đo món đó (kho chỉ cào top mỗi ngành nên
+   * hàng ngách vắng mặt là chuyện thường) — KHÔNG có nghĩa là sàn không bán.
+   */
+  signal?: KhoSignal | null
+}
+
+/** Kho đo được gì về một món AI gợi ý. Dựng ở `scout.tim_san_pham`. */
+export type KhoSignal = {
+  n: number
+  san: string
+  nhan_san: string
+  /** Cụm THẬT SỰ đã khớp — ngắn hơn `term` khi phải nới rộng để tìm ra hàng. */
+  cum: string
+  nguyen_cum: boolean
+  ban_30: number
+  gia_min: number | null
+  gia_max: number | null
+  currency: string | null
+  items: HubProduct[]
 }
 
 /**
@@ -52,6 +72,9 @@ export type HubProduct = {
   sub_name: string | null
   nhan_san: string | null
   san: string | null
+  /** Khối dữ liệu đã đưa cho AI đọc: top bán chạy · top doanh số · ngành câu hỏi nhắc tới. */
+  khoi?: 'ban_chay' | 'doanh_so' | 'nganh' | null
+  ten_nganh?: string | null
 }
 
 export type Answer = {
@@ -68,7 +91,50 @@ export type Answer = {
   cached?: boolean
   /** Chỉ có ở One-shot AI: dữ liệu kho đã lọc theo câu hỏi và đưa cho AI đọc. */
   hubProducts?: HubProduct[]
-  grounding?: { nTop?: number; ngay?: string | null; nganh?: string[] }
+  /**
+   * Hệ thống đã HIỂU câu hỏi như thế nào, và lấy dữ liệu ở đâu.
+   * Nguồn: `backend/hub/signal/truy_van.py` (đọc ý định) + `ask.py::digest` (truy hồi).
+   */
+  grounding?: {
+    nTop?: number
+    ngay?: string | null
+    nganh?: string[]
+    /** Sàn câu hỏi nhắm tới; rỗng = câu không nói sàn nào nên lấy cả ba. */
+    san?: string[]
+    /** Sàn người dùng nói rõ là KHÔNG muốn ("đừng lấy 1688"). */
+    sanLoai?: string[]
+    phamVi?: string
+    yDinh?: YDinh
+    /** Vì sao phân loại như vậy — đọc đầu tiên khi nghi hệ thống hiểu sai câu hỏi. */
+    lyDo?: string[]
+    langKinh?: string | null
+    bang?: 'ban_chay' | 'doanh_so'
+    tuKhoa?: string[]
+    giaMin?: number | null
+    giaMax?: number | null
+  }
+}
+
+/** Ý định của câu hỏi. Đúng một cái cho mỗi lượt — xem `truy_van.Y_DINH`. */
+export type YDinh =
+  | 'toplist'
+  | 'lang_kinh'
+  | 'san_pham'
+  | 'meta'
+  | 'y_tuong'
+  | 'xa_giao'
+  | 'ngoai_pham_vi'
+  | 'khong_ro'
+
+export const Y_DINH_NHAN: Record<YDinh, string> = {
+  toplist: 'Bảng xếp hạng',
+  lang_kinh: 'Lăng kính phân tích',
+  san_pham: 'Một sản phẩm cụ thể',
+  meta: 'Về kho dữ liệu',
+  y_tuong: 'Xin ý tưởng',
+  xa_giao: 'Chào hỏi',
+  ngoai_pham_vi: 'Ngoài phạm vi',
+  khong_ro: 'Chưa rõ ý',
 }
 
 /** Một lượt trong luồng trò chuyện đang hiện trên màn hình. */
