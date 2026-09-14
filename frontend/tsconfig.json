@@ -34,9 +34,10 @@
     ".next-build/types/**/*.ts",
     ".next-check/types/**/*.ts",
     ".next-test/types/**/*.ts",
+    ".next-verify/types/**/*.ts",
     ".next/types/**/*.ts",
     "next-env.d.ts",
-    ".next-verify/types/**/*.ts"
+    ".next-scout/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

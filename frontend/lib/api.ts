@@ -98,12 +98,18 @@ async function readJson<T>(path: string, response: Response): Promise<T> {
  *
  * Cùng cách đọc lỗi với `browserGet` và vì đúng lý do đó — xem ghi chú ở trên.
  */
-export async function browserPostJson<T>(path: string, body: unknown): Promise<T> {
+export async function browserPostJson<T>(path: string, body: unknown, withAuth = false): Promise<T> {
   let response: Response
   try {
+    const token = withAuth && typeof window !== 'undefined'
+      ? window.localStorage.getItem('rs_token')
+      : null
     response = await fetch(path, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify(body),
     })
   } catch (error) {

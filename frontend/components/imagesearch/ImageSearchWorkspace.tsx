@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { extensionAvailable } from '@/lib/ads/extension'
 import { browserPost } from '@/lib/api'
 import {
   chonGiaThapNhat,
@@ -71,8 +70,8 @@ const STORAGE_KEY = 'imagesearch-sources'
  * Là LINK MỞ TAB chứ không phải bảng giá tại chỗ, và đó là giới hạn có thật chứ không phải
  * làm tắt: Shopee trả 403 cho mọi lượt gọi từ server (đo 2026-07-28), gắn cookie đăng nhập
  * vào thì rơi tiếp vào `captcha?scene=crawler_item` — Shopee tự dán nhãn "crawler". Lấy giá
- * tự động cần extension chạy trong trình duyệt đã đăng nhập của người dùng, đúng cách mục
- * Quảng cáo đang làm.
+ * tự động dùng Chrome máy-thợ đã đăng nhập qua relay; Chrome đang xem Image Search không cần
+ * cài extension.
  */
 /**
  * Link Shopee, LUÔN ở tab Liên Quan.
@@ -572,9 +571,10 @@ export default function ImageSearchWorkspace() {
    * về tấm ảnh cũ, để lại thì cột phải nói về một sản phẩm khác.
    */
   const [vnPrices, setVnPrices] = useState<Record<string, VnCodePrice>>({})
+  const [vnNotice, setVnNotice] = useState('')
 
   /*
-   * `''` khi chưa chạy · `'hoi'` đang hỏi · `'xong'` · `'thieu-ext'` khi không có extension.
+   * `''` khi chưa chạy · `'hoi'` đang hỏi · `'xong'` xong đủ/thiếu một phần · `'loi'` khi máy-thợ không trả được dữ liệu.
    *
    * Cần một trạng thái riêng chứ không suy từ `vnPrices` rỗng, vì rỗng có hai nghĩa hoàn toàn
    * khác nhau: "chưa hỏi" và "hỏi rồi, không mã nào có ở sàn Việt". Con thứ hai là một phát
@@ -660,6 +660,7 @@ export default function ImageSearchWorkspace() {
     setResult(null)
     setError(null)
     setVnPrices({})
+    setVnNotice('')
     setVnStatus('')
   }, [])
 
@@ -675,9 +676,8 @@ export default function ImageSearchWorkspace() {
    * CHỈ HỎI CÁC MÃ, bỏ cụm chữ trần: cột phải tra theo mã của từng dòng, nên một lượt hỏi
    * bằng cụm chữ không điền được ô nào mà vẫn tốn một lần mở tab.
    *
-   * TUẦN TỰ, tối đa ba mã: mỗi mã là một lần mở tab Shopee trong trình duyệt của người dùng,
-   * và ba tab bật cùng lúc là Shopee bắt đầu nghi bot (`captcha?scene=crawler_item`, đo
-   * 2026-07-28).
+   * TUẦN TỰ, tối đa ba mã: mỗi mã chiếm một lượt Chrome máy-thợ. Không chạy song song để các
+   * lượt Shopee không giành cùng tab và bị đánh dấu bot.
    */
   const hoiGiaVn = useCallback(async (found: ImageSearchResult) => {
     const ten = found.identity?.product ?? ''
@@ -685,16 +685,16 @@ export default function ImageSearchWorkspace() {
     if (!ma.length) return
 
     setVnStatus('hoi')
-    if (!(await extensionAvailable())) {
-      setVnStatus('thieu-ext')
-      return
-    }
-
     const gia: Record<string, VnCodePrice> = {}
+    const notices: string[] = []
     for (const code of ma) {
       const term: VnTerm = { query: `${ten} ${code}`.trim(), code }
       try {
         const one = await shopeePrices(term)
+        if (one.notice && !one.rows.length) {
+          notices.push(one.notice)
+          continue
+        }
         const hits = one.rows.filter((row) => row.codeHit)
         // Sàn giá: rẻ hơn cả giá sỉ tại xưởng Trung Quốc thì không phải cùng một món.
         const { price: low, winner, rows: daCham, skipped, noiLong } = chonGiaThapNhat(one.rows, code)
@@ -717,11 +717,13 @@ export default function ImageSearchWorkspace() {
           url: shopeeLienQuan(term.query),
         }
       } catch {
-        // Một mã hỏng không được kéo theo hai mã còn lại. Bỏ qua, đi tiếp.
+        notices.push(`Không tra được mã ${code}.`)
       }
       setVnPrices({ ...gia })
     }
-    setVnStatus('xong')
+    const notice = [...new Set(notices)].join(' ')
+    setVnNotice(notice)
+    setVnStatus(Object.keys(gia).length ? 'xong' : notices.length ? 'loi' : 'xong')
   }, [])
 
   const run = useCallback(async () => {
@@ -729,6 +731,7 @@ export default function ImageSearchWorkspace() {
     setResult(null)
     setError(null)
     setVnPrices({})
+    setVnNotice('')
     setVnStatus('')
     setLoading(true)
     try {
@@ -738,14 +741,12 @@ export default function ImageSearchWorkspace() {
       form.append('sources', chosen.join(','))
       const found = await browserPost<ImageSearchResult>('/api/imagesearch', form)
       setResult(found)
-      // Bảng nguồn hiện ra ngay; cột giá điền dần vào sau, nên không ai phải chờ nó.
-      void hoiGiaVn(found)
     } catch (e) {
       setError((e as Error).message)
     } finally {
       setLoading(false)
     }
-  }, [file, chosen, hoiGiaVn])
+  }, [file, chosen])
 
   const onDrop = useCallback(
     (event: React.DragEvent) => {
@@ -775,7 +776,8 @@ export default function ImageSearchWorkspace() {
   const chinaRetail = result?.chinaRetail ?? []
   const globalRetail = result?.globalRetail ?? []
   const zhTerms = identity?.terms?.zh ?? []
-  const codes = result?.codes ?? []
+  // Mã model hữu ích cho danh mục Sản phẩm, nhưng Image Search chỉ cần trả lời ngắn gọn ảnh này là gì.
+  const codes: ProductCode[] = []
 
 
   // Từ gốc mang sang tab Từ khoá: cụm vi ĐẦU TIÊN, và lùi về tên món khi không có cụm nào.
@@ -797,7 +799,7 @@ export default function ImageSearchWorkspace() {
    * Cụm chữ không mã đứng cuối, cho những món vốn không có mã nào — với chúng thì cụm chữ là
    * đường duy nhất, và lúc ấy `rowMatches` rơi về `phraseHit` mà backend đã chấm.
    */
-  const daTra = vnStatus === 'hoi' || vnStatus === 'xong' ? vnPrices : null
+  const daTra = Object.keys(vnPrices).length ? vnPrices : null
 
   const product = identity?.product ?? ''
   const vnTerms = [
@@ -945,8 +947,7 @@ export default function ImageSearchWorkspace() {
       {identity && (
         <div className="panel img-identity">
           <div className="img-what">
-            <h2>{identity.product}</h2>
-            {identity.brand && <span className="img-brand">{identity.brand}</span>}
+            <h2>{[identity.product, identity.brand].filter(Boolean).join(' ')}</h2>
             {!!seed && (
               <button
                 className="img-go"
@@ -995,10 +996,13 @@ export default function ImageSearchWorkspace() {
                   <span className="spinner" /> đang hỏi giá Shopee…
                 </span>
               )}
-              {vnStatus === 'thieu-ext' && (
+              {vnStatus === 'loi' && (
                 <span className="img-vn-status" data-warn="true">
-                  chưa có extension nên không lấy được giá Việt Nam
+                  {vnNotice || 'máy-thợ chưa trả được giá Việt Nam'}
                 </span>
+              )}
+              {vnStatus === 'xong' && vnNotice && (
+                <span className="img-vn-status" data-warn="true">{vnNotice}</span>
               )}
             </div>
           )}

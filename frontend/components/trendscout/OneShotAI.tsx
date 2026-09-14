@@ -18,10 +18,6 @@ export default function OneShotAI() {
       <div className="page-head opp-head">
         <div>
           <h1>One-shot AI</h1>
-          <p>
-            Hỏi bằng câu nói bình thường. AI đọc dữ liệu Top sản phẩm của cả Shopee VN, Shopee PH
-            và 1688 — lọc đúng ngành bạn hỏi — rồi mới trả lời.
-          </p>
         </div>
       </div>
 

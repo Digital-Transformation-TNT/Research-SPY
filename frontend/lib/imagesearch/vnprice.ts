@@ -4,47 +4,16 @@
  * Đây là đầu kia của mục Tìm bằng ảnh: bốn bảng nguồn Trung Quốc nói mua vào bao nhiêu, phần
  * này nói bán ra được bao nhiêu. Khoảng giữa hai con số là toàn bộ phần biên còn lại.
  *
- * VÌ SAO PHẢI ĐI QUA EXTENSION, KHÔNG GỌI THẲNG TỪ SERVER. Đã đo ngày 2026-07-28 rồi đo lại
- * khi gộp mục Quảng cáo: `search_items` của Shopee trả 403 cho mọi lượt gọi ẩn danh từ server,
- * kể cả từ một trang trình duyệt đã làm nóng. Gắn cookie đăng nhập vào thì không phải 403 nữa
- * mà rơi vào `captcha?scene=crawler_item` — Shopee tự dán nhãn "crawler" cho lượt gọi ấy.
- * Nhưng chính trình duyệt đã đăng nhập của người dùng thì gọi được bình thường. Nên server chỉ
- * DỰNG LỆNH, extension chạy bằng session của user, rồi server chuẩn hoá raw. Cookie không bao
- * giờ rời máy người dùng.
- *
- * DÙNG LẠI NGUYÊN ĐƯỜNG ỐNG CỦA MỤC QUẢNG CÁO, không dựng bản sao: `/api/ads/search` trả về
- * `pending`, `runClientJobs` chạy nó qua extension, `/api/ads/ingest` chuẩn hoá. Cả ba đã
- * chạy thật ở mục Quảng cáo. Một bản sao thứ hai của cùng logic bóc Shopee là một bản sẽ lạc
- * hậu vào ngày Shopee đổi tên trường.
+ * VÌ SAO PHẢI ĐI QUA MÁY-THỢ, KHÔNG GỌI THẲNG TỪ SERVER. `search_items` của Shopee trả 403 cho
+ * request ẩn danh từ server và gắn captcha cho request gắn cookie. Chrome máy-thợ đã đăng nhập
+ * mở chính trang Shopee để trang tự ký request, relay mang các mảnh JSON về backend rồi parser
+ * chung của mục Quảng cáo chuẩn hoá và cache chúng. Vì thế Chrome của người đang xem trang không
+ * cần cài extension, nhưng vẫn không sao chép cookie ra khỏi máy-thợ.
  */
 
-import { extensionAvailable, runClientJobs } from '@/lib/ads/extension'
 import type { Ad, AdSearchResult } from '@/lib/ads/types'
-import { browserGet, browserPostJson } from '@/lib/api'
+import { browserPostJson } from '@/lib/api'
 import type { ImageMatch } from './types'
-
-/** Lấy dư rồi mới rút — giá thấp nhất trong 20 món thì gần như luôn là 20 món đầu bảng. */
-const POOL = 60
-
-/**
- * XẾP THEO ĐỘ LIÊN QUAN, KHÔNG THEO BÁN CHẠY. Đây là chỗ đã suýt làm hỏng cả tính năng.
- *
- * Mặc định của nguồn Shopee là `sort=sales`, và mặc định ấy đúng cho mục Quảng cáo: ở đó
- * người ta đi tìm sản phẩm ĐANG BÁN ĐƯỢC. Ở đây thì ngược hẳn — ta đã biết mình cần món nào,
- * chỉ cần biết nó giá bao nhiêu.
- *
- * Bằng chứng, đọc từ chính ảnh chụp Shopee cho "chuột g305": con G305 có 16 lượt bán, còn
- * con G102 lẫn trong cùng bảng có 30k+. Xin sáu chục món BÁN CHẠY NHẤT thì con G305 bị hàng
- * trăm con chuột khác đẩy ra ngoài trần, và công cụ kết luận "không có ở sàn Việt" trong khi
- * nó nằm ngay trang một nếu xếp theo Liên Quan.
- *
- * Đó là kiểu hỏng tệ nhất mục này có thể mắc: một câu trả lời SAI mà trông y hệt một câu trả
- * lời thật, và người dùng chỉ phát hiện được nếu tự đi tra tay.
- *
- * Cùng một giá trị phải đi vào CẢ pha 1 lẫn pha 2 — nó nằm trong khoá cache của
- * `_client_cache_key`, lệch nhau là mỗi pha đọc một rổ khác.
- */
-const SORT = 'relevancy'
 
 /**
  * Một cách tra: gõ gì vào Shopee, và chữ nào PHẢI có trong tiêu đề thì dòng đó mới tính.
@@ -124,7 +93,7 @@ export type VnPriceResult = {
   rows: VnRow[]
   /** Số dòng THẬT SỰ khớp. Có thể bằng 0 trong khi `rows` đầy — xem `rowMatches`. */
   hits: number
-  /** Câu nói vì sao thiếu — chưa cài extension, chưa đăng nhập, hoặc Shopee đang chặn. */
+  /** Câu nói vì sao chưa có dữ liệu — máy-thợ chưa online, phiên Shopee hết hạn, hoặc sàn chặn. */
   notice?: string
 }
 
@@ -225,53 +194,27 @@ function markAndRank(rows: VnRow[], term: VnTerm): { rows: VnRow[]; hits: number
 /**
  * Hỏi Shopee xem món này đang bán giá nào ở Việt Nam.
  *
- * Không ném lỗi khi thiếu extension hay khi Shopee chặn — trả về `notice` để giao diện nói ra
- * đúng việc người dùng cần làm. Một ngoại lệ ở đây sẽ hiện thành "có gì đó hỏng", trong khi
- * việc cần làm chỉ là mở tab Shopee đăng nhập.
+ * Không ném lỗi khi máy-thợ chưa sẵn sàng hay Shopee chặn — trả về `notice` để giao diện nói ra
+ * đúng việc người vận hành cần làm. Một ngoại lệ ở đây sẽ hiện thành "có gì đó hỏng", trong khi
+ * việc cần làm có thể chỉ là mở lại trang worker hoặc đăng nhập Shopee trên máy-thợ.
  */
 export async function shopeePrices(term: VnTerm, country = 'VN'): Promise<VnPriceResult> {
   const keyword = term.query.trim()
   if (!keyword) return { term: keyword, rows: [], hits: 0, notice: 'Chưa có mã hoặc từ khoá nào để tra.' }
 
-  const query = new URLSearchParams({
-    keyword,
-    platforms: 'shopee',
-    countries: country,
-    limit: String(POOL),
-    // Tuỳ chọn riêng của nguồn đi theo dạng `<nguồn>.<khoá>` — xem `parse_ad_search_params`.
-    'shopee.sort': SORT,
-  })
-  const planned = await browserGet<AdSearchResult>(`/api/ads/search?${query}`)
-
-  // Không có `pending` nghĩa là backend đã trả sẵn kết quả (đọc từ cache của lượt trước).
-  const jobs = planned.pending ?? []
-  if (!jobs.length) {
-    return { term: keyword, ...markAndRank((planned.ads ?? []).map(adToRow), term) }
-  }
-
-  if (!(await extensionAvailable())) {
+  // Chỉ hỗ trợ VN ở thời điểm này; giữ tham số để hợp đồng với nơi gọi không đổi khi mở thêm thị trường.
+  void country
+  let done: AdSearchResult
+  try {
+    done = await browserPostJson<AdSearchResult>('/api/imagesearch/vn-price', { keyword }, true)
+  } catch (error) {
     return {
       term: keyword,
       rows: [],
       hits: 0,
-      notice:
-        'Cần extension Research-SPY để hỏi Shopee — Shopee chặn mọi lượt gọi từ server. ' +
-        'Cài extension (xem QUICKSTART.md) rồi bấm lại.',
+      notice: error instanceof Error ? error.message : 'Không gọi được máy-thợ để tra Shopee.',
     }
   }
-
-  const submissions = await runClientJobs(jobs)
-  const done = await browserPostJson<AdSearchResult>('/api/ads/ingest', {
-    keyword,
-    platforms: ['shopee'],
-    countries: [country],
-    limit: POOL,
-    // PHẢI KHỚP pha 1: giá trị này nằm trong khoá cache của `_client_cache_key`, lệch nhau
-    // thì pha 2 ghi vào một rổ mà pha 1 không bao giờ đọc tới — cache hoá ra vô dụng mà
-    // không có dấu hiệu gì.
-    platformOptions: { shopee: { sort: SORT } },
-    submissions,
-  })
 
   const { rows, hits } = markAndRank((done.ads ?? []).map(adToRow), term)
   if (!rows.length) {
