@@ -40,7 +40,8 @@ NGHI_GIUA_LUOT = 4.0
 
 
 def _today() -> str:
-    return datetime.now(timezone.utc).date().isoformat()
+    """Ngày quét theo giờ Việt Nam — xem `db.hom_nay` (từng là ngày UTC, lệch một ngày với lịch 01:00)."""
+    return db.hom_nay()
 
 
 async def _shopee(keyword: str, market: str, trace: dict) -> list[dict]:

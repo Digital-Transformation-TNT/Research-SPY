@@ -205,6 +205,8 @@ _pending: asyncio.Queue[Job] = asyncio.Queue()
 _inflight: dict[str, Job] = {}
 #: Lần cuối một worker hỏi job. 0 = chưa thấy worker nào.
 _worker_last_seen: float = 0.0
+#: Vòng sự kiện của server (uvicorn), ghi lại ở mỗi lượt `/next`. `None` = chưa thợ nào hỏi.
+_server_loop: asyncio.AbstractEventLoop | None = None
 
 
 def touch_worker() -> None:
@@ -248,6 +250,19 @@ async def run_on_worker(
         raise ValueError(f"type không hợp lệ: {job_type!r}")
     if timeout_s is None:
         timeout_s = submit_timeout_for(job_type)
+
+    # GỌI TỪ VÒNG SỰ KIỆN KHÁC THÌ CHUYỂN SANG VÒNG CỦA SERVER. Lịch đêm (`hub/scheduler.py`)
+    # chạy mỗi job bằng `asyncio.run()` trong luồng riêng: future của job khi ấy thuộc vòng
+    # của luồng lịch, còn `deliver_result` gọi `set_result` từ vòng của uvicorn — xuyên luồng,
+    # không an toàn và KHÔNG đánh thức bên đang chờ. Bên chờ chỉ tỉnh khi `wait_for` hết hạn,
+    # thấy future đã có kết quả, và trả về như thành công. Đo đêm 14/09/2026: 150/150 ngành
+    # Shopee "ok" đều mất đúng 180s (= hạn RS_SHOPEE), so với trung vị 86s khi chạy tay qua
+    # HTTP hôm 10/09 — lượt đêm chậm gấp đôi mà không một dòng lỗi nào nói ra.
+    loop = asyncio.get_running_loop()
+    server = _server_loop
+    if server is not None and server is not loop and server.is_running():
+        return await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(
+            run_on_worker(job_type, payload, timeout_s), server))
     if not worker_online():
         raise WorkerOffline(
             f"Chưa có máy-thợ nào online. Mở trang {WORKER_PAGE_PATH} trên máy đã cài extension."
@@ -273,6 +288,9 @@ async def take_job(timeout_s: float = NEXT_TIMEOUT_S) -> Job | None:
     Job có thể đã bị huỷ (người dùng ngắt, hoặc hết giờ) trong lúc nằm hàng đợi; trả `None`
     để thợ hỏi tiếp thay vì chạy một việc không còn ai chờ.
     """
+    global _server_loop
+    # Vòng gọi `/next` chính là vòng của server — nơi mọi job phải sống. Xem `run_on_worker`.
+    _server_loop = asyncio.get_running_loop()
     touch_worker()
     try:
         job = await asyncio.wait_for(_pending.get(), timeout=timeout_s)

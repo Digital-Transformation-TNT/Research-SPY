@@ -7,7 +7,7 @@ import os
 import sqlite3
 import json
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 
 # Kho nằm trong `backend/database/`, không rải ra giữa thư mục `backend/`. Một thư mục riêng
@@ -260,6 +260,23 @@ CREATE TABLE IF NOT EXISTS events (
 """
 
 
+#: Múi giờ của NGÀY QUÉT: giờ Việt Nam (UTC+7, không có giờ mùa hè — nên dùng độ lệch cố định,
+#: khỏi phụ thuộc gói `tzdata` mà Windows không có sẵn).
+GIO_VN = timezone(timedelta(hours=7))
+
+
+def hom_nay() -> str:
+    """
+    Ngày quét theo GIỜ VIỆT NAM, dạng "YYYY-MM-DD".
+
+    Trước 14/09/2026 cột `day` lấy ngày UTC. Lịch cào chạy 01:00 sáng giờ Việt Nam = 18:00 UTC
+    NGÀY HÔM TRƯỚC, nên cả lượt đêm 14/09 bị ghi thành 13/09, còn các lượt chạy tay ban ngày
+    thì đúng ngày — hai loại lệch nhau một ngày trong cùng một chuỗi. Mọi chỗ ghi `day` cho kho
+    cào phải đi qua hàm này.
+    """
+    return datetime.now(GIO_VN).date().isoformat()
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -343,9 +360,9 @@ def don_kho(giu_ngay: int = GIU_NGAY, that: bool = True) -> dict:
 
     `that=False` để đếm thử mà không xoá — luôn chạy nó trước khi đổi `giu_ngay`.
     """
-    from datetime import date, timedelta
+    from datetime import date
 
-    moc_ngay = (date.today() - timedelta(days=int(giu_ngay))).isoformat()
+    moc_ngay = (date.fromisoformat(hom_nay()) - timedelta(days=int(giu_ngay))).isoformat()
     ket: dict = {"giu_ngay": int(giu_ngay), "xoa_truoc_ngay": moc_ngay, "that": that}
     with connect() as c:
         for bang in ("listings_snapshot", "crawl_log"):
