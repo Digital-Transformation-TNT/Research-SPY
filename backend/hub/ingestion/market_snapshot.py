@@ -39,6 +39,26 @@ SOLD_TYPE = {"shopee": "cumulative", "1688": "cumulative", "taobao": "monthly"}
 NGHI_GIUA_LUOT = 4.0
 
 
+#: Tab máy-thợ rớt giữa lượt thì chờ nó quay lại tối đa ngần này giây trước khi dừng lượt.
+#:
+#: Đêm 14/09/2026 tab thợ rớt lúc 04:52 và 297 ngành còn lại thành `error` trong 10 giây — mỗi
+#: ngành thử một lần, gặp `WorkerOffline`, ghi lỗi, sang ngành sau. Một lần rớt ngắn (Chrome tạm
+#: đóng băng tab, mạng chập chờn) không đáng phải trả bằng cả phần còn lại của đêm.
+CHO_THO_S = 900
+
+
+async def _cho_may_tho(toi_da_s: float) -> bool:
+    """Chờ máy-thợ online lại. `True` nếu nó quay lại trong hạn."""
+    import time
+    from lib.core.worker_relay import worker_online
+    het = time.monotonic() + toi_da_s
+    while time.monotonic() < het:
+        await asyncio.sleep(10)
+        if worker_online():
+            return True
+    return False
+
+
 def _today() -> str:
     """Ngày quét theo giờ Việt Nam — xem `db.hom_nay` (từng là ngày UTC, lệch một ngày với lịch 01:00)."""
     return db.hom_nay()
@@ -310,17 +330,37 @@ async def snapshot_categories(market: str = "ph", only: list[int | str] | None =
         tr: dict = {}
         trace[label] = tr
         started = datetime.now(timezone.utc).isoformat()
-        try:
-            # Ngành lớn chỉ có MỘT mã (`-cat.<id>`), ngành con cần cả hai (`-cat.<cha>.<con>`).
-            # `parents()` trả `main_id == sub_id` nên điều kiện này tự phân biệt được.
-            duong = (cat["sub_id"] if cat["main_id"] == cat["sub_id"]
-                     else f'{cat["main_id"]}.{cat["sub_id"]}')
-            rows = await _shopee_category(cat["sub_id"], cat["sub_name"], market, tr,
-                                          cat_path=duong)
-        except (WorkerOffline, WorkerTimeout, RuntimeError) as e:
-            failures[label] = str(e)
+        # Ngành lớn chỉ có MỘT mã (`-cat.<id>`), ngành con cần cả hai (`-cat.<cha>.<con>`).
+        # `parents()` trả `main_id == sub_id` nên điều kiện này tự phân biệt được.
+        duong = (cat["sub_id"] if cat["main_id"] == cat["sub_id"]
+                 else f'{cat["main_id"]}.{cat["sub_id"]}')
+        rows, loi = [], None
+        for lan in (0, 1):
+            try:
+                rows = await _shopee_category(cat["sub_id"], cat["sub_name"], market, tr,
+                                              cat_path=duong)
+                loi = None
+                break
+            except WorkerOffline as e:
+                loi = e
+                # Thợ rớt thì CHỜ nó quay lại rồi làm tiếp ngành này — xem `CHO_THO_S`.
+                if lan == 0 and await _cho_may_tho(CHO_THO_S):
+                    continue
+                break
+            except (WorkerTimeout, RuntimeError) as e:
+                loi = e
+                break
+        if loi is not None:
+            failures[label] = str(loi)
             store.log_crawl("shopee", market, cat["sub_id"], day, "error",
-                            0, str(e), started)
+                            0, str(loi), started)
+            if isinstance(loi, WorkerOffline):
+                # Chờ đủ hạn mà thợ vẫn vắng: DỪNG lượt, đừng đốt hết các ngành còn lại thành
+                # `error` trong vài giây. Ngành chưa cào không có dòng nào — lượt vá của lịch
+                # hoặc lượt sau tự nhặt lại vì chỉ bỏ qua ngành `ok`.
+                failures["_dung"] = (f"máy-thợ offline quá {CHO_THO_S // 60} phút — dừng lượt,"
+                                     " ngành còn lại để lượt vá / lượt sau")
+                break
             continue
         for r in rows:
             r.update(platform="shopee", market=market, day=day, keyword=None,

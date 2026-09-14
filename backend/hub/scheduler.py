@@ -260,6 +260,11 @@ def job_sigcat() -> dict:
     # tầng người dùng nhìn đầu tiên khi mở trang.
     runs = list(asyncio.run(_song_song("lon")))
     runs += list(asyncio.run(_song_song("con")))
+    # LƯỢT VÁ: chạy lại cả hai tầng một lần nữa. `snapshot_categories` bỏ qua ngành đã `ok`
+    # trong ngày, nên nếu lượt chính đủ thì lượt này chỉ đọc DB rồi thôi; còn ngành nào `error`
+    # hay chưa tới lượt (thợ rớt, Shopee chập) thì được thử thêm một lần trước giờ làm việc.
+    runs += list(asyncio.run(_song_song("lon")))
+    runs += list(asyncio.run(_song_song("con")))
 
     return {"job": "sigcat", "markets": len(runs), "runs": runs}
 
