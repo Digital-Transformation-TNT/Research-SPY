@@ -205,6 +205,8 @@ _pending: asyncio.Queue[Job] = asyncio.Queue()
 _inflight: dict[str, Job] = {}
 #: Lần cuối một worker hỏi job. 0 = chưa thấy worker nào.
 _worker_last_seen: float = 0.0
+#: Mốc (monotonic) tới đó máy-thợ còn đang cầm job đã nhận. Xem `worker_online`.
+_busy_until: float = 0.0
 #: Vòng sự kiện của server (uvicorn), ghi lại ở mỗi lượt `/next`. `None` = chưa thợ nào hỏi.
 _server_loop: asyncio.AbstractEventLoop | None = None
 
@@ -216,7 +218,19 @@ def touch_worker() -> None:
 
 
 def worker_online() -> bool:
-    return (time.monotonic() - _worker_last_seen) < WORKER_TTL_S
+    """
+    Thợ còn sống: vừa hỏi/trả job trong `WORKER_TTL_S`, HOẶC đang cầm job chưa quá hạn của nó.
+
+    Vế thứ hai là bản vá cho một báo động giả đã giết cả một đêm cào. Luồng máy-thợ đang CHẠY
+    job thì không gọi `/next`, và một ngành Shopee chạy 40–80s — dài hơn `WORKER_TTL_S`. Khi cả
+    hai luồng cùng bận, backend không nghe tin gì quá 40s và kết luận "chưa có máy-thợ nào
+    online" dù trang vẫn chạy đều. Đo 14/09/2026 lúc 08:40, giữa lượt cào bù khoẻ mạnh: 2 lần
+    báo offline, tổng 44s trong 3 phút. Đêm trước, lượt cào kiểm trúng đúng một khoảnh khắc như
+    thế lúc 04:52 và ghi `error` cho 297 ngành còn lại trong 10 giây — trong khi nhật ký truy cập
+    cho thấy trang thợ vẫn hỏi job 548 lần thành công tới tận sáng.
+    """
+    now = time.monotonic()
+    return (now - _worker_last_seen) < WORKER_TTL_S or now < _busy_until
 
 
 def queue_depth() -> int:
@@ -296,7 +310,12 @@ async def take_job(timeout_s: float = NEXT_TIMEOUT_S) -> Job | None:
         job = await asyncio.wait_for(_pending.get(), timeout=timeout_s)
     except asyncio.TimeoutError:
         return None
-    return None if job.future.done() else job
+    if job.future.done():
+        return None
+    # Thợ vừa nhận job: coi là còn sống cho tới hạn của loại job đó — xem `worker_online`.
+    global _busy_until
+    _busy_until = max(_busy_until, time.monotonic() + submit_timeout_for(job.type))
+    return job
 
 
 def requeue_job(job: Job) -> None:
