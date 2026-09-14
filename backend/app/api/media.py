@@ -61,6 +61,10 @@ ALLOWED += [
     _Allowed(suffix="media-amazon.com", referer="https://www.amazon.com/"),
     _Allowed(suffix="ssl-images-amazon.com", referer="https://www.amazon.com/"),
     _Allowed(suffix="kwcdn.com", referer="https://www.temu.com/"),
+    # TikTok Shop lấy từ Kalodata: ảnh sản phẩm/video ở `img.kalocdn.com`, PUBLIC (curl không
+    # cookie ra 200). Bảng hiện ảnh thẳng, nhưng 💰 Giá vốn tải ảnh qua đây — thiếu dòng này
+    # là "Không tải được ảnh: HTTP 403" đúng ở dòng TikTok Shop, như Amazon/Temu trước kia.
+    _Allowed(suffix="kalocdn.com", referer="https://www.kalodata.com/"),
 ]
 
 #: Header cần giữ nguyên để trình phát biết cách đọc dòng byte. `content-encoding` không có

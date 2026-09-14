@@ -132,6 +132,11 @@ SUBMIT_TIMEOUTS: dict[str, float] = {
     # "ĐƯỜNG HAI". Thứ tự bắt buộc: 150s (extension) < 165s (trang máy-thợ) < 180s (đây).
     "RS_TEMU_SUGGEST": 180.0,
     "RS_FB_ADLIB": BATCH_TIMEOUT_S,
+    # Kalodata (TikTok Shop): tối đa 3 trang API × (~2s + nghỉ 0,9s), cộng mở tab kalodata.com
+    # dự phòng (tới 15s) khi cookie không đi thẳng được từ service worker.
+    # Thứ tự bắt buộc: ~30s (extension) < 60s (trang máy-thợ) < 75s (đây).
+    "RS_KD_PRODUCT": 75.0,
+    "RS_KD_VIDEO": 75.0,
 }
 
 
@@ -178,6 +183,10 @@ ALLOWED_TYPES = {
     # bản nghèo hơn (23 dòng, không bảng "đang tăng", không cột "Thay đổi") trong khi Chrome thật
     # ra 50 dòng đủ cột. Xem `lib/keywords/trends.py`.
     "RS_TRENDS_RELATED",
+    # TikTok Shop qua Kalodata (`extension/kalodata.js`): sản phẩm, video bán hàng, kiểm phiên.
+    # Phiên kalodata.com nằm trong trình duyệt-thợ; mỗi trang `searchList` trừ credit của gói,
+    # nên `research.js` tự cache 12 giờ và giới hạn số trang.
+    "RS_KD_PRODUCT", "RS_KD_VIDEO", "RS_KD_STATUS",
     # Tiện ích: ping, đọc cookie (kiểm tra đăng nhập), fetch, tìm tương tự, giá vốn
     "RS_PING", "RS_COOKIE", "RS_FETCH", "RS_FIND_SIMILAR", "RS_COST_BATCH",
 }

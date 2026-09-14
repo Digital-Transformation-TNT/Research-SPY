@@ -28,7 +28,7 @@ không có gì tự bắt được lúc chúng lệch. File trong webtool giốn
 ở đầu file giả lập `chrome.runtime` và `chrome.tabs` bằng cầu postMessage của `content.js`.
 
 Nhờ vậy extension trở lại đúng một việc: **mượn phiên đăng nhập để gọi mạng**. Không giao diện,
-không chấm điểm, không trạng thái. Các sàn nó phục vụ: Shopee, TikTok Shop (qua Seller Center),
+không chấm điểm, không trạng thái. Các sàn nó phục vụ: Shopee, TikTok Shop (qua Kalodata — `kalodata.js`),
 Amazon, Taobao, 1688, Temu, cùng video TikTok và Douyin.
 
 Chấm điểm trong `public/research/research.js` **soi gương** `backend/lib/ads/scoring.py::_score_product`

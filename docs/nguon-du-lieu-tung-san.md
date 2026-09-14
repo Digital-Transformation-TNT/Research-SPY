@@ -13,7 +13,7 @@
 | Sàn | Đường đi | Loại |
 |---|---|---|
 | **Shopee** | `/api/v4/search/search_items` | API nội bộ · fetch trong tab đã đăng nhập |
-| **TikTok Shop** | seller center `product/opportunity` | API nội bộ · SDK của trang tự ký |
+| **TikTok Shop** | Kalodata `/product/searchList` + `/video/searchList` (15 nước, từ 2026-09-14) | API nội bộ · phiên kalodata.com · **trừ credit gói** — `docs/kalodata-api.md` |
 | **Taobao** | `mtop.taobao.wsearch.h5search` | API nội bộ · **ký sinh** (trang tự gọi, ta chộp response) |
 | **1688** | `mtop.relationrecommend.WirelessRecommend.recommend` | API nội bộ · gọi thẳng trong tab `h5api` |
 | **Temu** | `/api/poppy/v1/search` | API nội bộ · ký sinh (cần token `anti-content`) |

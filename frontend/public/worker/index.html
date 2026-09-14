@@ -78,6 +78,8 @@ const JOB_TIMEOUT_MS = {
   RS_TIKTOK: 140000,        // totalDeadline 120s cho cả loạt cụm, cộng mở tab + focus + gom kết quả
   RS_DOUYIN: 140000,        // như TikTok, và Douyin còn hay chen màn xác minh 滑块 giữa chừng
   RS_GOOGLE_VIDEOS: 50000,  // một lần tải trang google + một lượt cuộn, không đăng nhập gì cả
+  RS_KD_PRODUCT: 60000,     // Kalodata: ≤3 trang API + nghỉ giữa trang + mở tab kalodata.com dự phòng
+  RS_KD_VIDEO: 60000,
 };
 
 function rsCall(msg, timeoutMs = 40000) {

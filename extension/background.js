@@ -11,6 +11,10 @@
 
 const VERSION = '0.5.1';
 
+// TikTok Shop qua KALODATA (sản phẩm + video bán hàng) — lõi tách riêng, xem đầu file kalodata.js.
+// Service worker cổ điển (manifest không khai `type: module`) nên `importScripts` chạy được.
+importScripts('kalodata.js');
+
 const SHOPEE_DOMAINS = ['shopee.vn', 'shopee.co.th', 'shopee.ph', 'shopee.com.my', 'shopee.co.id', 'shopee.sg', 'shopee.tw', 'shopee.com.br', 'shopee.com.mx', 'shopee.com.co', 'shopee.cl'];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -3276,8 +3280,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // cookie đăng nhập của các sàn đều là HttpOnly). Trang gọi qua cầu `content.js`.
   //
   // Trả về cookie NGUYÊN VẸN chứ không phải true/false: `research.js` tự quyết định thế nào là
-  // "đã đăng nhập" theo từng sàn (Shopee coi `SPC_U === '-'` là chưa), và TikTok Shop còn cần
-  // chính giá trị đó làm seller id để dựng request.
+  // "đã đăng nhập" theo từng sàn (Shopee coi `SPC_U === '-'` là chưa). TikTok Shop KHÔNG còn đi
+  // đường này: từ 2026-09-14 nó hỏi phiên Kalodata qua `RS_KD_STATUS`.
   if (msg.type === 'RS_COOKIE') {
     try {
       chrome.cookies.get({ url: msg.url, name: msg.name }, (c) => {
@@ -3381,6 +3385,24 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === 'RS_TEMU_SUGGEST') {
     const temuGuard = { groups: [], blocked: true, debug: { stage: 'không rõ — handler quá hạn' }, error: 'job Temu quá 75s trong extension, đã bỏ dở' };
     withCooldown('temuSuggest', withTimeout(temuSuggestBatch(msg.terms, msg.region), 75000, temuGuard).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, groups: [], blocked: false, error: String(e) })));
+    return true;
+  }
+
+  // TikTok Shop qua KALODATA (`kalodata.js`). Không `withCooldown`: không dùng kho tab chung —
+  // chỉ khi cookie không đi thẳng từ service worker mới mượn một tab kalodata.com riêng.
+  // `withHeartbeat` vì đường tab có quãng ngồi chờ trang tải.
+  if (msg.type === 'RS_KD_PRODUCT' || msg.type === 'RS_KD_VIDEO') {
+    const kind = msg.type === 'RS_KD_PRODUCT' ? 'product' : 'video';
+    withHeartbeat(kdCrawl(kind, msg.opts || {}))
+      .then((r) => sendResponse({ ok: true, kind, ...r }))
+      .catch((e) => sendResponse({ ok: true, kind, items: [], error: String(e) }));
+    return true;
+  }
+
+  if (msg.type === 'RS_KD_STATUS') {
+    withHeartbeat(kdStatus())
+      .then((r) => sendResponse({ ok: true, ...r }))
+      .catch((e) => sendResponse({ ok: true, loggedIn: null, error: String(e) }));
     return true;
   }
 

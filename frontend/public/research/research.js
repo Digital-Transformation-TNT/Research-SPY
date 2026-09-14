@@ -6,7 +6,8 @@
  * rồi hiện một bảng gộp có cột Từ khoá + Sàn để so sánh. Chấm điểm phản chiếu
  * `backend/lib/ads/scoring.py::_score_product` — sửa một bên nhớ sửa bên kia.
  *
- * Đa sàn: Shopee + TikTok Shop (Cách A, fetch trong tab đăng nhập), Amazon (công khai, scrape DOM),
+ * Đa sàn: Shopee (Cách A, fetch trong tab đăng nhập), TikTok Shop (Kalodata, phiên kalodata.com),
+ * Amazon (công khai, scrape DOM),
  * Etsy/Facebook (qua backend). Thêm sàn = viết một adapter fetch/parse riêng trong fetchFor + thêm
  * domain vào host_permissions; cột "Sàn" đã sẵn cho việc đó.
  */
@@ -302,15 +303,22 @@ const FLAG = { VN: '🇻🇳', TH: '🇹🇭', ID: '🇮🇩', MY: '🇲🇾', P
 // Amazon: sàn CÔNG KHAI (không login) — mỗi nước 1 domain, fetch thẳng + parse HTML.
 const AMZ_DOMAIN = { US: 'amazon.com', GB: 'amazon.co.uk', DE: 'amazon.de', JP: 'amazon.co.jp', FR: 'amazon.fr', IT: 'amazon.it', ES: 'amazon.es', CA: 'amazon.ca' };
 const AMZ_CUR = { US: 'USD', GB: 'GBP', DE: 'EUR', FR: 'EUR', IT: 'EUR', ES: 'EUR', JP: 'JPY', CA: 'CAD' };
-// TikTok Shop: Cách A qua SELLER CENTER. SDK của trang tự ký fetch (X-Tts-Oec-Bsid) → chỉ cần
-// build request + fetch trong tab seller (như Shopee). Mỗi region = 1 domain seller; user chỉ
-// chạy được region mình có account đăng nhập.
-const TT_DOMAIN = { PH: 'seller-ph.tiktok.com', VN: 'seller-vn.tiktok.com', TH: 'seller-th.tiktok.com', ID: 'seller-id.tiktok.com', MY: 'seller-my.tiktok.com', SG: 'seller-sg.tiktok.com', US: 'seller-us.tiktok.com', GB: 'seller-uk.tiktok.com' };
-const TT_CUR = { PH: 'PHP', VN: 'VND', TH: 'THB', ID: 'IDR', MY: 'MYR', SG: 'SGD', US: 'USD', GB: 'GBP' };
-const TT_TZ = { PH: 'Asia/Manila', VN: 'Asia/Ho_Chi_Minh', TH: 'Asia/Bangkok', ID: 'Asia/Jakarta', MY: 'Asia/Kuala_Lumpur', SG: 'Asia/Singapore', US: 'America/Los_Angeles', GB: 'Europe/London' };
+// TikTok Shop: dữ liệu từ KALODATA, thay cho Seller Center `product/opportunity` từ 2026-09-14.
+//
+// Seller Center chỉ chạy được ở nước nào người dùng có tài khoản người bán, và chỉ trả "sản phẩm
+// tiềm năng" chứ không có doanh thu thật. Kalodata dùng MỘT phiên đăng nhập (kalodata.com trên
+// máy có extension, hoặc máy-thợ) cho cả 15 nước, và trả số bán + doanh thu theo ngày cho từng
+// sản phẩm lẫn từng video. Đặc tả: `docs/kalodata-api.md`; lõi gọi mạng: `extension/kalodata.js`.
+//
+// THỨ TỰ NƯỚC: VN, PH trước — xem ghi chú ở `PLATFORMS`. Nước đầu là nước chọn sẵn.
+const KD_REGIONS = ['VN', 'PH', 'TH', 'ID', 'MY', 'SG', 'US', 'GB', 'MX', 'BR', 'DE', 'FR', 'IT', 'ES', 'JP'];
+// Một phiên cho mọi nước → mọi nước "đăng nhập" ở cùng một nơi. `LOGIN`/`renderRegions` đọc bảng
+// này để biết nước nào cần kiểm đăng nhập.
+const KD_DOMAIN = Object.fromEntries(KD_REGIONS.map((c) => [c, 'www.kalodata.com']));
+const TT_CUR = { PH: 'PHP', VN: 'VND', TH: 'THB', ID: 'IDR', MY: 'MYR', SG: 'SGD', US: 'USD', GB: 'GBP', MX: 'MXN', BR: 'BRL', DE: 'EUR', FR: 'EUR', IT: 'EUR', ES: 'EUR', JP: 'JPY' };
 // Tỉ giá xấp xỉ về USD — để quy GMV các sàn/nước về cùng thang khi chấm "chất" (không phụ thuộc
 // đơn vị tiền). Chỉ dùng cho chuẩn hoá điểm, không phải giá trị tài chính chính xác.
-const FX_USD = { PHP: 0.017, VND: 0.00004, THB: 0.028, IDR: 0.000062, MYR: 0.22, SGD: 0.74, USD: 1, GBP: 1.27 };
+const FX_USD = { PHP: 0.017, VND: 0.00004, THB: 0.028, IDR: 0.000062, MYR: 0.22, SGD: 0.74, USD: 1, GBP: 1.27, EUR: 1.08, JPY: 0.0068, BRL: 0.18, MXN: 0.052 };
 // Sàn chạy ở BACKEND (secret/scrape phía server): Etsy, Facebook.
 //
 // RỖNG là cố ý: trang này giờ nằm trong webtool, nên `/api/...` đi cùng origin và được
@@ -376,7 +384,7 @@ function sellToCny(cur, price) {
 // tự là đảo luôn mặc định, nên đừng sắp lại theo bảng chữ cái cho "gọn".
 const PLATFORMS = {
   shopee: { label: 'Shopee', active: true, regions: ['VN', 'PH', 'TH', 'ID', 'MY', 'SG', 'TW', 'BR', 'MX', 'CO', 'CL'] },
-  tiktok: { label: 'TikTok Shop', active: true, regions: ['VN', 'PH', 'TH', 'ID', 'MY', 'SG', 'US', 'GB'] },
+  tiktok: { label: 'TikTok Shop', active: true, regions: KD_REGIONS }, // dữ liệu Kalodata — xem `KD_REGIONS`
   // Facebook nằm CHUNG hàng chọn sàn như mọi nguồn khác. Trước đây nó bị tách ra một tab
   // riêng ("Content (FB Ads)") vì dữ liệu khác hẳn — quảng cáo đang chạy, không có giá,
   // không có lượt bán. Nhưng `fetchBackend` vốn đã chuẩn hoá nó về đúng hình dạng sản phẩm
@@ -411,7 +419,9 @@ const selectedPlatforms = new Set();
 // (Amazon) không có ở đây. Thêm sàn login = thêm 1 dòng {domain, cookie, ok}.
 const LOGIN = {
   shopee: { domain: DOMAIN, cookie: 'SPC_U', ok: (v) => v && v !== '-' },
-  tiktok: { domain: TT_DOMAIN, cookie: 'oec_seller_id_unified_seller_env', ok: (v) => !!v },
+  // Kalodata không lộ cookie có tên ổn định để đọc — hỏi thẳng phiên qua một endpoint KHÔNG trừ
+  // credit (`/user/features`, xem `extension/kalodata.js::kdStatus`).
+  tiktok: { domain: KD_DOMAIN, status: 'RS_KD_STATUS' },
 };
 // Region chọn theo TỪNG sàn — key "pf:CODE". Mỗi sàn có bộ region riêng (Shopee 11 nước, Amazon
 // 8 nước…) nên KHÔNG dùng chung một tập region; nhờ vậy Shopee-VN và Amazon-US độc lập với nhau.
@@ -460,7 +470,8 @@ function updateRegionSection() {
 }
 
 /**
- * Check đăng nhập qua cookie đặc trưng của sàn (Shopee: SPC_U; TikTok: seller id).
+ * Check đăng nhập qua cookie đặc trưng của sàn (Shopee: SPC_U), hoặc hỏi thẳng phiên với sàn
+ * đăng nhập một lần cho mọi nước (TikTok Shop: phiên Kalodata — `checkLoginByStatus`).
  *
  * BA trạng thái, không phải hai — và đây là chỗ đã sai:
  *
@@ -480,6 +491,7 @@ async function checkLogin(pf, code) {
   const spec = LOGIN[pf];
   const domain = spec && spec.domain[code];
   if (!domain) return undefined;
+  if (spec.status) return checkLoginByStatus(spec.status);
   try {
     const r = await dispatch({ type: 'RS_COOKIE', url: `https://${domain}/`, name: spec.cookie });
     if (!r || r.ok === false || r.blocked) return undefined; // hỏi không tới nơi
@@ -488,6 +500,28 @@ async function checkLogin(pf, code) {
   } catch (e) {
     return undefined;
   }
+}
+/*
+ * PHIÊN CHUNG CHO MỌI NƯỚC — hỏi một lần, dùng cho cả loạt.
+ *
+ * `refreshLogin` gọi `checkLogin` cho TỪNG nước. Với Kalodata đó là 15 lượt hỏi giống hệt nhau,
+ * đi chung hàng đợi với lượt crawl người dùng đang chờ (và qua máy-thợ thì còn chậm hơn). Nhớ
+ * đúng một lời hứa trong 30 giây: các nước sau đợi chung câu trả lời của nước đầu.
+ *
+ * Ba trạng thái như `checkLogin`: `loggedIn` null (lỗi mạng) → undefined, KHÔNG thành ✕.
+ */
+const _phienChung = {};
+function checkLoginByStatus(type) {
+  const nho = _phienChung[type];
+  if (nho && Date.now() - nho.at < 30000) return nho.p;
+  const p = dispatch({ type })
+    .then((r) => {
+      if (!r || r.ok === false || r.blocked) return undefined;
+      return r.loggedIn === true ? true : r.loggedIn === false ? false : undefined;
+    })
+    .catch(() => undefined);
+  _phienChung[type] = { at: Date.now(), p };
+  return p;
 }
 let _dangCheckLogin = false;
 
@@ -745,14 +779,15 @@ function rawImg(url) {
 }
 function clamp(v) { return Math.max(0, Math.min(100, Math.round(v))); }
 function compactNum(n) { return n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(Math.round(n)); }
-// Dòng phụ dưới điểm: sàn có rating → "cầu · chất"; TikTok (không rating, có GMV) → "cầu · GMV"
-// (gọi đúng tên doanh thu, không giả vờ là quality).
+// Dòng phụ dưới điểm: sàn có GMV (TikTok Shop) → "cầu · GMV"; sàn có rating → "cầu · chất".
+// GMV XÉT TRƯỚC: Kalodata trả CẢ rating lẫn doanh thu, và "chất" của TikTok Shop tính theo doanh
+// thu (xem `score`) — dòng phụ phải gọi đúng tên thứ đã dùng để chấm.
 function scoreSub(p) {
+  if (p.gmv != null) return `cầu ${p.score.demand} · GMV ${compactNum(p.gmv)}`;    // TikTok Shop
   if (p.rating != null) {
     const base = `cầu ${p.score.demand} · chất ${p.score.quality}`; // Shopee/Amazon/1688
     return p.repurchase != null ? `${base} · quay lại ${p.repurchase}%` : base; // 1688 thêm 回头率
   }
-  if (p.gmv != null) return `cầu ${p.score.demand} · GMV ${compactNum(p.gmv)}`;    // TikTok
   return `cầu ${p.score.demand}`;
 }
 
@@ -917,16 +952,20 @@ function score(p) {
   else if (p.ratingCount != null) demand = clamp(Math.log10(Math.max(1, p.ratingCount)) / 5 * 100); // Amazon: số review làm proxy cầu (không có sold)
   else if (p.repurchase != null) demand = clamp(p.repurchase); // 1688: 回头率 (% khách quay lại) làm proxy cầu
   else demand = 0;
-  if (p.rating != null) {
+  if (p.gmv != null) {
+    // TikTok Shop: "chất" = doanh thu 30 ngày (Kalodata), quy về USD để so được giữa các nước,
+    // rồi log10 (doanh thu trải nhiều bậc). Mốc: $100→25, $1k→50, $10k→75, $100k→100.
+    //
+    // ĐỨNG TRƯỚC rating: rating TikTok gần như ai cũng 4,7-4,9★ nên không phân biệt được gì,
+    // còn một sản phẩm 5★ mà 0 đồng doanh thu thì không được chấm "chất" 100. Sàn khác không
+    // gắn `gmv`, nên thứ tự này không đổi điểm của Shopee/Amazon/1688.
+    const usd = p.gmv * (FX_USD[curOf(p)] || 0.02);
+    quality = clamp((Math.log10(Math.max(1, usd)) - 1) / 4 * 100);
+  } else if (p.rating != null) {
     const base = clamp((p.rating - 3.0) / 2.0 * 100);
     // Shopee/Amazon/Etsy: chiết khấu theo số review. 1688 (điểm shop tổng hợp, không có ratingCount) → tin luôn.
     const trust = p.ratingCount != null ? Math.min(1, Math.log10((p.ratingCount || 0) + 1) / 2) : 1;
     quality = clamp(base * trust);
-  } else if (p.gmv != null) {
-    // TikTok không có rating → "chất" thay bằng GMV/tháng (doanh thu thật), quy về USD để so được
-    // giữa các nước, rồi log10 (doanh thu trải nhiều bậc). Mốc: $100→25, $1k→50, $10k→75, $100k→100.
-    const usd = p.gmv * (FX_USD[curOf(p)] || 0.02);
-    quality = clamp((Math.log10(Math.max(1, usd)) - 1) / 4 * 100);
   } else quality = 0;
   return { total: clamp(demand * 0.6 + quality * 0.4), demand, quality };
 }
@@ -1120,60 +1159,205 @@ async function fetchBackend(platform, keyword, region, count, countryOverride) {
   return { products, blocked: false, notice, ok };
 }
 
-// --- TikTok Shop (Cách A qua Seller Center) — build POST rồi fetch trong tab seller; SDK tự ký ---
-const TT_ENDPOINT = '/api/v1/product/oc/seller_product_opportunity/seller/lead/list';
+// --- TikTok Shop — KALODATA, qua extension (hoặc máy-thợ). Một phiên cho mọi nước ---
+//
+// Lõi gọi mạng nằm ở `extension/kalodata.js`; ở đây chỉ gửi lệnh, cache và chuẩn hoá. Mỗi sản
+// phẩm Kalodata trả sẵn số bán + doanh thu trong khoảng ngày lọc (30 ngày), rating, số creator,
+// hoa hồng, ngày lên sàn. Số liệu là ƯỚC LƯỢNG của Kalodata, không phải số TikTok công bố
+// (`docs/nghien-cuu-nguon-du-lieu.md` mục 5).
 
-// seller_id nằm trong cookie (mỗi user một id) — cần để dựng URL.
-function tiktokSellerId(domain) {
-  return new Promise((resolve) => {
-    try { chrome.cookies.get({ url: `https://${domain}/`, name: 'oec_seller_id_unified_seller_env' }, (c) => resolve((c && c.value) || null)); }
-    catch (e) { resolve(null); }
-  });
+// MỖI TRANG `searchList` = MỘT LƯỢT CREDIT của gói (gói hiện tại: 10 lượt tìm/ngày). Nên ô "60 SP"
+// KHÔNG được hiểu thành 6 trang: trần 3 trang (30 SP) cho mỗi (từ khoá × nước). Cỡ trang cố định 10
+// vì gói chặn cỡ lớn hơn bằng paywall "Exceeded pagination limit" (đo 2026-09-08).
+const KD_PAGE_SIZE = 10;
+const KD_RESEARCH_MAX_PAGES = 3;
+// Kalodata chốt số theo NGÀY (khoảng lọc kết ở hôm qua) — chạy lại cùng từ khoá trong ngày chỉ
+// đốt credit để nhận về đúng bảng cũ. Cache trong trình duyệt 12 giờ.
+const KD_CACHE_MS = 12 * 60 * 60 * 1000;
+const KD_CACHE_PREFIX = 'rs_kd1:';
+
+function kdCacheGet(key) {
+  try {
+    const raw = localStorage.getItem(KD_CACHE_PREFIX + key);
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    if (!v || Date.now() - v.at > KD_CACHE_MS) { localStorage.removeItem(KD_CACHE_PREFIX + key); return null; }
+    return v.data;
+  } catch (e) { return null; }
 }
-// Số dạng chuỗi TikTok ("1,099.00" / "2,140" / "₱131,065") → number.
-function ttNum(v) { const n = Number(String(v == null ? '' : v).replace(/[^\d.]/g, '')); return isFinite(n) && n > 0 ? n : null; }
 
-function parseTiktokItem(it, region) {
-  const pics = it.pic_url || it.high_resolution_pic_url || [];
+function kdCacheSet(key, data) {
+  const ghi = () => localStorage.setItem(KD_CACHE_PREFIX + key, JSON.stringify({ at: Date.now(), data }));
+  try { ghi(); } catch (e) {
+    // Đầy hạn mức localStorage → dọn toàn bộ cache Kalodata rồi thử lại đúng một lần.
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(KD_CACHE_PREFIX)) localStorage.removeItem(k);
+      }
+      ghi();
+    } catch (e2) { /* không lưu được thì thôi — lần sau gọi lại */ }
+  }
+}
+
+/**
+ * Gửi `RS_KD_PRODUCT` / `RS_KD_VIDEO`. Trả { items, total, error, auth, notes, cached }.
+ *
+ * CACHE CẢ LƯỢT RỖNG, không cache lượt LỖI: rỗng cũng đã tốn một lượt credit và gọi lại vẫn
+ * rỗng; còn lỗi (chưa đăng nhập, máy-thợ bận) thì lần sau phải được thử lại thật.
+ */
+async function fetchKalodata(kind, keyword, region, pages) {
+  const kw = String(keyword || '').trim();
+  // `toLowerCase` GIỮ dấu tiếng Việt — "giày" và "giấy" vẫn là hai khoá khác nhau.
+  const key = `${kind}:${region}:${pages}:${kw.toLowerCase()}`;
+  const hit = kdCacheGet(key);
+  if (hit) return Object.assign({ items: [], notes: [] }, hit, { cached: true });
+
+  const type = kind === 'product' ? 'RS_KD_PRODUCT' : 'RS_KD_VIDEO';
+  const r = await new Promise((res) => chrome.runtime.sendMessage({ type, opts: { country: region, keyword: kw, pages, days: 30 } }, (x) => res(x)));
+  if (!r) return { items: [], notes: [], error: 'extension không trả lời', blocked: true };
+  const out = {
+    items: Array.isArray(r.items) ? r.items : [],
+    total: r.total ?? null,
+    notes: Array.isArray(r.notes) ? r.notes : [],
+    error: r.error || (r.ok === false ? 'không lấy được dữ liệu Kalodata' : null),
+    auth: !!r.auth,
+    blocked: !!r.blocked,
+  };
+  if (!out.error) kdCacheSet(key, { items: out.items, total: out.total, notes: out.notes });
+  return out;
+}
+
+/**
+ * Chuỗi tiền Kalodata đã rút gọn ("₫330,00k", "$12.34", "Rp1,2jt") → số.
+ *
+ * KHÔNG DÙNG CHO DOANH THU — chuỗi đó mất chữ số ("₫3,56tr"), số thô là `revenue_raw`. Chỉ
+ * dùng cho GIÁ, thứ API không trả số thô nào khác, và giá thì chuỗi còn đủ chữ số có nghĩa.
+ */
+function kdMoney(s) {
+  if (typeof s === 'number') return s > 0 ? s : null;
+  const m = String(s == null ? '' : s).match(/(\d[\d.,]*)\s*(tỷ|tỉ|tr|jt|rb|k|m|b)?/i);
+  if (!m) return null;
+  let so = m[1];
+  const hau = (m[2] || '').toLowerCase();
+  const cham = so.lastIndexOf('.'), phay = so.lastIndexOf(',');
+  if (cham >= 0 && phay >= 0) {
+    // Có cả hai dấu: dấu đứng SAU là dấu thập phân.
+    so = phay > cham ? so.replace(/\./g, '').replace(',', '.') : so.replace(/,/g, '');
+  } else if (cham >= 0 || phay >= 0) {
+    const phan = so.split(phay >= 0 ? ',' : '.');
+    // Một dấu, đúng 3 chữ số phía sau, không hậu tố → phân cách nghìn ("Rp12.345"). Còn lại là thập phân.
+    const nghin = phan.length > 2 || (!hau && phan[phan.length - 1].length === 3);
+    so = nghin ? phan.join('') : phan.slice(0, -1).join('') + '.' + phan[phan.length - 1];
+  }
+  const nhan = { k: 1e3, rb: 1e3, tr: 1e6, jt: 1e6, m: 1e6, 'tỷ': 1e9, 'tỉ': 1e9, b: 1e9 }[hau] || 1;
+  const v = parseFloat(so) * nhan;
+  return isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : null;
+}
+
+function parseKalodataProduct(it, region) {
+  const id = String(it.id || '');
+  const sale = typeof it.sale === 'number' ? it.sale : null;
+  const lo = kdMoney(it.min_real_price), hi = kdMoney(it.max_real_price), unit = kdMoney(it.unit_price);
+  let gmv = typeof it.revenue_raw === 'number' ? it.revenue_raw : null;
+  // ĐƠN VỊ CỦA `revenue_trend` MỚI ĐO Ở VN (đồng, không có tiền lẻ). Nước dùng tiền lẻ có thể trả
+  // theo cent — đối chiếu với giá đơn vị chính API ghi: lệch đúng cỡ ×100 thì quy lại.
+  if (gmv && sale && unit) {
+    const lech = gmv / sale / unit;
+    if (lech > 50 && lech < 200) gmv = gmv / 100;
+  }
+  const price = lo || unit || (gmv && sale ? Math.round((gmv / sale) * 100) / 100 : null);
+  const rating = typeof it.product_rating === 'number' && it.product_rating > 0 ? it.product_rating : null;
+  // Kalodata không trả tên shop ở trang tìm kiếm — dòng phụ dưới tên dùng cho thứ nó CÓ và
+  // người research hay hỏi: bao nhiêu creator đang bán, hoa hồng bao nhiêu, lên sàn từ khi nào.
+  const phu = [
+    typeof it.creator_num === 'number' ? `${fmtInt(it.creator_num)} creator` : '',
+    it.commission_rate ? `hoa hồng ${it.commission_rate}` : '',
+    it.launch_date ? `lên sàn ${it.launch_date}` : '',
+  ].filter(Boolean).join(' · ');
+  const link = id ? `https://www.tiktok.com/view/product/${id}` : '#';
   return {
     platform: 'TikTok Shop', region, currency: TT_CUR[region] || 'USD',
-    itemid: String(it.lead_id || ''), shopid: '', catid: null,
-    name: it.lead_name || '',
-    image: Array.isArray(pics) ? (pics[0] || '') : '',
-    // `recommend_price_low` — tên trường nói thẳng đây là CẬN DƯỚI, không phải giá bán. TikTok
-    // không trả cận trên ở endpoint này, nên chỉ ghi được "từ X" chứ chưa hiện được khoảng.
-    price: ttNum(it.recommend_price_low), priceFrom: true, strike: null, discount: null,
-    monthly: ttNum(it.l30d_sales_volume), sold: null, // cầu = bán 30 ngày (TikTok không cho tổng luỹ kế)
-    rating: null, ratingCount: null,                   // product opportunity không có rating
-    gmv: ttNum(it.gmv_l30d || it.gmv),                 // doanh thu 30 ngày → dùng làm "chất" thay rating
-    shop: it.level3_cate_name || it.level2_cate_name || '', // không có shop → hiện ngành hàng cho có ngữ cảnh
-    isAd: false,
-    link: it.real_external_product_id ? `https://www.tiktok.com/view/product/${it.real_external_product_id}` : '#',
-    similarUrl: `https://${TT_DOMAIN[region]}/product/opportunity/search?search_text=${encodeURIComponent(it.lead_name || '')}`,
+    itemid: id, shopid: '', catid: it.ter_cate_id || it.sec_cate_id || null,
+    name: it.product_title || '',
+    image: it.image || (id ? `https://img.kalocdn.com/tiktok.product/${id}/cover.png` : ''),
+    price, priceMax: hi && lo && hi > lo ? hi : null, priceFrom: false, strike: null, discount: null,
+    // `sale` là số bán TRONG khoảng lọc 30 ngày — đúng nghĩa cột Bán/tháng. Không có tổng luỹ kế.
+    monthly: sale, sold: null,
+    rating, ratingCount: null,
+    // Giữ cả 0: sản phẩm không doanh thu phải được chấm "chất" 0, không rơi sang nhánh rating.
+    gmv: gmv != null && gmv >= 0 ? gmv : null,
+    shop: phu, isAd: false,
+    link, similarUrl: link,
   };
 }
 
 async function fetchTiktok(keyword, region, count) {
-  const domain = TT_DOMAIN[region];
-  if (!domain) return { products: [], blocked: false };
-  const sellerId = await tiktokSellerId(domain);
-  if (!sellerId) return { products: [], blocked: true, notice: `TikTok ${region}: chưa đăng nhập Seller Center` };
-  const q = new URLSearchParams({
-    locale: 'en', language: 'en', oec_seller_id: sellerId, seller_id: sellerId, aid: '4068', app_name: 'i18n_ecom_shop',
-    device_platform: 'web', cookie_enabled: 'true', screen_width: '1536', screen_height: '864',
-    browser_language: 'en-US', browser_platform: 'Win32', browser_name: 'Mozilla', browser_online: 'true', timezone_name: TT_TZ[region] || 'Asia/Manila',
-  });
-  const body = JSON.stringify({
-    opportunity_type: 3, tab_code_filter: ['high_potential_products'], use_like: false, sort_field: 1,
-    incentive_tag_query: null, page_number: 1, page_size: Math.min(100, count), search_text: keyword, traffic_source: 'seller_organic',
-  });
-  const res = await sendFetch([{ url: `https://${domain}${TT_ENDPOINT}?${q.toString()}`, method: 'POST', headers: { 'content-type': 'application/json', 'x-tt-oec-region': region }, body, tag: 'tt' }]);
-  const r = res[0];
-  if (!r || r.status !== 200) return { products: [], blocked: !!(r && (r.status === 403 || r.status === 0)), notice: r ? `TikTok HTTP ${r.status}` : null };
-  let data; try { data = JSON.parse(r.text); } catch { return { products: [], blocked: false, notice: 'TikTok: phản hồi không phải JSON' }; }
-  if (data.code !== 0) return { products: [], blocked: false, notice: `TikTok: ${data.message || 'lỗi ' + data.code}` };
-  const products = (data.data || []).slice(0, count).map((it) => parseTiktokItem(it, region)).filter((p) => p.itemid);
-  return { products, blocked: false };
+  const tag = `TikTok Shop ${region}`;
+  if (!KD_REGIONS.includes(region)) return { products: [], blocked: false, notice: `${tag}: Kalodata không có nước này` };
+  const pages = Math.min(KD_RESEARCH_MAX_PAGES, Math.max(1, Math.ceil(count / KD_PAGE_SIZE)));
+  const r = await fetchKalodata('product', keyword, region, pages);
+  const products = r.items.map((it) => parseKalodataProduct(it, region)).filter((p) => p.itemid).slice(0, count);
+  if (r.error) {
+    // Chưa đăng nhập / máy-thợ hỏng → `blocked`, để `research()` hạ dấu ✓ về "chưa biết" rồi hỏi lại.
+    return { products, blocked: !!(r.auth || r.blocked), notice: `${tag}: ${r.error}` };
+  }
+  const ghi = [];
+  if (!r.cached && count > pages * KD_PAGE_SIZE) ghi.push(`Kalodata lấy tối đa ${pages * KD_PAGE_SIZE} SP (mỗi trang trừ 1 lượt credit)`);
+  ghi.push(...r.notes);
+  if (!products.length) ghi.push('Kalodata không có sản phẩm khớp — thử từ khoá bằng ngôn ngữ nước đó');
+  return { products, blocked: false, notice: ghi.length ? `${tag}: ${ghi.join('; ')}` : null };
+}
+
+/**
+ * Bản ghi `/video/searchList` → thẻ video của cửa sổ Video.
+ *
+ * FIELD ĐÃ ĐO trên response thật 2026-09-14 (VN, "tai nghe"): id, description (KHÔNG có `title`),
+ * handle, creator_uid, follower_count ("15,4k"), views ("55,01k" — CHUỖI), views_trend [30],
+ * revenue ("₫1,02tỉ"), revenue_trend, revenue_raw (số thực), sale, publish_date
+ * ("2026/01/26 01:02:24"), duration, ad, ad_view_ratio (">90%"), ad_cpa, ad2Cost, ad2Roas, gpm…
+ * Vẫn đọc qua vài tên ứng viên vì đây là API nội bộ, đổi tên lúc nào không báo; thiếu thì để trống,
+ * không bịa số — `fillTiktokStats` điền tim/lượt xem thật từ trang nhúng của TikTok.
+ */
+function kdPick(o, keys) {
+  for (const k of keys) if (o[k] != null && o[k] !== '') return o[k];
+  return null;
+}
+
+function kdUnix(v) {
+  if (typeof v === 'number') return v > 1e12 ? Math.floor(v / 1000) : v;
+  if (typeof v === 'string' && v) { const t = Date.parse(v); return isFinite(t) ? Math.floor(t / 1000) : null; }
+  return null;
+}
+
+function kalodataVideoAd(v, region) {
+  const id = String(v.id || '');
+  const handle = String(kdPick(v, ['creator_handle', 'handle', 'unique_id', 'creator_unique_id', 'author_unique_id']) || '').replace(/^@/, '');
+  const nick = kdPick(v, ['creator_nickname', 'nickname', 'creator_name', 'author_name']);
+  const viewsRaw = kdPick(v, ['views', 'view_count', 'play_count', 'video_views']);
+  const views = typeof viewsRaw === 'number'
+    ? viewsRaw
+    : Array.isArray(v.views_trend) ? v.views_trend.reduce((s, x) => s + (typeof x === 'number' ? x : 0), 0) : null;
+  const chu = v.description || v.title || '';
+  return {
+    platform: 'tiktok', id, viaKalodata: true,
+    advertiser: handle ? '@' + handle : (nick || 'TikTok Shop'),
+    title: chu, body: chu,
+    // Không có tên tài khoản thì trỏ trang NHÚNG: link `@x/video/{id}` mở trong tab thật bị TikTok
+    // đá về trang chung (đo 2026-09-08, `extension-kalodata/background.js::ttCanonical`).
+    permalink: handle ? `https://www.tiktok.com/@${handle}/video/${id}` : `https://www.tiktok.com/embed/v2/${id}`,
+    regionTag: region, langMatch: 'neutral',
+    playCount: views,
+    startedAt: kdUnix(kdPick(v, ['publish_date', 'create_time', 'post_time', 'publish_time', 'created_at'])),
+    gmv: typeof v.revenue_raw === 'number' ? v.revenue_raw : null,
+    // Chuỗi đã format sẵn theo tiền nước đó — HIỆN nguyên văn thì đúng, chỉ đừng parse nó.
+    gmvText: typeof v.revenue === 'string' ? v.revenue : null,
+    saleCount: typeof v.sale === 'number' ? v.sale : null,
+    // Hai chuỗi Kalodata đã format sẵn — chỉ HIỆN, không tính toán gì trên chúng.
+    followerText: typeof v.follower_count === 'string' || typeof v.follower_count === 'number' ? String(v.follower_count) : null,
+    adViewText: typeof v.ad_view_ratio === 'string' && v.ad_view_ratio && v.ad_view_ratio !== '0%' ? v.ad_view_ratio : null,
+    creatives: [{ kind: 'video', posterUrl: v.image || (id ? `https://img.kalocdn.com/tiktok.video/${id}/cover.png` : '') }],
+  };
 }
 
 // --- 1688 ĐƯỜNG DỰ PHÒNG — background gọi API mtop JSON trong tab h5api. Không region ---
@@ -2003,20 +2187,24 @@ async function openVideoModal(p) {
 /**
  * Gộp nhiều danh sách thẻ, bỏ trùng theo (nguồn, id) và GIỮ NGUYÊN thứ tự xuất hiện đầu tiên.
  *
- * Cần vì một video TikTok có thể tới từ HAI đường: Google (`site:tiktok.com`) và lượt tìm thật
- * trong tab TikTok. Thẻ của đường sau chở thêm tim/bình luận, nên bản giữ lại là bản ĐẦY hơn —
- * chứ không phải bản tới trước.
+ * Cần vì một video TikTok có thể tới từ NHIỀU đường: Kalodata, Google (`site:tiktok.com`), Bing,
+ * và lượt tìm thật trong tab TikTok. Mỗi đường chở một phần số đo — Kalodata có doanh thu/số bán,
+ * tab TikTok có tim/bình luận — nên giữ bản NẶNG hơn rồi CHÉP SANG những số bản kia có mà nó thiếu.
+ * Doanh thu nặng nhất: nó là thứ duy nhất không đường nào khác lấy được.
  */
+const VID_MERGE_FIELDS = ['likeCount', 'commentCount', 'shareCount', 'playCount', 'startedAt', 'gmv', 'gmvText', 'saleCount'];
 function vidMerge(...lists) {
   const by = new Map();
+  const weight = (x) => (x.likeCount != null) + (x.playCount != null) + (x.startedAt != null) + (x.gmv != null ? 3 : 0);
   for (const list of lists) {
     for (const ad of list || []) {
       const key = `${ad.platform}:${ad.id || ad.permalink}`;
       const old = by.get(key);
       if (!old) { by.set(key, ad); continue; }
-      // Giữ thẻ nào có nhiều số đo hơn (tim/xem/ngày đăng).
-      const weight = (x) => (x.likeCount != null) + (x.playCount != null) + (x.startedAt != null);
-      if (weight(ad) > weight(old)) by.set(key, ad);
+      const [giu, kia] = weight(ad) > weight(old) ? [ad, old] : [old, ad];
+      for (const f of VID_MERGE_FIELDS) if (giu[f] == null && kia[f] != null) giu[f] = kia[f];
+      if (kia.viaKalodata) giu.viaKalodata = true;
+      by.set(key, giu); // Map giữ vị trí của khoá cũ — thứ tự xuất hiện đầu tiên không đổi
     }
   }
   return [...by.values()];
@@ -2111,15 +2299,38 @@ async function loadModalTiktok(region) {
 
   const flag = FLAG[region] || '', country = COUNTRY[region] || region;
 
+  // BƯỚC 0 — KALODATA: video TikTok CÓ GẮN GIỎ HÀNG, kèm doanh thu và số bán mà chính video ấy
+  // mang về trong 30 ngày (ước lượng của Kalodata). Một lượt API, nhanh hơn Google, và trả lời
+  // thẳng câu cửa sổ này hỏi — video nào đang BÁN được món này — thay vì chỉ "video nào nhắc tới".
+  // Tốn MỘT lượt credit cho mỗi (cụm × nước) nên đi qua cùng cache 12 giờ với bảng sản phẩm.
+  st.kdAds = [];
+  st.kdNote = '';
+  if (KD_REGIONS.includes(region)) {
+    setVidStatus(`FB ${st.fbAds.length} · YouTube ${(st.ytAds || []).length} · đang lấy video bán hàng TikTok ${flag} từ Kalodata “${tkTerm}”…`);
+    const kd = await fetchKalodata('video', tkTerm, region, 1);
+    if (!alive()) return;
+    // Xếp theo doanh thu: thẻ đầu lưới là video bán được nhiều nhất, đúng thứ người research tìm.
+    st.kdAds = kd.items.map((v) => kalodataVideoAd(v, region)).filter((a) => a.id).sort((a, b) => (b.gmv || 0) - (a.gmv || 0));
+    if (kd.error) st.kdNote = ' · Kalodata: ' + kd.error;
+    else if (!st.kdAds.length) st.kdNote = ` · Kalodata: không có video bán hàng cho “${tkTerm}”`;
+    if (st.kdAds.length) {
+      const som = vidMerge(st.kdAds, st.fbAds, st.bingTk || [], st.bingDy || [], st.ytAds || [], st.sanAds || [], st.marketAds);
+      renderVideos(som);
+      void fillTiktokStats(som, my);
+    }
+  } else {
+    st.kdNote = ` · Kalodata không có ${country}`;
+  }
+
   // BƯỚC 1 — GOOGLE. Vài giây, không đăng nhập, không cá nhân hoá. Vẽ ngay khi có.
-  setVidStatus(`FB ${st.fbAds.length} · TikTok ${(st.bingTk || []).length} · YouTube ${(st.ytAds || []).length} · Douyin ${(st.bingDy || []).length} · Sàn ${(st.sanAds || []).length + st.marketAds.length} · đang hỏi Google “${tkTerm}”…`);
+  setVidStatus(`Kalodata ${st.kdAds.length}${st.kdNote} · FB ${st.fbAds.length} · TikTok ${(st.bingTk || []).length} · YouTube ${(st.ytAds || []).length} · Douyin ${(st.bingDy || []).length} · Sàn ${(st.sanAds || []).length + st.marketAds.length} · đang hỏi Google “${tkTerm}”…`);
   const g = await fetchGoogleVideos('tiktok', tkTerm, region);
   if (!alive()) return;
   st.gAds = g.ads;
   if (g.ads.length) {
     // MỘT danh sách dùng cho cả hai việc: `fillTiktokStats` vẽ lại lưới bằng đúng mảng nó nhận,
     // nên đưa nó mỗi phần Google là xoá mất Facebook và Sàn đang hiện.
-    const som = vidMerge(st.fbAds, st.bingTk || [], g.ads, st.bingDy || [], st.ytAds || [], st.sanAds || [], st.marketAds);
+    const som = vidMerge(st.kdAds, st.fbAds, st.bingTk || [], g.ads, st.bingDy || [], st.ytAds || [], st.sanAds || [], st.marketAds);
     renderVideos(som);
     void fillTiktokStats(som, my); // tim/xem/ngày đăng lấy từ backend, không cần extension
     void fillDouyinStats(som, my);
@@ -2168,12 +2379,12 @@ async function loadModalTiktok(region) {
   st.ccAds = ccAds;
   // CC lên đầu (country filter thật) → TikTok tìm thật → Google → Douyin → sàn. Thẻ của lượt
   // tìm thật đứng trước thẻ Google vì nó chở sẵn tim/lượt xem; `vidMerge` bỏ phần trùng.
-  const all = vidMerge(st.fbAds, ccAds, tkAds, st.bingTk || [], st.gAds || [], st.dyAds || [], st.bingDy || [], st.ytAds || [], st.sanAds || [], st.marketAds);
+  const all = vidMerge(st.kdAds, st.fbAds, ccAds, tkAds, st.bingTk || [], st.gAds || [], st.dyAds || [], st.bingDy || [], st.ytAds || [], st.sanAds || [], st.marketAds);
   if (!all.length) {
     // Rỗng vì HỎNG và rỗng vì THẬT SỰ KHÔNG CÓ là hai câu trả lời khác nhau. `tkNote`/`srvNote`
     // có chữ nghĩa là đã hỏng ở đâu đó — đừng khuyên "thử nước khác", đổi nước không sửa được
     // một máy-thợ đang offline.
-    const why = `${st.srvNote || ''}${g.note}${tkNote}`;
+    const why = `${st.kdNote || ''}${st.srvNote || ''}${g.note}${tkNote}`;
     setVidStatus(
       why
         ? `Không lấy được video cho "${usedKw}" ${flag} ${country}:${why}`
@@ -2187,7 +2398,7 @@ async function loadModalTiktok(region) {
     ? ` (khớp ${flag} ${tkCounts.match} · trung tính ${tkCounts.neutral} · khác ngôn ngữ ${tkCounts.other})`
     : '';
   const ccBreak = ccAds.length ? ` · CC ${flag}${ccAds.length}` : '';
-  setVidStatus(`${all.length} video · "${usedKw}" · Google ${(st.gAds || []).length} · Bing ${(st.bingTk || []).length} · TikTok ${flag}${country} ${tkItems.length} · ${tkMode || modeLabel}${langBreak}${ccBreak} · FB ${st.fbAds.length} · YouTube ${(st.ytAds || []).length} · Douyin ${(st.bingDy || []).length} · Sàn ${(st.sanAds || []).length + st.marketAds.length}${st.srvNote || ''}${g.note}${tkNote}`, 'ok');
+  setVidStatus(`${all.length} video · "${usedKw}" · Kalodata ${st.kdAds.length}${st.kdNote || ''} · Google ${(st.gAds || []).length} · Bing ${(st.bingTk || []).length} · TikTok ${flag}${country} ${tkItems.length} · ${tkMode || modeLabel}${langBreak}${ccBreak} · FB ${st.fbAds.length} · YouTube ${(st.ytAds || []).length} · Douyin ${(st.bingDy || []).length} · Sàn ${(st.sanAds || []).length + st.marketAds.length}${st.srvNote || ''}${g.note}${tkNote}`, 'ok');
   renderVideos(all);
   // Vẽ xong rồi mới đi lấy tim/bình luận/lượt xem — xem ghi chú ở `fillTiktokStats`. Không
   // `await`: lưới đã dùng được ngay, số điền vào sau.
@@ -2286,6 +2497,9 @@ async function fillDouyinStats(ads, token) {
  * đều là video sản phẩm lấy từ trang bán hàng, người dùng đọc chúng như một loại.
  */
 function vidSource(ad) {
+  // Video Kalodata là TikTok, nhưng là loại người research tìm nhất — video ĐANG BÁN hàng, có
+  // doanh thu — nên có chip riêng thay vì chìm giữa hàng trăm video TikTok nhắc tới từ khoá.
+  if (ad.viaKalodata) return 'kalodata';
   const pf = String(ad.platform || '').toLowerCase();
   if (pf === 'facebook' || pf === 'tiktok' || pf === 'douyin' || pf === 'youtube') return pf;
   return 'market';
@@ -2293,6 +2507,7 @@ function vidSource(ad) {
 
 const VID_SOURCES = [
   { id: 'all', label: 'Tất cả' },
+  { id: 'kalodata', label: 'TikTok bán hàng' },
   { id: 'facebook', label: 'Facebook' },
   { id: 'tiktok', label: 'TikTok' },
   { id: 'youtube', label: 'YouTube' },
@@ -2380,6 +2595,26 @@ function stat(icon, ten, v) {
   return `<span title="${ten}: ${v.toLocaleString('vi-VN')}">${icon}<span class="n">${fmtCompact(v)}</span></span>`;
 }
 
+/**
+ * Số đo BÁN HÀNG của video (chỉ có ở thẻ Kalodata): số đơn và doanh thu 30 ngày video mang về.
+ * Doanh thu hiện nguyên chuỗi Kalodata đã format theo tiền nước đó ("₫3,56tr") — hiện thì đúng,
+ * chỉ không được parse.
+ */
+function kdSaleStats(ad) {
+  return stat('🛒', 'Đơn bán qua video (30 ngày, ước lượng Kalodata)', ad.saleCount) +
+    (ad.gmvText
+      ? `<span title="Doanh thu video mang về trong 30 ngày — ước lượng Kalodata">💰<span class="n">${esc(ad.gmvText)}</span></span>`
+      : '') +
+    (ad.followerText
+      ? `<span title="Người theo dõi tài khoản đăng video (Kalodata)">👥<span class="n">${esc(ad.followerText)}</span></span>`
+      : '') +
+    // Tỉ lệ lượt xem đến từ QUẢNG CÁO: video ">90%" là video được đẩy bằng tiền, không phải tự viral —
+    // hai loại cần đọc khác nhau khi chọn content để làm theo.
+    (ad.adViewText
+      ? `<span title="Tỉ lệ lượt xem đến từ quảng cáo (Kalodata)">📣<span class="n">${esc(ad.adViewText)}</span><span class="k">từ QC</span></span>`
+      : '');
+}
+
 function vidCard(ad, idx) {
   const creatives = ad.creatives || [];
   const video = creatives.find((c) => c.kind === 'video' && c.url);
@@ -2390,6 +2625,7 @@ function vidCard(ad, idx) {
   // HÀNG THỐNG KÊ riêng, tách khỏi hàng nhãn. Đây là thứ người dùng quét mắt qua để chọn
   // video đáng xem, nên nó không được lẫn vào giữa tên sàn và ngày tháng.
   const stats =
+    kdSaleStats(ad) +
     stat('❤️', 'Lượt tim', ad.likeCount) +
     stat('💬', 'Bình luận', ad.commentCount) +
     stat('↗', 'Chia sẻ', ad.shareCount) +
@@ -2501,6 +2737,7 @@ let tkAt = -1; // vị trí trong `vidShown` của video đang phát
 
 function tkInfoHTML(ad) {
   const stats =
+    kdSaleStats(ad) +
     stat('❤️', 'Lượt tim', ad.likeCount) +
     stat('💬', 'Bình luận', ad.commentCount) +
     stat('↗', 'Chia sẻ', ad.shareCount) +
@@ -2608,7 +2845,7 @@ async function loadModalDouyin() {
   const gd = await fetchGoogleVideos('douyin', dyTerm, 'CN');
   if (!alive()) return;
   st.dyAds = vidMerge(st.dyAds || [], gd.ads);
-  if (gd.ads.length) renderVideos(vidMerge(st.fbAds, st.tkAds || [], st.gAds || [], st.dyAds, st.marketAds));
+  if (gd.ads.length) renderVideos(vidMerge(st.kdAds || [], st.fbAds, st.tkAds || [], st.gAds || [], st.dyAds, st.marketAds));
 
   setVidStatus(`Google ${gd.ads.length}${gd.note} · đang lấy Douyin (抖音) cho “${dyTerm}”… (nếu ra 滑块 verify, kéo trong tab)`);
   let dyItems = [], dyNote = '';
@@ -2634,7 +2871,7 @@ async function loadModalDouyin() {
   // Gộp thêm vào grid: thẻ của lượt tìm thật đứng TRƯỚC thẻ Google vì nó chở sẵn tim/ngày đăng,
   // và `vidMerge` giữ bản đầy hơn khi hai đường cùng trả về một video.
   st.dyAds = vidMerge(dyAds, st.dyAds || []);
-  const all = vidMerge(st.fbAds, st.tkAds || [], st.gAds || [], st.dyAds, st.marketAds);
+  const all = vidMerge(st.kdAds || [], st.fbAds, st.tkAds || [], st.gAds || [], st.dyAds, st.marketAds);
   // "Douyin 0" trần trụi trông giống một lượt còn đang chạy. Có `dyNote` thì đó là lý do hỏng;
   // không có mà vẫn rỗng thì nói thẳng là tìm không ra, kèm cụm đã tìm để người dùng tự đánh giá.
   const dyTotal = st.dyAds.length;

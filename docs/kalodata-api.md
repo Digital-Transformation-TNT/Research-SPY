@@ -137,6 +137,25 @@ POST /product/enrich → {"id": "...", "videos": []}
 
 Nó chỉ bổ sung **danh sách video gắn với sản phẩm**. Ảnh lấy từ CDN, xem mục dưới.
 
+## Video — field trả về (đã xác minh 2026-09-14)
+
+Bắt từ `POST /video/searchList` thật (VN, `title: "tai nghe"`, `video.filter.video_type: "WithProduct"`,
+qua extension `extension/kalodata.js`): 10 dòng / `total` 620.
+
+```
+id, description, handle, creator_uid, follower_count, views, views_trend,
+revenue, revenue_trend, sale, total, publish_date, duration, original_duration,
+content_type, ai_video, collect_day, gpm, revenueDiff,
+ad, ad_view_ratio, ad_revenue_ratio, ad_cpa, ad2Cost, ad2Roas, image
+```
+
+- Video **không có `title`** — chữ nằm ở `description`. Keyword vẫn gửi bằng khoá `title`.
+- `views`, `follower_count`, `ad_cpa`, `ad2Cost` là **chuỗi đã rút gọn** (`"55,01k"`, `"₫56,44tr"`).
+  Lượt xem số thô = `sum(views_trend)`; doanh thu thô = `sum(revenue_trend)` (có thể là số thực).
+- `publish_date` dạng `"2026/01/26 01:02:24"`.
+- `ad_view_ratio` (vd `">90%"`) = tỉ lệ lượt xem đến từ quảng cáo — phân biệt video đẩy tiền với video tự lan.
+- Hậu tố tiền tiếng Việt là **`tỉ`** (`"₫1,02tỉ"`), không phải `tỷ`.
+
 ## Ảnh — public, không cần đăng nhập
 
 Ảnh render bằng CSS `background-image` (không phải thẻ `<img>`), suy ra được thẳng từ id:

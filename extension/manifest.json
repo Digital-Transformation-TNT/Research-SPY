@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Research-SPY Fetcher",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Lấy dữ liệu sản phẩm bằng chính phiên đăng nhập của bạn (Cách A). Cookie không bao giờ rời trình duyệt này.",
   "permissions": [
     "scripting",
@@ -38,6 +38,8 @@
     "https://seller-sg.tiktok.com/*",
     "https://seller-us.tiktok.com/*",
     "https://seller-uk.tiktok.com/*",
+    "https://www.kalodata.com/*",
+    "https://img.kalocdn.com/*",
     "https://*.1688.com/*",
     "https://*.taobao.com/*",
     "https://*.tmall.com/*",

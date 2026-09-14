@@ -46,7 +46,7 @@ chính trình duyệt của bạn:
 1. Mở `chrome://extensions`
 2. Bật **Developer mode** — nút gạt **góc phải trên cùng**. *(Không bật thì không thấy nút ở bước sau.)*
 3. Bấm **Load unpacked** → chọn thư mục `extension` trong dự án → **Select Folder**
-4. Đăng nhập sẵn sàn bạn định tra: `shopee.vn`, `seller-vn.tiktok.com`…
+4. Đăng nhập sẵn sàn bạn định tra: `shopee.vn`, `www.kalodata.com` (TikTok Shop — một phiên dùng cho mọi nước)…
 5. Quay lại `localhost:3000/ads`, bấm **⟳ Kiểm tra đăng nhập**
 
 Chip nước nào hiện **✓** là chạy được, **✕** là chưa đăng nhập — bấm vào chip đó, nó tự mở
