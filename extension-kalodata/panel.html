@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kalodata Scraper</title>
+  <style>
+    :root { color-scheme: light dark; --line: #dcdcdc; --muted: #6b6b6b; --accent: #0f766e; }
+    @media (prefers-color-scheme: dark) { :root { --line: #3a3a3a; --muted: #9a9a9a; } }
+    * { box-sizing: border-box; }
+    /* PHẢI CÓ, và phải có `!important`. Luật `[hidden]{display:none}` của trình duyệt là
+       selector thuộc tính (0,1,0), thua cả `#player{display:flex}` lẫn `label.f{display:flex}`
+       viết bên dưới — nên nếu thiếu dòng này thì đặt `el.hidden = true` KHÔNG ẩn được gì:
+       khung xem video bung ra ngay lúc tải trang và nút Đóng bấm không ăn. */
+    [hidden] { display: none !important; }
+    body { margin: 0; padding: 20px; font: 13px/1.5 system-ui, sans-serif; max-width: 1180px; }
+    h1 { font-size: 17px; margin: 0 0 3px; }
+    .sub { color: var(--muted); font-size: 12px; margin: 0 0 16px; }
+
+    .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+    .tab { padding: 8px 16px; cursor: pointer; border: 1px solid transparent; border-bottom: none;
+           border-radius: 9px 9px 0 0; font-weight: 600; color: var(--muted); background: none; font-size: 13px; }
+    .tab.on { color: CanvasText; border-color: var(--line); background: Canvas; margin-bottom: -1px; }
+
+    fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 0 0 12px; }
+    legend { font-size: 11.5px; color: var(--muted); padding: 0 5px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 9px; }
+    .row:last-child { margin-bottom: 0; }
+    label.f { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--muted); }
+    input, select, button { font: inherit; padding: 6px 9px; border: 1px solid var(--line);
+                            border-radius: 8px; background: Canvas; color: CanvasText; }
+    input.kw { min-width: 320px; flex: 1; }
+    button { cursor: pointer; background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+    button.ghost { background: none; color: CanvasText; border-color: var(--line); font-weight: 500; }
+    button:disabled { opacity: .5; cursor: default; }
+
+    .regions { display: flex; flex-wrap: wrap; gap: 4px; }
+    .regions label { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line);
+                     border-radius: 7px; padding: 3px 8px; cursor: pointer; font-size: 12px; }
+    .regions label:has(input:checked) { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+    .status { font-size: 12.5px; margin: 10px 0; min-height: 18px; }
+    .status.err { color: #b3261e; }
+    .status.ok { color: #157a41; }
+
+    .wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+    table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: middle; }
+    th { position: sticky; top: 0; background: Canvas; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .3px; }
+    tr:last-child td { border-bottom: none; }
+    td.title { white-space: normal; min-width: 260px; max-width: 380px; }
+    td img { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; background: var(--line); display: block; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .warn { border: 1px solid #d9a441; background: #fdf6e6; color: #6b4e12; border-radius: 9px;
+            padding: 9px 12px; font-size: 12px; margin-bottom: 14px; }
+    @media (prefers-color-scheme: dark) { .warn { background: #33280f; color: #e8cf9a; } }
+    code { font-size: 11.5px; }
+
+    button.play { padding: 4px 9px; font-size: 13px; line-height: 1; }
+    #player { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; }
+    #player .backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.62); }
+    #player .box { position: relative; background: Canvas; border: 1px solid var(--line);
+                   border-radius: 12px; padding: 10px; box-shadow: 0 12px 44px rgba(0,0,0,.34); }
+    #player .bar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 12px; }
+    #player .bar span { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: auto; }
+    #player .hint { margin: 8px 2px 0; font-size: 11.5px; color: var(--muted); max-width: 325px; }
+    #player video { width: 325px; height: 580px; border: 0; border-radius: 8px; display: block; background: #000; }
+    #player video { object-fit: contain; }
+  </style>
+</head>
+<body>
+  <h1>Kalodata Scraper</h1>
+  <p class="sub">Chạy bằng chính phiên đăng nhập Kalodata trong trình duyệt này. Cookie không rời máy.</p>
+
+  <div class="warn">
+    ⚠️ Mỗi lượt <code>searchList</code> <b>trừ credit</b> gói thuê bao y như bấm tay trên web —
+    số lượt = số region × số trang. Ảnh thì miễn phí (CDN public, không qua API).
+    <br />Gói của bạn chặn cỡ trang ở <b>10 dòng</b> — muốn nhiều hơn thì tăng <b>Số trang</b>,
+    không phải <b>Mỗi trang</b>.
+  </div>
+
+  <div class="tabs">
+    <button class="tab on" data-kind="product">🛒 Sản phẩm</button>
+    <button class="tab" data-kind="video">🎬 Video</button>
+  </div>
+
+  <fieldset>
+    <legend id="legend">Bộ cào sản phẩm — keyword đi bằng khoá <code>query</code></legend>
+    <div class="row">
+      <input class="kw" id="kw" placeholder="Từ khoá sản phẩm (để trống = lấy top theo bộ lọc)" />
+      <label class="f">Số ngày<input id="days" type="number" value="30" min="1" max="365" style="width:74px" /></label>
+      <label class="f">Số trang<input id="pages" type="number" value="1" min="1" max="50" style="width:74px" title="Gói chặn cỡ trang ở 10. Muốn nhiều dữ liệu hơn thì tăng SỐ TRANG, không phải Mỗi trang." /></label>
+      <label class="f">Mỗi trang<input id="size" type="number" value="10" min="1" max="50" style="width:78px" title="Web thật gửi 10. Gói thuê bao chặn cỡ lớn hơn bằng lỗi Exceeded pagination limit." /></label>
+      <label class="f" id="vtypeBox" hidden>Loại video
+        <select id="vtype">
+          <option value="WithProduct">Có gắn SP (như web)</option>
+          <option value="">Tất cả (doanh thu sẽ = 0)</option>
+        </select>
+      </label>
+      <label class="f">Sắp xếp
+        <select id="sort">
+          <option value="">(mặc định — như web)</option>
+          <option value="revenue">revenue</option>
+          <option value="sale">sale</option>
+          <option value="unit_price">unit_price</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <span style="font-size:11.5px;color:var(--muted)">Region</span>
+      <span class="regions" id="regions"></span>
+    </div>
+    <div class="row">
+      <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer">
+        <input type="checkbox" id="maxout" /> Lấy tối đa (tự lật trang tới khi chạm trần gói)
+      </label>
+    </div>
+    <div class="row" id="ttBox" hidden>
+      <input id="tturl" style="flex:1;min-width:320px"
+             placeholder="Dán link TikTok bất kỳ (kể cả video ngoài kho Kalodata) — tốn 0 request" />
+      <button class="ghost" id="ttgo">▶ Xem thử</button>
+    </div>
+    <div class="row">
+      <button id="go">▶ Chạy</button>
+      <button class="ghost" id="check">Kiểm tra đăng nhập</button>
+      <button class="ghost" id="csv" disabled>⬇ CSV</button>
+      <button class="ghost" id="json" disabled>⬇ JSON</button>
+    </div>
+  </fieldset>
+
+  <div class="status" id="status"></div>
+  <div class="wrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+
+  <div id="player" hidden>
+    <div class="backdrop"></div>
+    <div class="box">
+      <div class="bar">
+        <span id="playerId"></span>
+        <a id="playerOpen" href="#" target="_blank" rel="noopener">Mở tab mới ↗</a>
+        <button id="playerClose" class="ghost">Đóng ✕</button>
+      </div>
+      <video id="playerVideo" controls playsinline autoplay hidden></video>
+      <p class="hint" id="playerHint">Đang lấy link video…</p>
+    </div>
+  </div>
+
+  <script src="panel.js"></script>
+</body>
+</html>

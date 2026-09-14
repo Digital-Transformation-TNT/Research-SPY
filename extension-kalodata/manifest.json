@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Kalodata Scraper",
+  "version": "2.1.0",
+  "description": "Cào sản phẩm và video TikTok từ Kalodata theo region, bằng chính phiên đăng nhập của bạn. Cookie không rời trình duyệt này.",
+  "permissions": [
+    "scripting",
+    "tabs",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.kalodata.com/*",
+    "https://img.kalocdn.com/*",
+    "https://www.tiktok.com/*",
+    "https://*.tiktokcdn.com/*",
+    "https://*.tiktokcdn-us.com/*",
+    "https://*.tiktokv.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Kalodata Scraper — mở bảng cào"
+  }
+}
