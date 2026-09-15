@@ -335,10 +335,11 @@ JOBS = {"discover": job_discover, "listings": job_listings, "sales": job_sales,
 
 
 # Khoá mỗi job để hai lượt cùng job không chạy chồng nhau (nhất là `unify`).
-_job_locks: dict[str, threading.Lock] = {n: threading.Lock() for n in
-                                         ("discover", "listings", "sales",
-                                          "trends", "unify", "report",
-                                          "sigtrends", "sigsnap", "sigcat", "sig1688")}
+#
+# Tạo SẴN khoá cho MỌI job trong `JOBS`, không để `run_job` tự `setdefault` lúc chạy: nay các job
+# chạy trên luồng riêng, còn `status()` duyệt dict này để báo `dang_chay` — thêm khoá giữa lúc
+# đang duyệt là lỗi "dictionary changed size during iteration". Bảng cũ thiếu `dondep`.
+_job_locks: dict[str, threading.Lock] = {n: threading.Lock() for n in JOBS}
 
 
 def run_job(name: str) -> dict:
@@ -375,6 +376,25 @@ _last_run: dict[str, str] = {}
 
 
 def _loop():
+    """
+    Mỗi phút xét lịch một lần; job nào tới giờ thì BẮN RA LUỒNG RIÊNG rồi xét tiếp ngay.
+
+    TỪNG GỌI `run_job(name)` THẲNG TRÊN LUỒNG NÀY, và đó là lỗi làm 1688 không chạy ngày 15/09/2026.
+    `run_job` chặn tới khi job xong, nên cả vòng lặp đứng chờ job đang chạy: `sigcat` bắt đầu 01:00,
+    Shopee PH đòi đăng nhập từ 07:12, lượt vá nghiến từng ngành lỗi mất ~80 giây mỗi ngành — tới
+    10:51 vẫn chưa xong, kéo `dondep` (06:00) và `sig1688` (09:00) đứng chờ theo. Tệ nhất là
+    `sig1688`: nó cố ý đặt 09:00 để CÓ NGƯỜI giải slider, bị đẩy lùi thì chạy lúc không ai canh.
+    Comment ở `job_sigcat` từng viết "hai job khác nhau không chặn nhau" — đúng với KHOÁ, sai với
+    VÒNG LẶP.
+
+    CHẠY CHỒNG CÓ AN TOÀN KHÔNG — đã kiểm trước khi đổi:
+      · `dondep` chỉ DELETE dòng quá hạn, cố ý không VACUUM (xem `db.don_kho`) — không khoá kho.
+      · `sigcat` và `sig1688` dùng chung máy-thợ, mà hạn relay tính TỪ LÚC XẾP HÀNG. Nhưng một job
+        1688 chỉ ~1–5 giây và có hạn 140 giây (`worker_relay.SUBMIT_TIMEOUTS`); kể cả khi hai luồng
+        thợ cùng bận Shopee (~90 giây một ngành) thì job 1688 vẫn tới lượt trước khi hết hạn. Đã
+        chạy chồng thật ngày 15/09: 1688 cào bù 91 ngành song song lượt vá PH, không hết giờ nào.
+      · Hai lượt CÙNG một job vẫn không chồng được — `run_job` giữ khoá riêng từng job.
+    """
     while True:
         try:
             now = datetime.now()
@@ -384,7 +404,8 @@ def _loop():
                     continue
                 if now.hour > gio or (now.hour == gio and now.minute >= phut):
                     _last_run[name] = today          # đánh dấu trước để không chạy lại
-                    run_job(name)
+                    threading.Thread(target=run_job, args=(name,), daemon=True,
+                                     name=f"lich-{name}").start()
         except Exception as e:  # noqa
             log.warning("scheduler loop lỗi: %s", e)
         time.sleep(60)
@@ -428,6 +449,10 @@ def status() -> dict:
     # `luong_dang_chay` mới là câu trả lời cho "lịch có chạy không". Đọc nó, đừng đọc `enabled`.
     return {"enabled": _enabled(),
             "luong_dang_chay": bool(_thread and _thread.is_alive()),
+            # Job NÀO đang chạy ngay lúc này. Thiếu trường này thì `last_run` báo "sigcat 15/09"
+            # mà không phân biệt được "đã xong" với "vẫn đang nghiến từ 01:00" — ngày 15/09 phải
+            # đọc crawl_log mới biết nó còn chạy.
+            "dang_chay": sorted(n for n, k in _job_locks.items() if k.locked()),
             "hub_scheduler": os.environ.get("HUB_SCHEDULER", "0"),
             "last_run": dict(_last_run),
             "schedule": {n: f"{g:02d}:{p:02d}" for n, (g, p) in LICH.items()},

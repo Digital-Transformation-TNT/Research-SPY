@@ -19,6 +19,7 @@ sẽ ra một số trông hoàn toàn hợp lý, và đó là kiểu sai không 
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from datetime import date, datetime, timezone
 
@@ -26,6 +27,8 @@ from lib.core.worker_relay import WorkerOffline, WorkerTimeout, run_on_worker, w
 
 from .. import db
 from ..signal import store
+
+log = logging.getLogger("market_snapshot")
 
 #: Số listing lấy mỗi từ khoá. Trang đầu của Shopee là 60 — lấy sâu hơn thì mỗi ngày một
 #: lần cào kéo dài thêm mà phần đuôi gần như không bao giờ lọt Top 10.
@@ -45,6 +48,20 @@ NGHI_GIUA_LUOT = 4.0
 #: ngành thử một lần, gặp `WorkerOffline`, ghi lỗi, sang ngành sau. Một lần rớt ngắn (Chrome tạm
 #: đóng băng tab, mạng chập chờn) không đáng phải trả bằng cả phần còn lại của đêm.
 CHO_THO_S = 900
+
+
+#: Gặp bấy nhiêu ngành LIÊN TIẾP bị Shopee đòi đăng nhập thì dừng cả lượt của sàn đó.
+#:
+#: Sáng 15/09/2026 Shopee PH đòi đăng nhập từ 07:12. Không có chốt này, vòng cào vẫn đi tiếp qua
+#: từng ngành còn lại, mỗi ngành chờ ~80 giây rồi lỗi — rồi LƯỢT VÁ của `job_sigcat` làm lại đúng
+#: danh sách lỗi đó thêm một lần. Tường đăng nhập không tự biến mất giữa hai ngành; thử tiếp chỉ
+#: đốt thời gian, và vì vòng lịch từng chạy tuần tự nên đốt luôn giờ của `sig1688`. Ba chứ không
+#: phải một: một lần đơn lẻ có thể là trang xác minh thoáng qua, ba lần liền thì là tường thật.
+DUNG_SAU_DANG_NHAP = 3
+
+
+class SanDoiDangNhap(RuntimeError):
+    """Sàn chặn bằng trang đăng nhập/xác minh. Thử lại vô ích cho tới khi có người đăng nhập."""
 
 
 async def _cho_may_tho(toi_da_s: float) -> bool:
@@ -223,6 +240,18 @@ async def _shopee_category(cat_id: str | int, cat_name: str, market: str,
             raise RuntimeError(why)
         if (result or {}).get("texts"):
             break
+        # TƯỜNG ĐĂNG NHẬP: ném ngay, KHÔNG thử lượt thứ hai. Lượt hai chỉ nhân đôi thời gian chờ
+        # (~40 → ~80 giây mỗi ngành) mà không đổi được kết quả — trang đăng nhập không tự đi.
+        #
+        # Câu báo lỗi dựng Ở ĐÂY bằng `domain` thật, không dùng câu của extension: extension viết
+        # cứng "mở shopee.vn", nên sáng 15/09 crawl_log bảo người đọc mở shopee.vn trong khi sàn
+        # đang chặn là Shopee PH. Sửa cả extension nữa, nhưng extension chỉ đổi khi được nạp lại
+        # trong Chrome máy-thợ — backend thì đúng ngay từ lần restart.
+        loi = str((result or {}).get("error") or "")
+        if (result or {}).get("reason") == "login" or "đòi đăng nhập" in loi:
+            raise SanDoiDangNhap(
+                f"Shopee {country} đòi đăng nhập/xác minh — mở {domain} trong Chrome máy-thợ,"
+                f" đăng nhập rồi chạy lại.")
         trace[f"try{attempt + 1}"] = str((result or {}).get("error") or "rỗng")[:120]
 
     texts = (result or {}).get("texts") or []
@@ -323,6 +352,7 @@ async def snapshot_categories(market: str = "ph", only: list[int | str] | None =
         done = set()
 
     total, failures, trace = 0, {}, {}
+    dang_nhap_lien = 0                     # số ngành LIÊN TIẾP gặp tường đăng nhập
     for cat in cats:
         # Khoá có cả mã lẫn tên: 197 ngành của ph có nhiều ngành trùng tên "Others" nằm dưới
         # các ngành cha khác nhau, lấy tên làm khoá là chúng đè lên nhau trong báo cáo.
@@ -361,7 +391,17 @@ async def snapshot_categories(market: str = "ph", only: list[int | str] | None =
                 failures["_dung"] = (f"máy-thợ offline quá {CHO_THO_S // 60} phút — dừng lượt,"
                                      " ngành còn lại để lượt vá / lượt sau")
                 break
+            dang_nhap_lien = dang_nhap_lien + 1 if isinstance(loi, SanDoiDangNhap) else 0
+            if dang_nhap_lien >= DUNG_SAU_DANG_NHAP:
+                # Cùng cách xử lý như thợ offline: dừng, không ghi lỗi cho ngành chưa tới lượt.
+                # Lượt vá của lịch sẽ thử lại — nếu lúc đó đã có người đăng nhập thì chạy tiếp,
+                # còn chưa thì nó cũng chỉ tốn thêm ba ngành chứ không phải cả danh sách.
+                failures["_dung"] = (f"Shopee {market.upper()} đòi đăng nhập {dang_nhap_lien} ngành"
+                                     f" liên tiếp — dừng lượt; {str(loi)}")
+                log.warning("sigcat %s: %s", market, failures["_dung"])
+                break
             continue
+        dang_nhap_lien = 0
         for r in rows:
             r.update(platform="shopee", market=market, day=day, keyword=None,
                      sold_type="cumulative", category_code=cat["sub_id"])

@@ -2654,7 +2654,7 @@ async function shopeeCapture(domain, pageUrl, param, want, mustHave, clickSort) 
         r = out && out[0] && out[0].result;
       } catch (e) { /* trang chưa sẵn sàng */ }
       if (r) {
-        if (/\/(buyer\/)?login|\/verify/i.test(r.href) || /verify|captcha|robot|xác minh/i.test(r.body || '')) { return { texts: [], blocked: true, reason: 'login', error: 'Shopee đòi đăng nhập/xác minh — mở shopee.vn đăng nhập rồi bấm lại.' }; }
+        if (/\/(buyer\/)?login|\/verify/i.test(r.href) || /verify|captcha|robot|xác minh/i.test(r.body || '')) { return { texts: [], blocked: true, reason: 'login', error: 'Shopee đòi đăng nhập/xác minh — mở ' + domain + ' đăng nhập rồi bấm lại.' }; }
         seen = r;
         if (r.cap && r.cap.length) { texts = r.cap; if (textsIter < 0) textsIter = iter; }
         // `vids` bóc từ DOM và KHÔNG mang theo từ khoá nào để đối chiếu — chỉ nhận khi
