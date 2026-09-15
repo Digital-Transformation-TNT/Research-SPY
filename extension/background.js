@@ -1449,9 +1449,31 @@ function parseTaobaoTexts(texts, count) {
   return out;
 }
 
+// NGÂN SÁCH của cả `searchTemu`, tính từ lúc vào hàm. Phần cuộn lấy thêm trang KHÔNG BẮT ĐẦU vòng mới
+// khi đã qua mốc này. Thứ tự bắt buộc (xem `RS_TEMU` ở worker/index.html và lib/core/worker_relay.py):
+//   48s (đây) + một vòng cuộn tệ nhất 8,2s = 56,2s  <  60s (trang máy-thợ)  <  75s (backend)
+// Một vòng cuộn tệ nhất = hạn cuộn 3s + nghỉ 1,2s + hạn đọc 4s. Đặt 50s thì vòng bắt đầu sát mốc kết
+// thúc ở 58,2s — quá sát. Không có mốc tổng thì trang cuộn chậm kéo job vượt hạn trang máy-thợ, và job
+// hết hạn ở tầng ngoài thì MẤT LUÔN 40 SP đã lấy được — tệ hơn nhiều so với trả ít SP hơn yêu cầu.
+const TEMU_NGAN_SACH_MS = 48000;
+// Cuộn mà ngần này ms không có trang mới nào → coi như từ khoá đã hết hàng, trả những gì đang có.
+const TEMU_HET_TRANG_MS = 6000;
+
+// Đọc mọi response `/poppy/v1/search` có lưới SP mà hai hook đã chộp tới giờ (bản chộp đôi được
+// `parseTemuTexts` khử theo goods_id).
+async function temuDocLuoi(tabId) {
+  const out = await withTimeout(chrome.scripting.executeScript({
+    target: { tabId }, world: 'MAIN',
+    func: () => (window.__rsTemuCap || []).concat((window.__rsCap || [])
+      .filter((c) => /poppy\/v1.*search/.test(c.url) && /goods_list|goods_id/.test(c.text)).map((c) => c.text)),
+  }), 4000, null);
+  return (out && out[0] && out[0].result) || [];
+}
+
 // Temu: mở tab search (foreground) → TỰ CÀI HOOK rồi GÕ từ khoá + Enter vào ô search để trang tự bắn
 // /api/poppy/v1/search (đã ký anti-content) → chộp response. Điều hướng URL trần chỉ SSR, không bắn XHR.
 async function searchTemu(keyword, count) {
+  const batDau = Date.now();
   try {
     const tab = await temuTab();
     await chrome.tabs.update(tab.id, { url: 'https://www.temu.com/search_result.html?search_key=' + encodeURIComponent(keyword) });
@@ -1509,8 +1531,44 @@ async function searchTemu(keyword, count) {
       }
     }
     if (!texts.length) { await focusTab(tab.id); return { items: [], blocked: true, error: 'chưa bắt được lưới SP — đã mở tab, gõ search 1 lần trong tab Temu rồi bấm Research lại' }; }
-    const items = parseTemuTexts(texts, count);
-    return { items, blocked: false, raw: items.length ? undefined : (texts[0] || '').slice(0, 1400) };
+    let items = parseTemuTexts(texts, count);
+
+    // LẤY THÊM TRANG CHO ĐỦ `count`. Temu chỉ trả ~40 SP một trang và tải trang kế khi CUỘN tới đáy
+    // lưới (hoặc bấm "See more"). Mỗi trang là một response `/poppy/v1/search` mới mà hook đã cài ở
+    // trên tự chộp — nên chỉ cần cuộn, đọc lại, cộng dồn. Dừng khi đủ, khi hết ngân sách tổng, hoặc
+    // khi TEMU_HET_TRANG_MS không có trang mới (từ khoá hết hàng — trả đúng số có, không bịa thêm).
+    let trang = 1;
+    let soResponse = texts.length;
+    let lanCuoiCoMoi = Date.now();
+    while (items.length < count
+           && Date.now() - batDau < TEMU_NGAN_SACH_MS
+           && Date.now() - lanCuoiCoMoi < TEMU_HET_TRANG_MS) {
+      await withTimeout(chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: () => {
+          window.scrollTo(0, document.documentElement.scrollHeight);
+          // Một số phiên bản trang dùng nút thay vì cuộn vô hạn. Chỉ bấm phần tử NHỎ, ĐANG HIỆN và
+          // có chữ khớp hẳn — bấm nhầm một thẻ sản phẩm là điều hướng mất cả trang kết quả.
+          const nut = [...document.querySelectorAll('button, [role="button"], div, span')].find((e) => {
+            const t = (e.textContent || '').trim();
+            return t.length < 30 && e.offsetParent && /^(see more|view more|show more|load more|xem thêm)\b/i.test(t);
+          });
+          if (nut) nut.click();
+          return true;
+        },
+      }), 3000, null);
+      await sleep(1200);
+      const got = await temuDocLuoi(tab.id);
+      if (got.length > soResponse) {
+        soResponse = got.length;
+        texts = got;
+        trang++;
+        lanCuoiCoMoi = Date.now();
+        items = parseTemuTexts(texts, count);
+      }
+    }
+
+    return { items, blocked: false, trang, raw: items.length ? undefined : (texts[0] || '').slice(0, 1400) };
   } catch (e) { return { items: [], blocked: false, error: String(e) }; }
 }
 
@@ -1527,8 +1585,14 @@ function rsParsePrice(str, cur) {
   return parseFloat(intPart + '.' + decPart) || null;
 }
 
+// GỘP MỌI TRANG, KHỬ TRÙNG THEO goods_id. Bản cũ dừng ngay sau response đầu tiên có hàng
+// (`if (out.length) break`) — hợp lý khi chỉ có một trang, vì mỗi response bị HAI hook cùng chộp
+// (`__rsTemuCap` và `__rsCap` của page-hook), không dừng thì đếm đôi. Nhưng như vậy trang hai trở
+// đi không bao giờ được đọc, và Temu chỉ trả ~40 SP một trang: chọn 60 SP vẫn ra 40 (đo 15/09/2026).
+// Khử trùng theo id giải quyết cả hai: bản chộp đôi bị bỏ, trang mới được cộng dồn.
 function parseTemuTexts(texts, count) {
   const out = [];
+  const seen = new Set();
   const looks = (o) => o && typeof o === 'object' && o.title && (o.price_info || o.priceInfo);
   for (const text of texts) {
     let j; try { j = JSON.parse(text); } catch (e) { continue; }
@@ -1537,7 +1601,8 @@ function parseTemuTexts(texts, count) {
     if (!Array.isArray(arr) || !arr.length) arr = rsDeepFindArray(j, looks);
     for (const it of arr) {
       const id = String(it.goods_id || it.goodsId || it.productId || it.id || '');
-      if (!id) continue;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
       const name = String(it.title || '').trim();
       const pi = it.price_info || it.priceInfo || {};
       // Giá theo TIỀN TỆ: "₫302.510" (VN . = ngăn nghìn) vs "$12.99" (US . = thập phân) → parse khác nhau.
@@ -1557,9 +1622,8 @@ function parseTemuTexts(texts, count) {
       let videoUrl = (it.video && (it.video.video_url || it.video.url)) || '';
       if (videoUrl && videoUrl.indexOf('//') === 0) videoUrl = 'https:' + videoUrl;
       out.push({ id, name, price, image: img, sold, rating, currency: pi.currency || '', videoUrl });
-      if (out.length >= count) break;
+      if (out.length >= count) return out;
     }
-    if (out.length) break;
   }
   return out;
 }
