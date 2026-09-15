@@ -39,6 +39,9 @@ const chrome = {
 };
 
 const g = vm.createContext({ chrome, console, setTimeout, clearTimeout, Date, URL, Promise });
+// `background.js` nạp `kalodata.js` bằng `importScripts` như một service worker cổ điển. Sandbox của
+// Node không có hàm đó — thiếu dòng này thì cả file ném ReferenceError ở dòng đầu và không test nào chạy.
+g.importScripts = (...files) => { for (const f of files) vm.runInContext(fs.readFileSync(path.join(__dirname, f), 'utf8'), g, { filename: f }); };
 vm.runInContext(src, g, { filename: 'background.js' });
 
 let failures = 0;

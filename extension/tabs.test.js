@@ -72,6 +72,8 @@ const chrome = {
 };
 
 const ctx = vm.createContext({ chrome, console, setTimeout, clearTimeout, Date, URL });
+// `background.js` nạp `kalodata.js` bằng `importScripts` (service worker cổ điển) — Node không có hàm đó.
+ctx.importScripts = (...files) => { for (const f of files) vm.runInContext(fs.readFileSync(require('path').join(__dirname, f), 'utf8'), ctx, { filename: f }); };
 vm.runInContext(src, ctx, { filename: 'background.js' });
 const g = ctx;
 
