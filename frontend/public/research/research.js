@@ -209,8 +209,12 @@ async function relaySend(msg) {
     if (j && j.ok) return j.result;
     // 503 = chưa có máy-thợ, 504 = thợ không kịp trả — HAI việc phải đi sửa khác hẳn nhau, nên
     // đừng gộp chúng (và gộp cả với "không có kết quả") thành một dấu lặng.
-    const why = (j && j.error) || `không lấy được dữ liệu (HTTP ${r.status})`;
-    console.warn(`[research] relay ${msg && msg.type} hỏng:`, why);
+    const chiTiet = (j && j.error) || `HTTP ${r.status}`;
+    console.warn(`[research] relay ${msg && msg.type} hỏng:`, chiTiet);
+    // 503 = chưa có máy-thợ. Câu gốc của backend ("Chưa có máy-thợ nào online. Mở trang /worker
+    // trên máy đã cài extension") là lời dặn cho QUẢN TRỊ, hiện lên trang tìm sản phẩm thì người dùng
+    // không làm gì được với nó. Chi tiết vẫn nằm ở console ngay trên cho người đi sửa.
+    const why = r.status === 503 ? 'chưa lấy được dữ liệu — thử lại sau ít phút.' : chiTiet;
     return relayFailure(why);
   } catch (e) {
     console.warn('[research] relay lỗi:', e);
@@ -269,30 +273,16 @@ async function detectMode() {
 
   // 2) Đi đường vòng được thì ĐI IM LẶNG.
   //
-  // Bản trước hiện một băng "Máy này không có extension — đang dùng máy-thợ chung (relay)".
-  // Câu đó nói về ĐƯỜNG ĐI BÊN TRONG của tool, không phải về việc người dùng đang làm: họ gõ
-  // từ khoá và bấm Research, chuyện dữ liệu về bằng lối nào là việc của tool. Nó còn phơi ra
-  // cấu trúc hệ thống cho bất kỳ ai mở trang. Mọi thứ vẫn chạy y hệt, chỉ khác `dispatch`.
-  try {
-    const r = await fetch('/api/relay/status', { cache: 'no-store' });
-    const s = await r.json();
-    if (s && s.workerOnline) { RELAY_MODE = true; return; }
-  } catch (e) {
-    /* không hỏi được — rơi xuống thông báo bên dưới */
-  }
-
-  // 3) Không đường nào chạy được. Nói ĐÚNG hệ quả người dùng sẽ gặp, và dừng ở đó — cách sửa
-  //    nằm ở phía quản trị, không phải ở người đang ngồi tìm sản phẩm.
-  const bar = document.getElementById('status');
-  const text = document.getElementById('statusText');
-  if (!bar || !text) return;
-  bar.classList.add('err');
-  // 1688 KHÔNG còn trong danh sách này: từ 2026-09-09 nó chạy thẳng ở server và không cần
-  // extension lẫn máy-thợ (`backend/lib/ads/platforms/ali1688.py`). Kể tên nó ở đây sẽ khiến
-  // người dùng bỏ qua đúng cái sàn duy nhất vẫn đang chạy được.
-  text.textContent =
-    'Các sàn cần đăng nhập (Shopee, TikTok Shop, Amazon, Taobao, Temu) tạm thời chưa dùng ' +
-    'được. 1688 vẫn chạy bình thường. Thử lại sau ít phút.';
+  // Bản trước hỏi `/api/relay/status` đúng MỘT LẦN lúc tải trang: thợ offline thì giữ đường cục bộ
+  // (không có extension) suốt phiên, và dựng một băng đỏ "Các sàn cần đăng nhập... tạm thời chưa dùng
+  // được. Thử lại sau ít phút." Câu đó sai hai lần: người dùng chưa làm gì đã bị báo lỗi, và "thử lại
+  // sau ít phút" không bao giờ thành — thợ có online lại thì trang vẫn kẹt đường cũ tới khi F5.
+  // Chủ dự án bỏ băng đó ngày 15/09/2026.
+  //
+  // Đi relay vô điều kiện thì tự lành: thợ online lúc nào, lượt bấm Research kế tiếp chạy được lúc
+  // đó. Thợ đang vắng thì kiểm tra đăng nhập trả `undefined` (dấu …, không chặn Research — xem
+  // `checkLogin`), còn lượt tìm thật thì từng sàn tự báo lại đúng lúc người dùng bấm.
+  RELAY_MODE = true;
 }
 
 const DOMAIN = { VN: 'shopee.vn', TH: 'shopee.co.th', PH: 'shopee.ph', MY: 'shopee.com.my', ID: 'shopee.co.id', SG: 'shopee.sg', TW: 'shopee.tw', BR: 'shopee.com.br', MX: 'shopee.com.mx', CO: 'shopee.com.co', CL: 'shopee.cl' };
