@@ -395,14 +395,27 @@ def bat_dau_nen() -> None:
         pass
 
 
+#: Chờ vòng dò nền tắt tối đa ngần này giây rồi thôi, mặc kệ nó.
+#:
+#: CÓ TRẦN LÀ BẮT BUỘC, và bản đầu thiếu đúng chỗ này nên đã làm sập dịch vụ: nó `await` task
+#: vừa huỷ mà không giới hạn, lệnh `nssm restart` treo ở SERVICE_STOP_PENDING, service dừng hẳn
+#: và không start lại — backend chết (đo 16/09/2026, 11:02). Một vòng dò đang giữ ~150 kết nối
+#: httpx qua proxy chết thì lúc đóng có thể không bao giờ về; nhưng đây là tiến trình đang tắt,
+#: nên bỏ mặc vài socket là hoàn toàn chấp nhận được. Không có gì ở đây đáng đánh đổi bằng việc
+#: dịch vụ không tắt nổi.
+CHO_DUNG_NEN_S = 5.0
+
+
 async def dung_nen() -> None:
-    """Dừng vòng dò nền lúc tắt máy, để không bỏ lại một task đang chờ mạng."""
+    """Dừng vòng dò nền lúc tắt máy, nhưng KHÔNG BAO GIỜ chặn đường tắt máy."""
     global _vong_nen
     if not _vong_nen or _vong_nen.done():
         return
     _vong_nen.cancel()
     try:
-        await _vong_nen
-    except (asyncio.CancelledError, Exception):  # noqa: BLE001
-        pass
+        await asyncio.wait_for(_vong_nen, CHO_DUNG_NEN_S)
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        log.info("proxy free: vong do nen chua tat kip, bo qua de tien trinh thoat")
+    except Exception as e:  # noqa: BLE001
+        log.warning("proxy free: loi khi dung vong do nen: %s", e)
     _vong_nen = None
