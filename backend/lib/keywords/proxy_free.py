@@ -122,6 +122,13 @@ CHU_KY_NEN_S = 15.0
 CHO_KET_NOI_S = 12.0
 CHO_TIKTOK_S = 25.0
 
+#: Lượt tìm chịu chờ pool bao lâu khi pool đang rỗng. Xem `cho_co_proxy`.
+#:
+#: 75 giây, chọn theo nhịp vòng dò (~2,5 phút) chứ không theo cảm giác: chờ trọn một vòng thì
+#: quá lâu cho một request web, còn không chờ gì thì vứt đi lượt dò đang chạy dở. Bảy mươi lăm
+#: giây phủ được phần lớn quãng còn lại của một vòng đang chạy.
+CHO_POOL_S = 75.0
+
 log = logging.getLogger(__name__)
 
 _kho = DiskStore("proxy-free")
@@ -267,13 +274,44 @@ async def lam_moi(nuoc: str) -> list[str]:
     sem_do = asyncio.Semaphore(SONG_SONG_DO)
     song = [x for x in await asyncio.gather(*(_do_song(x, nuoc, sem_do) for x in ung_vien)) if x]
 
+    # CÔNG BỐ NGAY từng cái vừa đạt, không đợi cả pha 2 xong. Có người đang CHỜ ở
+    # `cho_co_proxy` — bắt họ đợi thêm hai chục giây cho những lượt kiểm chẳng liên quan là
+    # phí đúng thứ đắt nhất ở đây: quãng đời còn lại của proxy.
     sem_tt = asyncio.Semaphore(SONG_SONG_TT)
-    tot = [x for x in await asyncio.gather(*(_do_tiktok(x, sem_tt) for x in song[:DU_DUNG * 3])) if x]
+    tot: list[str] = []
+    for xong in asyncio.as_completed([_do_tiktok(x, sem_tt) for x in song[:DU_DUNG * 3]]):
+        if (kq := await xong) :
+            tot.append(kq)
+            _pool[nuoc] = [kq] + [p for p in _pool.get(nuoc, []) if p != kq]
 
     log.info("proxy free %s: %d ung vien -> %d song -> %d dung duoc", nuoc, len(ung_vien), len(song), len(tot))
     _pool[nuoc] = tot
     _kho.set(nuoc, tot, TTL_MS)
     return tot
+
+
+async def cho_co_proxy(nuoc: str, han_s: float = CHO_POOL_S) -> list[str]:
+    """
+    Chờ tới khi pool có proxy, tối đa `han_s` giây. Trả pool (có thể vẫn rỗng nếu hết hạn).
+
+    VÌ SAO ĐÁNG CHỜ chứ không báo lỗi ngay. Vòng dò nền chạy ~2,5 phút một lượt, nên lúc pool
+    rỗng thì gần như luôn có một lượt ĐANG chạy dở — báo lỗi ngay là vứt đi cơ hội đó. Đo
+    16/09/2026 ngay trên máy chủ: vòng 10:56 tìm được 3 proxy, vòng 10:59 tìm được 0 và xoá
+    sạch pool; một lượt tìm rơi vào đúng khe 11:00 nhận lỗi, dù ba phút trước hệ thống có hàng.
+
+    Chờ được vì `max_terms_for` đã ghìm nước dùng pool miễn phí xuống MỘT lượt gọi: tổng thời
+    gian một lượt tìm PH vẫn là chờ-rồi-gọi-một-lần, chứ không phải chờ rồi gọi mười hai lần.
+    """
+    nuoc = nuoc.upper()
+    if (co := pool(nuoc)):
+        return co
+    het = time.time() + han_s
+    while time.time() < het:
+        await asyncio.sleep(2.0)
+        if (co := pool(nuoc)):
+            log.info("proxy free %s: cho %.0fs thi co proxy", nuoc, han_s - (het - time.time()))
+            return co
+    return []
 
 
 def pool(nuoc: str) -> list[str]:

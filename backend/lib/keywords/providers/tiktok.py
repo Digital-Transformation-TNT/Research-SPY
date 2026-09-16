@@ -177,18 +177,24 @@ class TikTok(KeywordProvider):
     async def fetch_suggestions(self, term: str, ctx: SearchContext) -> list[Suggestion]:
         country = ctx.country.upper()
         ring = _proxy_ring(country)
+        if not ring and country in proxy_free.NUOC_BAT:
+            # Pool miễn phí rỗng KHÔNG có nghĩa là hết hàng — vòng dò nền chạy ~2,5 phút một
+            # lượt, nên gần như luôn có một lượt đang chạy dở. Chờ nó thay vì trả lỗi ngay.
+            await proxy_free.cho_co_proxy(country)
+            ring = _proxy_ring(country)
         if not ring:
             # `markets` lẽ ra đã chặn từ trước, nên nhánh này là lưới cuối. Ném lỗi thay vì
             # lặng lẽ đi thẳng: đi thẳng sẽ trả về dữ liệu thị trường nhà và dán nhãn nước
             # người dùng chọn — đúng kiểu hỏng im lặng mà việc thu hẹp `markets` sinh ra để diệt.
             if country != HOME_MARKET:
                 if country in proxy_free.NUOC_BAT:
-                    # Pool miễn phí đang rỗng. `_proxy_ring` vừa châm một lượt làm mới chạy nền,
-                    # nên câu này phải bảo người dùng CHỜ RỒI THỬ LẠI, chứ không phải đi khai
-                    # biến môi trường — khai tay là đúng cho proxy trả tiền, sai cho pool này.
+                    # Đã chờ trọn `CHO_POOL_S` ở trên mà vẫn rỗng. Câu này phải bảo người dùng
+                    # CHỜ RỒI THỬ LẠI, chứ không phải đi khai biến môi trường — khai tay là đúng
+                    # cho proxy trả tiền, sai cho pool này.
                     raise RuntimeError(
-                        f"chưa tìm được proxy {country} nào còn sống; hệ thống đang dò lại, "
-                        "thử lại sau khoảng một phút"
+                        f"chưa tìm được proxy {country} nào còn sống dù đã chờ "
+                        f"{proxy_free.CHO_POOL_S:.0f}s; proxy miễn phí lúc có lúc không, "
+                        "thử lại sau vài phút"
                     )
                 raise RuntimeError(
                     f"chưa có proxy cho {country}; khai TIKTOK_PROXY_{country} "
