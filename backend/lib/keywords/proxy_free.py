@@ -36,6 +36,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import ssl
 import time
 from urllib.parse import quote
 
@@ -129,6 +130,22 @@ CHO_TIKTOK_S = 25.0
 #: giây phủ được phần lớn quãng còn lại của một vòng đang chạy.
 CHO_POOL_S = 75.0
 
+#: MỘT SSLContext dùng chung cho MỌI lượt kiểm, dựng đúng một lần lúc nạp module.
+#:
+#: BẮT BUỘC, không phải tối ưu hoá vặt. `httpx.AsyncClient()` mặc định tự dựng SSLContext và
+#: NẠP LẠI CẢ BỘ CHỨNG CHỈ CA TỪ ĐĨA cho mỗi client — đo trên máy chủ này 16/09/2026: **597 ms
+#: một client**. Việc đó ĐỒNG BỘ, nên nó chặn thẳng vòng sự kiện: một vòng dò tạo ~150 client
+#: là ~90 giây vòng sự kiện đứng hình, rải trong mỗi 2,5 phút.
+#:
+#: Triệu chứng không hề trỏ về đây: người dùng thấy trang Keyword "lần đầu bấm vào thì lag vài
+#: giây", vì `/api/keywords/sources` — một endpoint chỉ đọc bộ nhớ, đáng lẽ 4 ms — đo được
+#: **10,16 giây** khi lượt gọi rơi trúng một vòng dò. Đúng kiểu một tính năng nền đi phá một
+#: tính năng chẳng liên quan gì tới nó.
+#:
+#: Dùng chung context là an toàn: nó chỉ chứa danh sách CA và cấu hình xác thực, không giữ
+#: trạng thái của riêng kết nối nào.
+_SSL = ssl.create_default_context()
+
 log = logging.getLogger(__name__)
 
 _kho = DiskStore("proxy-free")
@@ -183,7 +200,7 @@ def _doc_than(than: str, nuoc: str) -> list[str]:
 async def _lay_ung_vien(nuoc: str) -> list[str]:
     ra: list[str] = []
     thay: set[str] = set()
-    async with httpx.AsyncClient(timeout=25, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=25, follow_redirects=True, verify=_SSL) as client:
         for url in _nguon_cho(nuoc):
             try:
                 r = await client.get(url)
@@ -208,7 +225,7 @@ async def _do_song(ip_cong: str, nuoc: str, sem: asyncio.Semaphore) -> str | Non
     async with sem:
         try:
             async with httpx.AsyncClient(
-                proxy=f"http://{ip_cong}", timeout=CHO_KET_NOI_S, follow_redirects=True
+                proxy=f"http://{ip_cong}", timeout=CHO_KET_NOI_S, follow_redirects=True, verify=_SSL
             ) as c:
                 j = (await c.get("https://ipwho.is/")).json() or {}
         except Exception:
@@ -238,7 +255,7 @@ async def _do_tiktok(ip_cong: str, sem: asyncio.Semaphore) -> str | None:
     async with sem:
         try:
             async with httpx.AsyncClient(
-                proxy=duong, timeout=CHO_TIKTOK_S, follow_redirects=True
+                proxy=duong, timeout=CHO_TIKTOK_S, follow_redirects=True, verify=_SSL
             ) as c:
                 r = await c.get(
                     f"https://www.tiktok.com/api/search/general/preview/?keyword={kw}",
