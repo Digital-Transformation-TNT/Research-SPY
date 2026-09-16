@@ -1,5 +1,6 @@
 'use client'
 
+import { withBase } from '@/lib/basePath'
 import type { KeywordCandidate, KeywordGloss, KeywordSource } from '@/lib/keywords/types'
 
 /** `markets` là `null` khi nguồn chạy ở mọi thị trường — xem `KeywordProvider.markets`. */
@@ -272,8 +273,11 @@ function Row({
         {/* Sang tab Sản phẩm với từ khoá điền sẵn. `?keyword=` được `app/(dashboard)/ads/page.tsx`
             chuyển tiếp thành `?kw=` của trang research bên trong iframe — không có bước đó thì
             người dùng nhảy sang tab rồi phải gõ lại đúng cụm vừa bấm. KHÔNG tự chạy research:
-            mỗi lượt là một loạt lượt crawl thật, phải do người dùng bấm. */}
-        <a href={`/ads?keyword=${encodeURIComponent(item.display)}`} title="Mở tab Sản phẩm với từ khoá này điền sẵn">
+            mỗi lượt là một loạt lượt crawl thật, phải do người dùng bấm.
+            PHẢI bọc `withBase`: đây là thẻ `<a>` thường chứ không phải `<Link>`, nên Next
+            KHÔNG tự ghép tiền tố `/research` — thiếu nó thì nút nhảy ra `tntecom.com/ads`
+            và người dùng nhận trang "chưa có gì ở địa chỉ này". */}
+        <a href={withBase(`/ads?keyword=${encodeURIComponent(item.display)}`)} title="Mở tab Sản phẩm với từ khoá này điền sẵn">
           Tìm sản phẩm ↗
         </a>
       </td>
