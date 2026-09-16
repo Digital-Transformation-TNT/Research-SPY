@@ -59,6 +59,23 @@ class Taobao(KeywordProvider):
     #: Nên nguồn này xếp thuần theo vị trí và mức độ lặp lại, y như Amazon.
     has_native_score = False
     markets = MARKETS
+    #: LUÔN hỏi bằng tiếng Trung, bất kể người dùng gõ tiếng gì.
+    #:
+    #: Không có dòng này thì nguồn CHẠY ĐÚNG mà vẫn vô dụng: `suggest.taobao.com` nhận mọi chuỗi,
+    #: trả HTTP 200, và trả về danh sách RỖNG cho từ khoá không phải tiếng Trung. Đo 16/09/2026:
+    #: gõ "vay nữ" → 12 lượt gọi, 0 từ khoá, thông báo duy nhất là "kết nối được nhưng không trả
+    #: về từ khoá nào" — không chỗ nào nói ra nguyên nhân thật là ngôn ngữ. Gõ "连衣裙" thì ra
+    #: đầy đủ.
+    #:
+    #: Đây là điều gần như chắc chắn xảy ra với nguồn này, chứ không phải ca hiếm: Taobao là sàn
+    #: NGUỒN HÀNG, người Việt mở nó lên chính là để biết người Trung gọi món đó là gì — nên họ
+    #: gõ tiếng Việt là lẽ đương nhiên. `markets = ["CN"]` chỉ khoá ô Quốc gia lại chứ không
+    #: động gì tới chữ người dùng gõ.
+    #:
+    #: Khai ở đây là đủ: `expand_with_provider` thấy cờ này thì dịch từ gốc qua `seed_for_market`
+    #: trước khi gieo hậu tố, và dịch luôn cả danh sách hậu tố/tiền tố theo. Gõ sẵn tiếng Trung
+    #: cũng không mất gì — Gemini được dặn trả nguyên văn khi từ khoá đã đúng ngôn ngữ.
+    query_market = "CN"
     #: Rộng hơn mặc định 700ms. Đo 2026-08-10: ở 700ms lượt gọi thứ hai đã `ConnectTimeout`,
     #: ở 1200ms thì 8/8 lượt thành công liên tiếp. Cái giá là mỗi lượt "Thường" chậm thêm
     #: khoảng 12 giây, và đó là cái giá đúng — một nguồn chạy chậm vẫn hơn một nguồn báo lỗi.
