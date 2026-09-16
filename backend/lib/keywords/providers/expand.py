@@ -416,8 +416,8 @@ async def expand_with_provider(
 
     # Trần riêng của nguồn cắt SAU trần theo mức, không thay thế nó: mức "Nhanh" đã dưới trần
     # thì trần không được phép nới nó rộng ra.
-    if provider.max_terms is not None:
-        terms = terms[: provider.max_terms]
+    if (tran := provider.max_terms_for(country)) is not None:
+        terms = terms[:tran]
 
     hits: list[SourceHit] = []
     calls = 0

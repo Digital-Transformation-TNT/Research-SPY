@@ -60,6 +60,8 @@ except Exception as _e:  # noqa: BLE001
     HUB_ERROR = f"{type(_e).__name__}: {_e}"
 
 
+from lib.keywords import proxy_free
+
 log = logging.getLogger("research-spy")
 
 
@@ -74,7 +76,12 @@ async def lifespan(app: FastAPI):
             log.info("Hub san sang: %s dong (%s), db=%s", info["rows"], info["source"], info["db"])
         except Exception as e:  # noqa: BLE001
             log.exception("Hub khong khoi tao duoc: %s", e)
+    # Pool proxy mien phi cho TikTok. Im lang neu khong khai TIKTOK_FREE_PROXY. Phai la vong
+    # chay nen chu khong phai do-khi-can: proxy mien phi song tinh bang phut, nen luc nguoi
+    # dung bam tim moi di do thi luon luon muon.
+    proxy_free.bat_dau_nen()
     yield
+    await proxy_free.dung_nen()
     # Chromium không chết theo tiến trình cha trên Windows; không đóng là để lại tiến trình mồ côi.
     await close_all_sessions()
     await close_client()

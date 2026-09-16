@@ -134,6 +134,17 @@ class KeywordProvider(ABC):
     #: vào trang thật, và cả công ty dùng chung MỘT trình duyệt-thợ chạy tuần tự. Xem
     #: `providers/temu.py`.
     max_terms: int | None = None
+
+    def max_terms_for(self, country: str) -> int | None:
+        """
+        Trần số cụm KHI người dùng chọn `country`. Mặc định là `max_terms` cố định.
+
+        Có bản theo-nước vì với vài nguồn, chi phí một lượt gọi đổi hẳn theo đường ra: TikTok đi
+        proxy trả tiền mất ~1 giây một lượt, còn đi proxy miễn phí mất ~20 giây và proxy chết
+        trong vài phút — nên đúng nguồn đó, đúng nước đó phải hỏi ít cụm lại. Xem
+        `providers/tiktok.py`.
+        """
+        return self.max_terms
     #: Nguồn muốn nhận CẢ DANH SÁCH cụm trong một lời gọi thay vì từng cụm một.
     #:
     #: Bật cờ này thì `expand_with_provider` gọi `fetch_suggestions_batch` đúng một lần và

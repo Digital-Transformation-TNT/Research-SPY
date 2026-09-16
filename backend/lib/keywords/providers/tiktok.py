@@ -48,6 +48,7 @@ from urllib.parse import quote
 from lib.core.config import env_map, env_string
 from lib.core.http import get_json
 
+from .. import proxy_free
 from ..market import language_matches_market
 from ..provider import KeywordProvider, Suggestion
 from ..types import SearchContext
@@ -115,7 +116,14 @@ def _proxy_ring(country: str) -> list[str]:
     thử, và ném lỗi "chưa có proxy cho GB" khi thật ra có ba cái vừa hỏng mạng là báo sai
     nguyên nhân.
     """
-    pool = PROXY_BY_MARKET.get(country, [])
+    # Proxy KHAI TAY đứng trước, pool MIỄN PHÍ đứng sau — thứ tự này là thứ tự tin cậy, và
+    # `ring[start:]` bên dưới chỉ xoay trong phạm vi đang có nên proxy trả tiền (nếu có) vẫn
+    # được ưu tiên dùng trước. Nước không bật pool miễn phí thì đoạn này không đổi gì.
+    pool = list(PROXY_BY_MARKET.get(country, []))
+    if country in proxy_free.NUOC_BAT:
+        pool += [p for p in proxy_free.pool(country) if p not in pool]
+        # Mỏng thì châm một lượt làm mới CHẠY NỀN — lượt tìm này vẫn dùng pool đang có, không chờ.
+        proxy_free.cham_lam_moi(country)
     if not pool:
         return []
     now = time.time() * 1000
@@ -140,12 +148,31 @@ class TikTok(KeywordProvider):
     #: đều được xếp hạng và trình bày như từ khoá của thị trường người dùng đã chọn. Danh sách
     #: nay nới ra theo proxy, nhưng nới đúng bằng số đường ra CÓ THẬT chứ không nới thành `None`:
     #: cái bẫy cũ quay lại ngay lần đầu có người chọn một nước không có proxy.
-    markets = sorted({HOME_MARKET, *PROXY_BY_MARKET})
+    markets = sorted({HOME_MARKET, *PROXY_BY_MARKET, *proxy_free.NUOC_BAT})
     #: Đổi nước CÓ đổi kết quả — nhưng chỉ khi nước đó có proxy, nên cờ này bám theo cấu hình.
     #:
     #: Không viết cứng `True`: chưa khai proxy nào thì ô Quốc gia thật sự không đổi được gì, và
     #: nói ngược lại là để giao diện giải thích sai cho người dùng.
-    geo_targeted = bool(PROXY_BY_MARKET)
+    geo_targeted = bool(PROXY_BY_MARKET or proxy_free.NUOC_BAT)
+
+    def max_terms_for(self, country: str) -> int | None:
+        """
+        Nước đi PROXY MIỄN PHÍ chỉ được hỏi MỘT cụm — chính từ gốc người dùng gõ.
+
+        Không phải để tiết kiệm, mà vì mức 12 cụm KHÔNG BAO GIỜ chạy xong qua proxy miễn phí. Đo
+        16/09/2026: một lượt gọi mất ~20 giây, 12 lượt là ~4 phút, trong khi proxy miễn phí sống
+        được vài phút — nó chết giữa chừng và cả lượt tìm về tay không. Một lượt thì chỉ cần proxy
+        sống ~20 giây, tức vừa đúng thứ loại proxy này làm được.
+
+        Đổi lại: mất phần gieo hậu tố, nên bảng PH sẽ là danh sách gợi ý TikTok trả cho đúng cụm đã
+        gõ (khoảng 8–10 cụm) chứ không phải bảng long-tail như GB/US. Đó là lựa chọn có ý thức —
+        một bảng ngắn có thật hơn là một bảng dài không bao giờ tải xong.
+
+        Nước có proxy KHAI TAY (trả tiền) không đụng tới nhánh này: chúng vẫn chạy đủ 12 cụm.
+        """
+        if country.upper() in proxy_free.NUOC_BAT and country.upper() not in PROXY_BY_MARKET:
+            return 1
+        return self.max_terms
 
     async def fetch_suggestions(self, term: str, ctx: SearchContext) -> list[Suggestion]:
         country = ctx.country.upper()
@@ -155,6 +182,14 @@ class TikTok(KeywordProvider):
             # lặng lẽ đi thẳng: đi thẳng sẽ trả về dữ liệu thị trường nhà và dán nhãn nước
             # người dùng chọn — đúng kiểu hỏng im lặng mà việc thu hẹp `markets` sinh ra để diệt.
             if country != HOME_MARKET:
+                if country in proxy_free.NUOC_BAT:
+                    # Pool miễn phí đang rỗng. `_proxy_ring` vừa châm một lượt làm mới chạy nền,
+                    # nên câu này phải bảo người dùng CHỜ RỒI THỬ LẠI, chứ không phải đi khai
+                    # biến môi trường — khai tay là đúng cho proxy trả tiền, sai cho pool này.
+                    raise RuntimeError(
+                        f"chưa tìm được proxy {country} nào còn sống; hệ thống đang dò lại, "
+                        "thử lại sau khoảng một phút"
+                    )
                 raise RuntimeError(
                     f"chưa có proxy cho {country}; khai TIKTOK_PROXY_{country} "
                     "hoặc bỏ chọn nguồn này"
@@ -179,6 +214,11 @@ class TikTok(KeywordProvider):
                 last_error = error
                 if proxy:
                     _cooldown[proxy] = time.time() * 1000 + PROXY_COOLDOWN_MS
+                    # Proxy MIỄN PHÍ thì bỏ hẳn chứ không chỉ phạt 5 phút: nó chết là chết luôn
+                    # (đo 16/09/2026 — cái duy nhất còn sống buổi sáng đã tắt sau mười phút).
+                    # Giữ lại chỉ làm vòng xoay loãng dần bằng những IP không bao giờ hồi.
+                    if country in proxy_free.NUOC_BAT:
+                        proxy_free.bo(country, proxy)
         else:
             raise RuntimeError(
                 f"cả {len(ring)} proxy của {country} đều hỏng; lỗi cuối: {last_error}"
