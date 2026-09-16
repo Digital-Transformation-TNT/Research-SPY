@@ -211,23 +211,52 @@ class TikTok(KeywordProvider):
         # thì một IP chết cắt ngang cả lượt tìm ở lời gọi thứ hai trên hai mươi lăm, trong khi
         # sáu IP khác của cùng nước vẫn đang sống.
         last_error: Exception | None = None
-        for proxy in ring:
-            try:
-                payload = await get_json(url, headers, proxy=proxy or None)
-                _cooldown.pop(proxy, None)
+        payload = None
+        xong = False          # cờ riêng chứ không dựa vào `payload is None`: TikTok trả JSON `null`
+        da_hong = 0
+        # HẾT VÒNG CHƯA PHẢI LÀ HẾT HÀNG, với nước dùng pool miễn phí. Vòng dò nền vẫn đang
+        # chạy, nên sau khi vứt hết đám vừa chết ta chờ lứa mới rồi thử lại.
+        #
+        # Thiếu đúng chỗ này đã sinh ra một lỗi thật: pool chỉ có MỘT proxy, nó chết ngay trước
+        # lúc dùng, vòng xoay không còn cái nào để nhảy sang, và lượt tìm bỏ cuộc với "cả 1
+        # proxy của PH đều hỏng" — trong khi phép chờ ở trên đã có sẵn và chỉ chạy TRƯỚC khi
+        # dựng vòng. Pool một-cái là trạng thái thường gặp chứ không hiếm: đo 16/09/2026, các
+        # vòng dò cho ra 0–3 proxy.
+        for vong_thu in range(2):
+            for proxy in ring:
+                try:
+                    payload = await get_json(url, headers, proxy=proxy or None)
+                    _cooldown.pop(proxy, None)
+                    xong = True
+                    break
+                except Exception as error:
+                    last_error = error
+                    da_hong += 1
+                    if proxy:
+                        _cooldown[proxy] = time.time() * 1000 + PROXY_COOLDOWN_MS
+                        # Proxy MIỄN PHÍ thì bỏ hẳn chứ không chỉ phạt 5 phút: nó chết là chết
+                        # luôn (đo 16/09/2026 — cái duy nhất còn sống buổi sáng đã tắt sau mười
+                        # phút). Giữ lại chỉ làm vòng xoay loãng dần bằng IP không bao giờ hồi.
+                        if country in proxy_free.NUOC_BAT:
+                            proxy_free.bo(country, proxy)
+            if xong:
                 break
-            except Exception as error:
-                last_error = error
-                if proxy:
-                    _cooldown[proxy] = time.time() * 1000 + PROXY_COOLDOWN_MS
-                    # Proxy MIỄN PHÍ thì bỏ hẳn chứ không chỉ phạt 5 phút: nó chết là chết luôn
-                    # (đo 16/09/2026 — cái duy nhất còn sống buổi sáng đã tắt sau mười phút).
-                    # Giữ lại chỉ làm vòng xoay loãng dần bằng những IP không bao giờ hồi.
-                    if country in proxy_free.NUOC_BAT:
-                        proxy_free.bo(country, proxy)
-        else:
+            if vong_thu == 0 and country in proxy_free.NUOC_BAT:
+                await proxy_free.cho_co_proxy(country)
+                ring = _proxy_ring(country)
+                if ring:
+                    continue
+            break
+
+        if not xong:
+            if country in proxy_free.NUOC_BAT:
+                raise RuntimeError(
+                    f"{da_hong} proxy {country} thử đều hỏng và không kịp dò ra cái mới; "
+                    f"proxy miễn phí lúc có lúc không, thử lại sau vài phút "
+                    f"(lỗi cuối: {last_error})"
+                )
             raise RuntimeError(
-                f"cả {len(ring)} proxy của {country} đều hỏng; lỗi cuối: {last_error}"
+                f"cả {da_hong} proxy của {country} đều hỏng; lỗi cuối: {last_error}"
             )
 
         out: list[Suggestion] = []
