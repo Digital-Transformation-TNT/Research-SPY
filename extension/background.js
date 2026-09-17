@@ -1407,12 +1407,17 @@ async function searchTaobao(keyword, count) {
           // Nhận đúng response CÓ SẢN PHẨM. Chỉ khớp theo URL là chưa đủ: mtop còn nhiều lời gọi
           // khác trên cùng trang (gợi ý, quảng cáo, đo đạc) và chúng cũng mang chữ "search".
           const laSP = (t) => /"itemId"|"item_id"|"nid"|auctions|itemList|itemsArray/.test(t);
-          const laTim = (u) => /h5search|wsearch|mtop\.(taobao|relationrecommend).*(search|recommend)/i.test(u || '');
+          // CHỈ endpoint TÌM KIẾM. Bản đầu nhận cả `recommend` và đó là một lỗi thật, không phải
+          // thừa thãi: đo 17/09/2026 với từ khoá `连衣裙` (váy liền), hook chộp trúng luồng GỢI Ý
+          // của trang và trả về 20 sản phẩm — tăm bông, miếng rửa bát, dao cạo râu. Hợp lệ về hình
+          // thức, đúng kiểu JSON sản phẩm, và KHÔNG LIÊN QUAN GÌ tới câu người dùng hỏi. Sai kiểu
+          // đó không báo lỗi ở đâu cả; nó đi thẳng vào bảng kết quả dưới nhãn từ khoá của họ.
+          const laTim = (u) => /h5search|wsearch|mtop\.taobao\.(w?search)/i.test(u || '');
           const of = window.fetch;
           window.fetch = function () {
             const u = typeof arguments[0] === 'string' ? arguments[0] : (arguments[0] && arguments[0].url) || '';
             const p = of.apply(this, arguments);
-            if (laTim(u)) p.then((r) => { try { window.__rsTbStatus = r.status; r.clone().text().then((t) => { if (laSP(t)) window.__rsTbCap.push(t); else if (/RGV587|FAIL_SYS/.test(t)) window.__rsTbLoi = t.slice(0, 200); }); } catch (e) {} }).catch(() => {});
+            if (laTim(u)) p.then((r) => { try { window.__rsTbStatus = r.status; r.clone().text().then((t) => { if (laSP(t)) { window.__rsTbCap.push(t); window.__rsTbUrl = String(u).slice(0, 160); } else if (/RGV587|FAIL_SYS/.test(t)) window.__rsTbLoi = t.slice(0, 200); }); } catch (e) {} }).catch(() => {});
             return p;
           };
           const X = window.XMLHttpRequest, oo = X.prototype.open, os = X.prototype.send;
@@ -1423,7 +1428,7 @@ async function searchTaobao(keyword, count) {
               try {
                 if (!laTim(self.__u)) return;
                 window.__rsTbStatus = self.status;
-                if (laSP(self.responseText)) window.__rsTbCap.push(self.responseText);
+                if (laSP(self.responseText)) { window.__rsTbCap.push(self.responseText); window.__rsTbUrl = String(self.__u).slice(0, 160); }
                 else if (/RGV587|FAIL_SYS/.test(self.responseText)) window.__rsTbLoi = String(self.responseText).slice(0, 200);
               } catch (e) {}
             });
@@ -1477,6 +1482,7 @@ async function searchTaobao(keyword, count) {
             cap: window.__rsTbCap || [],
             s: window.__rsTbStatus || 0,
             loi: window.__rsTbLoi || '',
+            capUrl: window.__rsTbUrl || '',
             href: location.href,
             login: /亲，请登录|请先登录/.test(document.body.innerText) && !document.querySelector('a[href*="item.taobao.com"]'),
             dom: ra.slice(0, 120),
@@ -1495,11 +1501,26 @@ async function searchTaobao(keyword, count) {
 
     if (texts.length) {
       const items = parseTaobaoTexts(texts, count);
-      if (items.length) return { items, blocked: false };
+      if (items.length) {
+        if (!taobaoHopTuKhoa(items, keyword)) {
+          return { items: [], blocked: true,
+                   error: 'Taobao trả về danh sách KHÔNG khớp từ khoá (nhiều khả năng là luồng gợi ý, '
+                          + 'không phải kết quả tìm) — thử lại, hoặc kiểm tra tab Taobao xem trang có tìm được không' };
+        }
+        return { items, blocked: false };
+      }
       // Chộp được response mà không map được field → trả raw cho người sửa, đúng như bản cũ.
       return { items: [], blocked: false, raw: String(texts[0]).slice(0, 1400) };
     }
-    if (domItems.length) return { items: parseTaobaoDom(domItems, count), blocked: false };
+    if (domItems.length) {
+      const items = parseTaobaoDom(domItems, count);
+      if (items.length && !taobaoHopTuKhoa(items, keyword)) {
+        return { items: [], blocked: true,
+                 error: 'Taobao: lưới trên trang không khớp từ khoá (nhiều khả năng là gợi ý trang chủ) '
+                        + '— kiểm tra tab Taobao rồi bấm Research lại' };
+      }
+      if (items.length) return { items, blocked: false };
+    }
 
     // Không có gì: nói RÕ nguyên nhân nào, vì ba nguyên nhân dưới đây đi sửa ở ba nơi khác nhau.
     await focusTab(tab.id);
@@ -1515,6 +1536,34 @@ async function searchTaobao(keyword, count) {
              error: 'Taobao: chưa bắt được lưới SP' + (status ? ' (mtop trả HTTP ' + status + ')' : '')
                     + ' — kiểm tra tab Taobao vừa mở (đăng nhập / xác minh) rồi bấm Research lại' };
   } catch (e) { return { items: [], blocked: false, error: String(e) }; }
+}
+
+/**
+ * Danh sách này có ĐÚNG LÀ kết quả tìm của `keyword` không, hay là một luồng gợi ý nào khác.
+ *
+ * Sinh ra từ một lỗi thật (17/09/2026): hook chộp trúng luồng gợi ý, trả 20 sản phẩm hợp lệ
+ * hoàn toàn không liên quan tới từ khoá. Không tầng nào phía sau phát hiện được — bảng kết quả
+ * hiện đầy hàng dưới nhãn từ khoá người dùng gõ, và họ không có cách nào biết mình đang đọc
+ * dữ liệu của câu hỏi khác.
+ *
+ * Phép kiểm cố tình NHẸ TAY: chỉ cần vài sản phẩm nhắc tới từ khoá là đủ kết luận "đúng luồng".
+ * Tiêu đề Taobao vốn nhồi từ khoá, nên một lượt tìm thật gần như luôn vượt ngưỡng này; còn một
+ * luồng gợi ý thì trượt rất xa chứ không sát nút. Chặt tay hơn sẽ bắt đầu loại oan các lượt tìm
+ * ra ít hàng, mà loại oan thì tệ hơn — nó biến một nguồn đang chạy thành một nguồn báo lỗi.
+ */
+function taobaoHopTuKhoa(items, keyword) {
+  const kw = String(keyword || '').trim();
+  if (!kw || !items.length) return true;               // không có gì để đối chiếu thì đừng chặn
+  // Tiếng Trung không có dấu cách: cắt thành các cặp hai chữ. Tiếng khác thì tách theo từ.
+  const manh = /[\u4e00-\u9fa5]/.test(kw)
+    ? (kw.length <= 2 ? [kw] : Array.from({ length: kw.length - 1 }, (_, i) => kw.slice(i, i + 2)))
+    : kw.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
+  if (!manh.length) return true;
+  const hop = items.filter((it) => {
+    const ten = String(it.name || '').toLowerCase();
+    return manh.some((m) => ten.includes(m.toLowerCase()));
+  }).length;
+  return hop >= Math.max(2, Math.ceil(items.length * 0.15));
 }
 
 //: Đọc sản phẩm từ DOM khi không chộp được response nào. Giá và lượt bán ở đây là CHỮ trên màn

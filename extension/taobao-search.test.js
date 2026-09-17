@@ -31,6 +31,19 @@ function mtopGia(n) {
   });
 }
 
+//: Response hợp lệ nhưng LẠC ĐỀ — đúng thứ luồng gợi ý trả về hôm 17/09/2026 khi hỏi `连衣裙`.
+function mtopGiaLac(n) {
+  const ten = ['日本掏耳朵棉签黑色挖耳勺', '洗碗海绵块百洁布厨房清洁神器', '男士剃须刀电动便携刮胡子',
+               '手撕素肉素牛排豆制品豆干', '健身器材臂力棒家用训练握力'];
+  return JSON.stringify({
+    api: 'mtop.taobao.wsearch.h5search', ret: ['SUCCESS::调用成功'],
+    data: { itemsArray: Array.from({ length: n }, (_, k) => ({
+      itemId: `r${k}`, title: `${ten[k % ten.length]} ${k}`, priceShow: '2.00',
+      realSales: '5万', pic: `//img.alicdn.com/r${k}.jpg`, nick: `Shop ${k}`,
+    })) },
+  });
+}
+
 //: Một "trang" giả. `che` quyết định trang đang ở trạng thái nào.
 function trangGia(che, soSP = 20) {
   return {
@@ -39,6 +52,11 @@ function trangGia(che, soSP = 20) {
       if (this.che === 'mtop') return { cap: [mtopGia(soSP)], s: 200, loi: '', href: 'https://s.taobao.com/search', login: false, dom: [] };
       if (this.che === 'login') return { cap: [], s: 0, loi: '', href: 'https://s.taobao.com/search', login: true, dom: [] };
       if (this.che === 'baxia') return { cap: [], s: 200, loi: 'RGV587_ERROR::SM::哎哟喂,被挤爆啦', href: 'https://s.taobao.com/search', login: false, dom: [] };
+      if (this.che === 'goiy') return { cap: [mtopGiaLac(soSP)], s: 200, loi: '', capUrl: 'https://h5api.m.taobao.com/h5/mtop.taobao.wsearch.h5search/1.0/', href: 'https://s.taobao.com/search', login: false, dom: [] };
+      if (this.che === 'domLac') return { cap: [], s: 0, loi: '', href: 'https://s.taobao.com/search', login: false,
+        dom: Array.from({ length: soSP }, (_, k) => ({
+          id: `x${k}`, title: `棉签 挖耳勺 ${k}`, img: '', giaChu: '2.00', banChu: '5万',
+        })) };
       if (this.che === 'dom') return { cap: [], s: 0, loi: '', href: 'https://s.taobao.com/search', login: false,
         dom: Array.from({ length: soSP }, (_, k) => ({
           id: `d${k}`, title: `连衣裙 DOM ${k}`, img: `//img.alicdn.com/d${k}.jpg`,
@@ -128,6 +146,31 @@ function check(label, ok, detail) {
     check('không báo chặn oan', r.blocked === false);
     check('đọc được giá từ chữ trên màn hình', r.items[0].price === 30, String(r.items[0].price));
     check('quy đổi 万 ở nhánh DOM → 15000', r.items[0].monthly === 15000, String(r.items[0].monthly));
+  }
+
+  console.log('Taobao: response hợp lệ nhưng LẠC ĐỀ thì phải chặn, không trả bừa');
+  {
+    const g = taoSandbox(trangGia('goiy'));
+    const r = await g.searchTaobao('连衣裙', 20);
+    check('KHÔNG trả về hàng lạc đề', r.items.length === 0, `ra ${r.items.length}`);
+    check('đánh dấu blocked', r.blocked === true);
+    check('lý do nhắc "không khớp từ khoá"', /không khớp từ khoá/i.test(r.error || ''), r.error);
+  }
+  {
+    const g = taoSandbox(trangGia('domLac'));
+    const r = await g.searchTaobao('连衣裙', 20);
+    check('nhánh DOM cũng bị chặn khi lạc đề', r.items.length === 0 && r.blocked === true, r.error);
+  }
+
+  console.log('Taobao: phép kiểm từ khoá KHÔNG được loại oan lượt tìm thật');
+  {
+    const g = taoSandbox(trangGia('mtop'));
+    check('tiếng Trung khớp → cho qua', g.taobaoHopTuKhoa([{ name: '连衣裙女夏' }, { name: '连衣裙2026' }], '连衣裙'));
+    check('lạc đề → chặn', !g.taobaoHopTuKhoa([{ name: '棉签' }, { name: '海绵' }], '连衣裙'));
+    check('từ khoá 2 chữ vẫn khớp', g.taobaoHopTuKhoa([{ name: '雨伞折叠' }, { name: '雨伞大号' }], '雨伞'));
+    check('tiếng Anh khớp', g.taobaoHopTuKhoa([{ name: 'wireless earbuds pro' }, { name: 'earbuds case' }], 'earbuds'));
+    check('danh sách rỗng → không chặn', g.taobaoHopTuKhoa([], '连衣裙'));
+    check('từ khoá rỗng → không chặn', g.taobaoHopTuKhoa([{ name: 'abc' }], ''));
   }
 
   console.log('Taobao: không có gì cả → vẫn phải nói một lý do');
