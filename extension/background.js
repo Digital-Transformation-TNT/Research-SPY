@@ -1407,12 +1407,19 @@ async function searchTaobao(keyword, count) {
           // Nhận đúng response CÓ SẢN PHẨM. Chỉ khớp theo URL là chưa đủ: mtop còn nhiều lời gọi
           // khác trên cùng trang (gợi ý, quảng cáo, đo đạc) và chúng cũng mang chữ "search".
           const laSP = (t) => /"itemId"|"item_id"|"nid"|auctions|itemList|itemsArray/.test(t);
-          // CHỈ endpoint TÌM KIẾM. Bản đầu nhận cả `recommend` và đó là một lỗi thật, không phải
-          // thừa thãi: đo 17/09/2026 với từ khoá `连衣裙` (váy liền), hook chộp trúng luồng GỢI Ý
-          // của trang và trả về 20 sản phẩm — tăm bông, miếng rửa bát, dao cạo râu. Hợp lệ về hình
-          // thức, đúng kiểu JSON sản phẩm, và KHÔNG LIÊN QUAN GÌ tới câu người dùng hỏi. Sai kiểu
-          // đó không báo lỗi ở đâu cả; nó đi thẳng vào bảng kết quả dưới nhãn từ khoá của họ.
-          const laTim = (u) => /h5search|wsearch|mtop\.taobao\.(w?search)/i.test(u || '');
+          // `relationrecommend...recommend` NGHE NHƯ gợi ý nhưng CHÍNH NÓ là cổng tìm của Taobao.
+          //
+          // Đo 17/09/2026 bằng cách hook mọi lời gọi mtop trên `s.taobao.com`: cả trang chỉ phát
+          // ĐÚNG MỘT endpoint, và đó là nó — response mang theo `suggestWords` chứa đúng từ khoá
+          // vừa gõ. `h5search`/`wsearch` là cổng CŨ, nay trang không dùng nữa. `search1688` cũng
+          // đang gọi chính endpoint này, nên tên gây hiểu nhầm là chuyện của Alibaba, không phải
+          // của ta.
+          //
+          // Một vòng trước đã loại nó vì tưởng là luồng gợi ý (lần đó chộp về tăm bông khi hỏi
+          // váy liền). Loại đi thì không còn gì để chộp — đúng là chữa triệu chứng nhầm bệnh.
+          // Cùng một endpoint phục vụ CẢ hai việc, nên phân biệt phải dựa vào NỘI DUNG chứ không
+          // dựa vào URL; xem vòng chọn theo `taobaoHopTuKhoa` bên dưới.
+          const laTim = (u) => /h5search|wsearch|mtop\.taobao\.(w?search)|relationrecommend.*recommend/i.test(u || '');
           const of = window.fetch;
           window.fetch = function () {
             const u = typeof arguments[0] === 'string' ? arguments[0] : (arguments[0] && arguments[0].url) || '';
@@ -1494,20 +1501,31 @@ async function searchTaobao(keyword, count) {
       status = r.s || status;
       loiMtop = r.loi || loiMtop;
       canLogin = r.login || canLogin;
-      if ((r.cap || []).length) { texts = r.cap; break; }
-      if ((r.dom || []).length) { domItems = r.dom; break; }
+      // GOM TIEP, khong dung ngay o response dau. Cung mot endpoint phuc vu ca luot tim lan
+      // luot goi y nen cai bat duoc truoc chua chac la cai dung — doi them mot nhip de co du
+      // ung vien ma chon.
+      if ((r.cap || []).length) {
+        texts = r.cap;
+        if (texts.some((t) => taobaoKhopThoNhanh(t, keyword)) || Date.now() > deadline - 4000) break;
+      }
+      if (!texts.length && (r.dom || []).length) { domItems = r.dom; break; }
       if (/login\.taobao\.com/.test(r.href)) { canLogin = true; break; }
     }
 
     if (texts.length) {
-      const items = parseTaobaoTexts(texts, count);
-      if (items.length) {
-        if (!taobaoHopTuKhoa(items, keyword)) {
-          return { items: [], blocked: true,
-                   error: 'Taobao trả về danh sách KHÔNG khớp từ khoá (nhiều khả năng là luồng gợi ý, '
-                          + 'không phải kết quả tìm) — thử lại, hoặc kiểm tra tab Taobao xem trang có tìm được không' };
-        }
-        return { items, blocked: false };
+      // THU TUNG RESPONSE MOT, giu cai khop tu khoa. Cung mot endpoint tra ve ca ket qua tim lan
+      // luong goi y nen "cai bat duoc truoc" khong phai tieu chi dung — noi dung moi la.
+      let items = [];
+      for (const t of texts) {
+        const thu = parseTaobaoTexts([t], count);
+        if (thu.length && taobaoHopTuKhoa(thu, keyword)) { items = thu; break; }
+      }
+      if (items.length) return { items, blocked: false };
+      const coHang = texts.some((t) => parseTaobaoTexts([t], count).length);
+      if (coHang) {
+        return { items: [], blocked: true,
+                 error: 'Taobao: bắt được ' + texts.length + ' response có sản phẩm nhưng KHÔNG cái nào khớp từ khoá '
+                        + '(luồng gợi ý, không phải kết quả tìm) — kiểm tra tab Taobao xem trang có tìm được không' };
       }
       // Chộp được response mà không map được field → trả raw cho người sửa, đúng như bản cũ.
       return { items: [], blocked: false, raw: String(texts[0]).slice(0, 1400) };
@@ -1536,6 +1554,19 @@ async function searchTaobao(keyword, count) {
              error: 'Taobao: chưa bắt được lưới SP' + (status ? ' (mtop trả HTTP ' + status + ')' : '')
                     + ' — kiểm tra tab Taobao vừa mở (đăng nhập / xác minh) rồi bấm Research lại' };
   } catch (e) { return { items: [], blocked: false, error: String(e) }; }
+}
+
+/**
+ * Phép kiểm THÔ trên chuỗi JSON còn nguyên, dùng trong vòng chờ để biết có nên đợi thêm không.
+ *
+ * Tách khỏi `taobaoHopTuKhoa` vì hai chỗ làm hai việc khác nhau: chỗ này chỉ cần trả lời "có đáng
+ * đợi thêm không" trên một chuỗi chưa parse, còn chỗ kia mới là phán quyết cuối trên danh sách đã
+ * đọc xong. Cố gộp làm một sẽ buộc phải parse mọi response ở mỗi nhịp chờ.
+ */
+function taobaoKhopThoNhanh(text, keyword) {
+  const kw = String(keyword || '').trim();
+  if (!kw) return true;
+  return String(text || '').includes(kw);
 }
 
 /**

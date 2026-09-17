@@ -154,7 +154,7 @@ function check(label, ok, detail) {
     const r = await g.searchTaobao('连衣裙', 20);
     check('KHÔNG trả về hàng lạc đề', r.items.length === 0, `ra ${r.items.length}`);
     check('đánh dấu blocked', r.blocked === true);
-    check('lý do nhắc "không khớp từ khoá"', /không khớp từ khoá/i.test(r.error || ''), r.error);
+    check('lý do nhắc "không khớp từ khoá"', /khớp từ khoá/i.test(r.error || ''), r.error);
   }
   {
     const g = taoSandbox(trangGia('domLac'));
