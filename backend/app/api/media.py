@@ -65,6 +65,15 @@ ALLOWED += [
     # cookie ra 200). Bảng hiện ảnh thẳng, nhưng 💰 Giá vốn tải ảnh qua đây — thiếu dòng này
     # là "Không tải được ảnh: HTTP 403" đúng ở dòng TikTok Shop, như Amazon/Temu trước kia.
     _Allowed(suffix="kalocdn.com", referer="https://www.kalodata.com/"),
+    # ALIEXPRESS ĐÃ DỜI CDN ẢNH sang tên miền riêng `*.aliexpress-media.com`, không còn dùng
+    # `alicdn.com` nữa. Dòng `alicdn.com` phía trên (do 1688 khai) vì thế KHÔNG phủ được nó, dù
+    # nhìn qua thì hai cái trông như cùng một nhà.
+    #
+    # Đo 17/09/2026 bằng một lượt tìm ảnh thật: 24/24 kết quả trả về thumbnail trên
+    # `ae-pic-a1.aliexpress-media.com`, và proxy chặn cả 24. Triệu chứng là lưới AliExpress hiện
+    # đủ tên, giá, lượt bán — chỉ ô ảnh trắng trơn. Không lỗi nào được ghi ở đâu, và bảng trông
+    # như "sàn này không có ảnh" chứ không như một lỗi chặn, đúng cái bẫy đã ghi cho `gstatic.com`.
+    _Allowed(suffix="aliexpress-media.com", referer="https://www.aliexpress.com/"),
 ]
 
 #: Header cần giữ nguyên để trình phát biết cách đọc dòng byte. `content-encoding` không có
