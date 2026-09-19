@@ -1233,6 +1233,27 @@ function kdBroaden(term) {
   return words.length > 3 ? words.slice(0, 2).join(' ') : String(term || '').trim();
 }
 
+/**
+ * Danh sách VIDEO ĐẨY DOANH SỐ mà Kalodata gắn thẳng vào một sản phẩm (`/product/enrich`).
+ * KHÔNG tốn credit (route detail). Trả { videos: [], error }. Chuẩn hoá `id` (một số hình dạng
+ * dùng `video_id`) để `kalodataVideoAd` và link phát `getVideoUrl` dùng được.
+ */
+async function fetchKalodataProductVideos(productId, region) {
+  const r = await new Promise((res) => {
+    let done = false;
+    const fin = (v) => { if (!done) { done = true; res(v || {}); } };
+    // Tự hết giờ 16s: chưa Reload extension (chưa có handler) thì đừng treo cả luồng video.
+    setTimeout(() => fin({}), 16000);
+    try { chrome.runtime.sendMessage({ type: 'RS_KD_PRODUCT_VIDEOS', productId: String(productId), country: region }, (x) => fin(x)); }
+    catch (e) { fin({}); }
+  });
+  const raw = Array.isArray(r.videos) ? r.videos : [];
+  const videos = raw.map((v) => (v && typeof v === 'object')
+    ? Object.assign({}, v, { id: String(v.id || v.video_id || v.videoId || '') })
+    : { id: String(v || '') });
+  return { videos, error: r.error || null };
+}
+
 async function fetchKalodata(kind, keyword, region, pages) {
   const kw = String(keyword || '').trim();
   // `toLowerCase` GIỮ dấu tiếng Việt — "giày" và "giấy" vẫn là hai khoá khác nhau.
@@ -1736,7 +1757,7 @@ function productTd(p, phu) {
 
 function actionTd(p) {
   return `<td><button class="sim cost" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-price="${giaDung(p) != null ? giaDung(p) : ''}" data-cur="${esc(curOf(p))}">💰 Giá vốn</button> ` +
-    `<button class="sim vid" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-region="${esc(p.region || '')}">🎬 Video</button></td>`;
+    `<button class="sim vid" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-region="${esc(p.region || '')}" data-pid="${p.platform === 'TikTok Shop' ? esc(p.itemid || '') : ''}">🎬 Video</button></td>`;
 }
 
 function rowChung(p, i) {
@@ -1876,7 +1897,7 @@ $('rows').addEventListener('click', (e) => {
   if (vid) {
     // Mở modal video từ một dòng sản phẩm cũng là một lượt xem video.
     rsTrackAds('video_open', { name: vid.dataset.name || '' });
-    openVideoModal({ img: vid.dataset.img, name: vid.dataset.name, region: vid.dataset.region });
+    openVideoModal({ img: vid.dataset.img, name: vid.dataset.name, region: vid.dataset.region, pid: vid.dataset.pid || '' });
     return;
   }
 });
@@ -2557,6 +2578,26 @@ async function loadModalTiktok(region) {
     st.kdAds = kd.items.map((v) => kalodataVideoAd(v, region)).filter((a) => a.id).sort((a, b) => (b.gmv || 0) - (a.gmv || 0));
     if (kd.error) st.kdNote = ' · Kalodata: ' + kd.error;
     else if (!st.kdAds.length) st.kdNote = ` · Kalodata: không có video bán hàng cho “${kdTerm}”`;
+
+    // #4 — VIDEO ĐẨY DOANH SỐ của CHÍNH sản phẩm này (Kalodata `/product/enrich`), giống hệt cột
+    // video của Kalodata. Chính xác hơn tìm theo keyword vì là video Kalodata gắn thẳng vào SP.
+    // Chỉ chạy cho SP TikTok Shop (có product_id). KHÔNG tốn credit (route detail). Gắn cờ
+    // `drivesSales` để hiện huy hiệu "đẩy đơn" và cho LÊN ĐẦU lưới.
+    if (p.pid) {
+      const en = await fetchKalodataProductVideos(p.pid, region);
+      if (!alive()) return;
+      const driveAds = (en.videos || [])
+        .map((v) => { const a = kalodataVideoAd(v, region); a.drivesSales = true; return a; })
+        .filter((a) => a.id)
+        .sort((a, b) => (b.gmv || 0) - (a.gmv || 0));
+      if (driveAds.length) {
+        // Đứng TRƯỚC danh sách theo keyword; `vidMerge` bỏ trùng theo platform:id nên video vừa
+        // là "đẩy đơn" vừa xuất hiện ở keyword sẽ giữ bản có cờ đẩy đơn.
+        st.kdAds = driveAds.concat(st.kdAds);
+      } else if (en.error) {
+        st.kdNote += ' · video đẩy đơn: ' + en.error;
+      }
+    }
     if (st.kdAds.length) {
       const som = vidMerge(st.kdAds, st.fbAds, st.bingTk || [], st.bingDy || [], st.ytAds || [], st.sanAds || [], st.marketAds);
       renderVideos(som);
@@ -2894,6 +2935,11 @@ function vidCard(ad, idx) {
   const langBadge = (ad.langMatch === 'other' && ad.regionTag)
     ? `<span class="mbadge langoff" title="Mô tả không phải tiếng ${COUNTRY[ad.regionTag] || ad.regionTag} — TikTok trả theo account/IP của bạn">⚠ khác ngôn ngữ</span>`
     : '';
+  // #4: video Kalodata gắn thẳng vào sản phẩm (đang đẩy doanh số) — huy hiệu để phân biệt với
+  // video tìm theo keyword.
+  const driveBadge = ad.drivesSales
+    ? `<span class="mbadge" style="background:#16a34a;color:#fff" title="Video Kalodata gắn thẳng vào sản phẩm này — đang đẩy doanh số">🔥 đẩy đơn</span>`
+    : '';
 
   const nhan = PF_LABEL[ad.platform] || ad.platform || 'video';
   // `playable === false` = sàn ĐÃ TRẢ LỜI rằng video không còn (backend hỏi oEmbed —
@@ -2927,7 +2973,7 @@ function vidCard(ad, idx) {
   const el = document.createElement('div');
   el.className = 'ccard';
   el.innerHTML =
-    `<div class="media">${match}${langBadge}${media}</div>` +
+    `<div class="media">${driveBadge}${match}${langBadge}${media}</div>` +
     `<div class="cbody">` +
     `<div class="cadv">${esc(ad.advertiser || '—')}</div>` +
     `<div class="ccopy">${esc(ad.title || ad.body || '')}</div>` +

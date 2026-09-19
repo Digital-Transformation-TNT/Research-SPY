@@ -82,6 +82,7 @@ const JOB_TIMEOUT_MS = {
   RS_KD_PRODUCT: 60000,     // Kalodata: ≤3 trang API + nghỉ giữa trang + mở tab kalodata.com dự phòng
   RS_KD_VIDEO: 60000,
   RS_KD_VIDEO_URL: 30000,   // 1 GET link video (getVideoUrl) + mở tab kalodata.com dự phòng
+  RS_KD_PRODUCT_VIDEOS: 30000, // 1 POST enrich (video đẩy đơn) + mở tab dự phòng
 };
 
 function rsCall(msg, timeoutMs = 40000) {

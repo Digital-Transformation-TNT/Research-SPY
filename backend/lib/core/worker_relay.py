@@ -144,6 +144,8 @@ SUBMIT_TIMEOUTS: dict[str, float] = {
     "RS_KD_VIDEO": 75.0,
     # Một GET nhanh (link video), nhưng có thể mở tab kalodata.com dự phòng (~15s).
     "RS_KD_VIDEO_URL": 45.0,
+    # Một POST enrich (video đẩy đơn), có thể mở tab kalodata.com dự phòng.
+    "RS_KD_PRODUCT_VIDEOS": 45.0,
 }
 
 
@@ -197,6 +199,8 @@ ALLOWED_TYPES = {
     # Link phát của MỘT video Kalodata (`/video/detail/getVideoUrl`). KHÔNG trừ credit — chỉ hỏi
     # khi người dùng bấm ▶ để xem video bằng link Kalodata (xem được), thay link tiktok.com/embed.
     "RS_KD_VIDEO_URL",
+    # Video ĐẨY DOANH SỐ của một sản phẩm (`/product/enrich`). Route detail, KHÔNG trừ credit.
+    "RS_KD_PRODUCT_VIDEOS",
     # Tiện ích: ping, đọc cookie (kiểm tra đăng nhập), fetch, tìm tương tự, giá vốn
     "RS_PING", "RS_COOKIE", "RS_FETCH", "RS_FIND_SIMILAR", "RS_COST_BATCH",
 }

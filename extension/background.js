@@ -3694,6 +3694,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
+  // Video ĐẨY DOANH SỐ của một sản phẩm (Kalodata product/enrich, không tốn credit).
+  if (msg.type === 'RS_KD_PRODUCT_VIDEOS') {
+    withHeartbeat(kdProductVideos(msg.productId, msg.country))
+      .then((r) => sendResponse({ ok: true, ...r }))
+      .catch((e) => sendResponse({ ok: true, videos: [], error: String(e) }));
+    return true;
+  }
+
   if (msg.type === 'RS_SHOPEE') {
     const shopeeHost = msg.domain || 'shopee.vn';
     withCooldown(`site:${shopeeHost}`, searchShopee(msg).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: true, texts: [], blocked: false, error: String(e) })), `https://${shopeeHost}/`);

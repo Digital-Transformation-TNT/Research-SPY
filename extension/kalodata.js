@@ -262,3 +262,24 @@ async function kdVideoUrl(videoId) {
   const url = got.data && got.data.url;
   return url ? { url } : { url: null, error: 'Kalodata không trả link cho video này' };
 }
+
+/**
+ * Danh sách VIDEO ĐẨY DOANH SỐ mà Kalodata gắn thẳng vào một sản phẩm (`/product/enrich`).
+ * Route detail, KHÔNG nằm trong nhóm bị trừ credit (xem `docs/kalodata-api.md`). Trả
+ * { videos: [], error }. Hình dạng từng video của enrich CHƯA xác minh chắc (mẫu tài liệu rỗng),
+ * nên nơi gọi (`research.js`) tự chuẩn hoá `id`; ở đây chỉ trả nguyên `data.videos`.
+ */
+async function kdProductVideos(productId, country) {
+  const id = String(productId || '').trim();
+  if (!id) return { videos: [], error: 'thiếu productId' };
+  const c = String(country || 'VN').toUpperCase();
+  const range = kdRange(30);
+  // Gửi kèm country + khoảng ngày như searchList (enrich đứng cùng ngữ cảnh nước/kỳ); dư thì
+  // Kalodata bỏ qua, thiếu thì có API trả rỗng.
+  const got = await kdSend('/product/enrich', 'POST', {
+    id, country: c, startDate: range.startDate, endDate: range.endDate,
+  });
+  if (got.error) return { videos: [], error: got.error, auth: got.auth };
+  const videos = got.data && got.data.videos;
+  return { videos: Array.isArray(videos) ? videos : [] };
+}
