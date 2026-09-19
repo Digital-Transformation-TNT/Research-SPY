@@ -1223,6 +1223,16 @@ function kdCacheSet(key, data) {
  * CACHE CẢ LƯỢT RỖNG, không cache lượt LỖI: rỗng cũng đã tốn một lượt credit và gọi lại vẫn
  * rỗng; còn lỗi (chưa đăng nhập, máy-thợ bận) thì lần sau phải được thử lại thật.
  */
+/**
+ * Rút một cụm tìm video xuống dạng RỘNG cho Kalodata (khớp theo tiêu đề). Cụm >3 từ → giữ 2 từ
+ * đầu (hãng+model / loại+hãng); ngắn hơn thì để nguyên. Đủ rộng để ra nhiều video bán hàng mà
+ * không tốn thêm credit (vẫn 1 trang).
+ */
+function kdBroaden(term) {
+  const words = String(term || '').trim().split(/\s+/).filter(Boolean);
+  return words.length > 3 ? words.slice(0, 2).join(' ') : String(term || '').trim();
+}
+
 async function fetchKalodata(kind, keyword, region, pages) {
   const kw = String(keyword || '').trim();
   // `toLowerCase` GIỮ dấu tiếng Việt — "giày" và "giấy" vẫn là hai khoá khác nhau.
@@ -2536,12 +2546,17 @@ async function loadModalTiktok(region) {
   st.kdNote = '';
   if (KD_REGIONS.includes(region)) {
     setVidStatus('Đang tìm thêm video bán hàng (Kalodata)…');
-    const kd = await fetchKalodata('video', tkTerm, region, 1);
+    // RỘNG HOÁ RIÊNG CHO KALODATA. Kalodata khớp video theo TIÊU ĐỀ chứa cụm, nên cụm dài đủ
+    // "loại + hãng + model" (vd "plextone g18 armor gaming headset") gần như không khớp video
+    // nào — user thấy chỉ 1-2 kết quả. Rút về ~2 từ đầu (thường là hãng+model ở cụm tiếng Anh,
+    // loại+hãng ở cụm tiếng Việt) để ra nhiều video bán hàng hơn. VẪN 1 trang = 1 credit.
+    const kdTerm = kdBroaden(tkTerm);
+    const kd = await fetchKalodata('video', kdTerm, region, 1);
     if (!alive()) return;
     // Xếp theo doanh thu: thẻ đầu lưới là video bán được nhiều nhất, đúng thứ người research tìm.
     st.kdAds = kd.items.map((v) => kalodataVideoAd(v, region)).filter((a) => a.id).sort((a, b) => (b.gmv || 0) - (a.gmv || 0));
     if (kd.error) st.kdNote = ' · Kalodata: ' + kd.error;
-    else if (!st.kdAds.length) st.kdNote = ` · Kalodata: không có video bán hàng cho “${tkTerm}”`;
+    else if (!st.kdAds.length) st.kdNote = ` · Kalodata: không có video bán hàng cho “${kdTerm}”`;
     if (st.kdAds.length) {
       const som = vidMerge(st.kdAds, st.fbAds, st.bingTk || [], st.bingDy || [], st.ytAds || [], st.sanAds || [], st.marketAds);
       renderVideos(som);
