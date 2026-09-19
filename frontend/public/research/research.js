@@ -2970,11 +2970,16 @@ $('vidFilter').addEventListener('click', (e) => {
 let tkAt = -1; // vị trí trong `vidShown` của video đang phát
 let tkPlayToken = 0; // chống đua: bấm ‹ › liên tục thì chỉ giữ kết quả getVideoUrl của lần mới nhất
 
-/** Hỏi extension link PHÁT của một video Kalodata (RS_KD_VIDEO_URL → kdVideoUrl). Không tốn credit. */
+/** Hỏi extension link PHÁT của một video Kalodata (RS_KD_VIDEO_URL → kdVideoUrl). Không tốn credit.
+ *  Có TỰ HẾT GIỜ 16s: nếu máy-thợ chưa Reload extension (chưa có handler mới) thì đừng bắt người
+ *  dùng đợi hết budget relay — trả rỗng sớm để `openTkPlayer` lùi về khung nhúng TikTok. */
 function kdVideoUrl(id) {
   return new Promise((res) => {
-    try { chrome.runtime.sendMessage({ type: 'RS_KD_VIDEO_URL', videoId: id }, (x) => res(x || {})); }
-    catch (e) { res({}); }
+    let done = false;
+    const fin = (v) => { if (!done) { done = true; res(v || {}); } };
+    setTimeout(() => fin({}), 16000);
+    try { chrome.runtime.sendMessage({ type: 'RS_KD_VIDEO_URL', videoId: id }, (x) => fin(x)); }
+    catch (e) { fin({}); }
   });
 }
 
