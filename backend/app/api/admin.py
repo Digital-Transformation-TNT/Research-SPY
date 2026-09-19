@@ -408,7 +408,12 @@ async def decide_role_request(
 # `frontend/lib/analytics.ts` và `frontend/public/research/research.js`.
 
 #: "Chạy tool" — một lượt chạy tool có thể ra kết quả hoặc lỗi (xem `meta.status`).
-_RUN_EVENTS = {"search", "keyword_search", "ads_search", "image_upload", "ai_ask", "trend_view"}
+#: `cost_lookup` = tra giá vốn 1688, `video_result` = lấy video quảng cáo (hai chức năng phụ
+#: trong tool Sản phẩm, cũng tính là một lượt chạy có ok/lỗi riêng).
+_RUN_EVENTS = {
+    "search", "keyword_search", "ads_search", "image_upload", "ai_ask", "trend_view",
+    "cost_lookup", "video_result",
+}
 
 #: "Bấm ra ngoài" — đo ĐỘ SÂU research (không còn là thước đo thành công). Mỗi cái = 1 link.
 _LINK_EVENTS = {"product_click", "video_open", "image_result_click", "ai_link_click"}
@@ -737,6 +742,12 @@ def _event_label(et: str, m: dict) -> str:
         return "Bấm kết quả ảnh" + (f" ({m.get('source')})" if m.get("source") else "")
     if et == "ai_ask":
         return "Hỏi AI"
+    if et == "cost_lookup":
+        n = m.get("results")
+        return "Tra giá vốn 1688" + (f" · {n} nguồn" if isinstance(n, int) and n else "")
+    if et == "video_result":
+        n = m.get("results")
+        return "Lấy video quảng cáo" + (f" · {n} video" if isinstance(n, int) and n else "")
     if et == "feature_complete":
         return f"Xong tool {_feature_label(m.get('feature'))}"
     if et == "feature_abandon":

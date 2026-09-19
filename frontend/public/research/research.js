@@ -1895,7 +1895,7 @@ async function fetch1688Offers(imgUrl, nameHint) {
     const ir = await fetch(proxyMedia(imgUrl));
     if (!ir.ok) throw new Error('HTTP ' + ir.status);
     blob = await ir.blob();
-  } catch (e) { return { offers: [], min: null, error: 'Không tải được ảnh: ' + e.message }; }
+  } catch (e) { return { offers: [], min: null, error: 'Không tải được ảnh: ' + e.message, failed: true }; }
 
   let data;
   try {
@@ -1907,8 +1907,8 @@ async function fetch1688Offers(imgUrl, nameHint) {
     form.append('sources', '1688');
     const r = await fetch(`${BACKEND}/api/imagesearch`, { method: 'POST', body: form });
     data = await r.json().catch(() => ({}));
-    if (!r.ok) return { offers: [], min: null, error: (data && data.error) || 'Chưa lấy được dữ liệu — thử lại sau ít phút.' };
-  } catch (e) { return { offers: [], min: null, error: 'Lỗi gọi tìm-bằng-ảnh: ' + e.message }; }
+    if (!r.ok) return { offers: [], min: null, error: (data && data.error) || 'Chưa lấy được dữ liệu — thử lại sau ít phút.', failed: true };
+  } catch (e) { return { offers: [], min: null, error: 'Lỗi gọi tìm-bằng-ảnh: ' + e.message, failed: true }; }
 
   let offers = (data.sourcing || [])
     .filter((o) => o.priceValue != null && !o.isAccessory)
@@ -1933,7 +1933,9 @@ async function fetch1688Offers(imgUrl, nameHint) {
   }
   return {
     offers, min: offers[0] || null,
+    // Không có hàng khớp KHÔNG phải lỗi (sàn không có dữ liệu) → failed:false.
     error: offers.length ? null : (data.message || '1688 không tìm thấy hàng khớp ảnh này.'),
+    failed: false,
     identity: data.identity, cached: data.cached,
   };
 }
@@ -1952,6 +1954,13 @@ async function openCostModal(p) {
 
   const res = await fetch1688Offers(p.img, p.name);
   if (my !== costToken) return; // user đã mở dòng khác trong lúc chờ → bỏ kết quả cũ
+  // Đo lượt tra giá vốn: chỉ FAIL khi lỗi thật (không tải được ảnh, backend lỗi). 1688 không có
+  // hàng khớp = vẫn ra kết quả (thành công).
+  rsTrackAds('cost_lookup', {
+    status: res.failed ? 'error' : 'ok',
+    error: res.failed ? res.error : undefined,
+    results: res.offers.length,
+  });
   if (!res.offers.length) { setCostStatus(res.error || '1688 không tìm thấy hàng khớp ảnh này.', 'err'); return; }
   const offers = res.offers;
   if (res.identity && res.identity.product) $('costTitle').textContent = res.identity.product;
@@ -2060,6 +2069,13 @@ async function runCost1688Batch() {
   }
   try {
     await Promise.all(Array.from({ length: Math.min(CONC, targets.length) }, worker));
+    // Một lượt chạy cho cả loạt: FAIL khi 1688 chặn IP (không truy cập được); còn lại là ra kết quả.
+    rsTrackAds('cost_lookup', {
+      status: blocked ? 'error' : 'ok',
+      error: blocked ? '1688 risk-control chặn IP' : undefined,
+      results: ok,
+      batch: total,
+    });
     if (blocked) setStatus(`1688 tạm chặn (risk-control 非法请求) sau ${done}/${total}. Đợi vài phút rồi bấm lại, hoặc tra lẻ từng dòng. Đã lấy ${ok} món.`, 'err');
     else setStatus(`Xong giá vốn 1688: ${ok}/${total} sản phẩm ra kết quả. Bấm 💰 một dòng để xem nguồn 1688 chi tiết.`, 'ok');
   } finally {
@@ -2297,12 +2313,19 @@ async function openVideoModal(p) {
     const r = await fetch(`${BACKEND}/api/ads/search?${params.toString()}`);
     data = await r.json();
     if (my !== vidToken) return; // đã mở modal khác → bỏ kết quả cũ
-    if (!r.ok) { setVidStatus((data && data.error) || 'Chưa lấy được dữ liệu — thử lại sau ít phút.', 'err'); return; }
+    if (!r.ok) {
+      rsTrackAds('video_result', { status: 'error', error: (data && data.error) || 'HTTP lỗi' });
+      setVidStatus((data && data.error) || 'Chưa lấy được dữ liệu — thử lại sau ít phút.', 'err');
+      return;
+    }
   } catch (e) {
     if (my !== vidToken) return;
+    rsTrackAds('video_result', { status: 'error', error: e.message });
     setVidStatus('Chưa lấy được video quảng cáo — thử lại sau ít phút.', 'err');
     return;
   }
+  // Có phản hồi = ra kết quả (kể cả 0 video — không phải lỗi).
+  rsTrackAds('video_result', { status: 'ok', results: (data.ads || []).length });
 
   // `tiktokvideo`/`douyinvideo` LÀ TikTok và Douyin, chỉ khác đường tìm. Đổi tên nguồn NGAY TẠI
   // ĐÂY để mọi thứ phía sau — chip lọc, `vidMerge`, player nhúng — thấy đúng một nền tảng.
