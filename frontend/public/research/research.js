@@ -435,6 +435,11 @@ const LOGIN = {
 // Rỗng lúc đầu — chưa có sàn nào được chọn nên chưa có nước. Khi user chọn một sàn có region,
 // `updateRegionSection` tự thêm nước đầu tiên của sàn đó (giữ tối thiểu 1 nước/sàn để chạy được).
 const selectedRegions = new Set();
+// Region ĐƯỢC THÊM TỰ ĐỘNG (nước đầu của sàn, giữ tối thiểu 1) chứ người dùng CHƯA chủ động
+// chọn. Tách riêng để khi họ tick một nước cụ thể thì bỏ được cái mặc định họ không hề chọn —
+// nếu không, chọn TikTok Shop (mặc định VN) rồi tick PH sẽ chạy CẢ VN lẫn PH, và người dùng
+// tưởng "chọn PH mà vẫn ra hàng VN". Đo 19/09/2026.
+const autoRegions = new Set();
 function curOf(p) { return p.currency || CURRENCY[p.region] || 'VND'; }
 
 // Các sàn (tab Sản phẩm) đang chọn mà CÓ region — để gom nhóm region theo sàn.
@@ -468,10 +473,15 @@ function updateRegionSection() {
   if (!pfs.length) { if (section) section.style.display = 'none'; return; } // Taobao/1688/Etsy → ẩn region
   if (section) section.style.display = ''; // trả về display của CSS (.step là block)
   // Bỏ region của sàn không còn được chọn.
-  for (const key of [...selectedRegions]) if (!pfs.includes(key.split(':')[0])) selectedRegions.delete(key);
-  // Mỗi sàn có region phải giữ tối thiểu 1 (mặc định nước đầu) để nó còn chạy được.
+  for (const key of [...selectedRegions]) if (!pfs.includes(key.split(':')[0])) { selectedRegions.delete(key); autoRegions.delete(key); }
+  // Mỗi sàn có region phải giữ tối thiểu 1 (mặc định nước đầu) để nó còn chạy được. Đánh dấu là
+  // AUTO để lần tick nước cụ thể sau đó gạt được cái mặc định này đi.
   for (const pf of pfs) {
-    if (!PLATFORMS[pf].regions.some((c) => selectedRegions.has(`${pf}:${c}`))) selectedRegions.add(`${pf}:${PLATFORMS[pf].regions[0]}`);
+    if (!PLATFORMS[pf].regions.some((c) => selectedRegions.has(`${pf}:${c}`))) {
+      const key = `${pf}:${PLATFORMS[pf].regions[0]}`;
+      selectedRegions.add(key);
+      autoRegions.add(key);
+    }
   }
   renderRegions();
 }
@@ -2199,9 +2209,15 @@ $('regions').addEventListener('click', (e) => {
   // TICK LÀ BẬT/TẮT, không có chế độ nào cả. Tick một nước ra một, tick mấy nước ra mấy.
   if (selectedRegions.has(key)) {
     // Không để một sàn trống hết nước — muốn bỏ hẳn sàn thì bỏ chọn nó ở hàng SÀN.
-    if (PLATFORMS[pf].regions.some((c) => c !== code && selectedRegions.has(`${pf}:${c}`))) selectedRegions.delete(key);
+    if (PLATFORMS[pf].regions.some((c) => c !== code && selectedRegions.has(`${pf}:${c}`))) { selectedRegions.delete(key); autoRegions.delete(key); }
   } else {
+    // Đây là lựa chọn CHỦ ĐỘNG của người dùng. Gạt bỏ nước MẶC ĐỊNH (auto) của cùng sàn mà họ
+    // chưa hề chọn — nếu không, "chọn PH" vẫn kéo theo VN mặc định và ra lẫn hàng VN.
+    for (const k of [...autoRegions]) {
+      if (k.split(':')[0] === pf && k !== key) { selectedRegions.delete(k); autoRegions.delete(k); }
+    }
     selectedRegions.add(key);
+    autoRegions.delete(key);
   }
   // GIỮ BẢNG MỞ: không biết được người dùng đã tick xong hay còn tick tiếp, nên đừng đoán.
   // Đóng bằng bấm ra ngoài / Esc / "Xong" — ba lối đó đều có sẵn.
@@ -2952,6 +2968,15 @@ $('vidFilter').addEventListener('click', (e) => {
 // Lớp phủ mang theo THÔNG TIN VIDEO bên cạnh và hai nút ‹ › để đi tiếp — trước đây muốn biết
 // đang xem của ai, bao nhiêu tim, thì phải đóng ra tìm lại đúng cái thẻ vừa bấm.
 let tkAt = -1; // vị trí trong `vidShown` của video đang phát
+let tkPlayToken = 0; // chống đua: bấm ‹ › liên tục thì chỉ giữ kết quả getVideoUrl của lần mới nhất
+
+/** Hỏi extension link PHÁT của một video Kalodata (RS_KD_VIDEO_URL → kdVideoUrl). Không tốn credit. */
+function kdVideoUrl(id) {
+  return new Promise((res) => {
+    try { chrome.runtime.sendMessage({ type: 'RS_KD_VIDEO_URL', videoId: id }, (x) => res(x || {})); }
+    catch (e) { res({}); }
+  });
+}
 
 function tkInfoHTML(ad) {
   const stats =
@@ -2970,18 +2995,22 @@ function tkInfoHTML(ad) {
   );
 }
 
-function openTkPlayer(idx) {
-  const ad = vidShown[idx];
-  const src = vidEmbed(ad);
-  if (!src) return;
-  tkAt = idx;
-  const khung = $('tkFrame');
+function tkEmbedIframe(khung, src) {
   khung.innerHTML = '';
   const f = document.createElement('iframe');
   f.src = src;
   f.allow = 'autoplay; encrypted-media; fullscreen';
   f.setAttribute('scrolling', 'no');
   khung.appendChild(f);
+}
+
+async function openTkPlayer(idx) {
+  const ad = vidShown[idx];
+  const src = vidEmbed(ad);
+  if (!src) return;
+  tkAt = idx;
+  const my = ++tkPlayToken;
+  const khung = $('tkFrame');
   $('tkInfo').innerHTML = tkInfoHTML(ad);
 
   // Chỉ đi tới thẻ NHÚNG ĐƯỢC khác — thẻ Facebook/Sàn/Douyin không có player để nhảy sang.
@@ -2994,6 +3023,30 @@ function openTkPlayer(idx) {
   $('tkPrev').disabled = co(-1) < 0;
   $('tkNext').disabled = co(1) < 0;
   $('tkPlay').classList.add('on');
+
+  // VIDEO KALODATA: phát bằng LINK CỦA KALODATA (`getVideoUrl`) — link này Kalodata dùng để phát
+  // ngay trên trang họ nên xem được, khác link `tiktok.com/embed` (khung nhỏ + hay 503). Không
+  // tốn credit. Hỏi ngay lúc bấm ▶ (không hỏi sẵn cả lưới). Hụt → lùi về iframe nhúng như cũ.
+  if (ad.viaKalodata && ad.id) {
+    khung.innerHTML = '<div class="tk-loading" style="display:flex;align-items:center;justify-content:center;height:100%;min-height:200px;color:#fff;font-size:14px;opacity:.85">Đang lấy video từ Kalodata…</div>';
+    const r = await kdVideoUrl(ad.id);
+    if (my !== tkPlayToken) return; // user đã bấm sang video khác trong lúc chờ
+    if (r && r.url) {
+      const poster = (ad.creatives && ad.creatives[0] && ad.creatives[0].posterUrl) || ad.posterUrl || ad.image || '';
+      khung.innerHTML = '';
+      const v = document.createElement('video');
+      v.src = proxyMedia(r.url);
+      if (poster) v.poster = proxyMedia(poster);
+      v.controls = true; v.autoplay = true; v.playsInline = true; v.setAttribute('playsinline', '');
+      // Link Kalodata trỏ CDN TikTok. Host lạ (ngoài allowlist proxy) hoặc CDN chặn hotlink →
+      // thẻ <video> báo lỗi; lúc đó lùi về khung nhúng TikTok để vẫn xem được, không để ô trống.
+      v.onerror = () => { if (my === tkPlayToken) tkEmbedIframe(khung, src); };
+      khung.appendChild(v);
+      return;
+    }
+    // getVideoUrl hụt (video đã gỡ / phiên Kalodata lỗi) → vẫn cho xem qua khung nhúng TikTok.
+  }
+  tkEmbedIframe(khung, src);
 }
 
 function tkStep(d) {

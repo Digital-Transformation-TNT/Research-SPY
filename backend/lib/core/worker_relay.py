@@ -131,12 +131,19 @@ SUBMIT_TIMEOUTS: dict[str, float] = {
     # 4 cụm, mỗi cụm còn mở thêm trang kết quả rồi quay về — xem `searchTemu` phần
     # "ĐƯỜNG HAI". Thứ tự bắt buộc: 150s (extension) < 165s (trang máy-thợ) < 180s (đây).
     "RS_TEMU_SUGGEST": 180.0,
+    # Tìm sản phẩm Temu (`searchTemu`): chờ trang ≤16s + 1,5s + cài hook ≤5s + dò response ≤18s,
+    # cộng mở tab. Trước đây KHÔNG có mục nên rơi về 45s — sát nút với chính ngân sách ấy, và
+    # hết giờ ở đây nuốt mất câu "Temu đòi đăng nhập" mà extension vừa soạn ra.
+    # Thứ tự bắt buộc: ~45s (extension) < 60s (trang máy-thợ) < 75s (đây).
+    "RS_TEMU": 75.0,
     "RS_FB_ADLIB": BATCH_TIMEOUT_S,
     # Kalodata (TikTok Shop): tối đa 3 trang API × (~2s + nghỉ 0,9s), cộng mở tab kalodata.com
     # dự phòng (tới 15s) khi cookie không đi thẳng được từ service worker.
     # Thứ tự bắt buộc: ~30s (extension) < 60s (trang máy-thợ) < 75s (đây).
     "RS_KD_PRODUCT": 75.0,
     "RS_KD_VIDEO": 75.0,
+    # Một GET nhanh (link video), nhưng có thể mở tab kalodata.com dự phòng (~15s).
+    "RS_KD_VIDEO_URL": 45.0,
 }
 
 
@@ -187,6 +194,9 @@ ALLOWED_TYPES = {
     # Phiên kalodata.com nằm trong trình duyệt-thợ; mỗi trang `searchList` trừ credit của gói,
     # nên `research.js` tự cache 12 giờ và giới hạn số trang.
     "RS_KD_PRODUCT", "RS_KD_VIDEO", "RS_KD_STATUS",
+    # Link phát của MỘT video Kalodata (`/video/detail/getVideoUrl`). KHÔNG trừ credit — chỉ hỏi
+    # khi người dùng bấm ▶ để xem video bằng link Kalodata (xem được), thay link tiktok.com/embed.
+    "RS_KD_VIDEO_URL",
     # Tiện ích: ping, đọc cookie (kiểm tra đăng nhập), fetch, tìm tương tự, giá vốn
     "RS_PING", "RS_COOKIE", "RS_FETCH", "RS_FIND_SIMILAR", "RS_COST_BATCH",
 }

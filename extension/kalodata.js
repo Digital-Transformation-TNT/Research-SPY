@@ -245,3 +245,20 @@ async function kdStatus() {
   if (!got.error) return { loggedIn: true, via: got.via };
   return { loggedIn: got.auth ? false : null, via: got.via, error: got.error };
 }
+
+/**
+ * Link PHÁT của một video, lấy TỪ CHÍNH KALODATA — đây là link Kalodata dùng để phát ngay trên
+ * trang họ, xem được, khác với link `tiktok.com/@x/video/{id}` (bị TikTok đá về trang chung).
+ *
+ * `getVideoUrl` là GET (`?videoId=`), gửi POST là 404 câm. KHÔNG suy được từ id như ảnh cover
+ * (đã thử `.mp4` cùng thư mục cover → 404). KHÔNG thuộc nhóm route bị trừ credit (chỉ các route
+ * dạng queryList mới trừ) — xem `docs/kalodata-api.md`. `code 1053` = video đã gỡ/riêng tư.
+ */
+async function kdVideoUrl(videoId) {
+  const id = String(videoId || '').trim();
+  if (!id) return { url: null, error: 'thiếu videoId' };
+  const got = await kdSend('/video/detail/getVideoUrl?videoId=' + encodeURIComponent(id), 'GET', null);
+  if (got.error) return { url: null, error: got.error, auth: got.auth };
+  const url = got.data && got.data.url;
+  return url ? { url } : { url: null, error: 'Kalodata không trả link cho video này' };
+}

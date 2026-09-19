@@ -1680,22 +1680,29 @@ async function searchTemu(keyword, count) {
     await sleep(1500); // để React mount xong ô search
 
     // Cài hook bắt /poppy/v1/search (có goods) + KÍCH HOẠT tìm kiếm: set value ô input rồi Enter (React-friendly).
-    await chrome.scripting.executeScript({
+    //
+    // HẠN GIỜ BẮT BUỘC: `executeScript` không tự có hạn, trang Temu treo là job treo theo và không
+    // bước kiểm ngân sách nào phía sau chạy tới được (đúng lỗi `temu.test.js` giữ cho gợi ý từ khoá).
+    await withTimeout(chrome.scripting.executeScript({
       target: { tabId: tab.id }, world: 'MAIN', args: [keyword],
       func: (kw) => {
         if (!window.__rsTemuCap) {
           window.__rsTemuCap = [];
+          // MÃ HTTP của lượt tìm gần nhất. Đo 2026-09-15 từ phiên CHƯA đăng nhập: trang vẫn gọi đúng
+          // `/api/poppy/v1/search` nhưng nhận 403 rồi mới chuyển sang login.html. Không ghi mã này thì
+          // lúc trang không kịp chuyển, job ngồi chờ hết 18s và báo sai nguyên nhân.
+          window.__rsTemuStatus = 0;
           const hit = (t) => /goods_list|goods_id|goodsList|goodsId/.test(t);
           const of = window.fetch;
           window.fetch = function () {
             const u = typeof arguments[0] === 'string' ? arguments[0] : (arguments[0] && arguments[0].url) || '';
             const p = of.apply(this, arguments);
-            if (/poppy\/v1.*search/.test(u)) p.then((r) => { try { r.clone().text().then((t) => { if (hit(t)) window.__rsTemuCap.push(t); }); } catch (e) {} }).catch(() => {});
+            if (/poppy\/v1.*search/.test(u)) p.then((r) => { try { window.__rsTemuStatus = r.status; r.clone().text().then((t) => { if (hit(t)) window.__rsTemuCap.push(t); }); } catch (e) {} }).catch(() => {});
             return p;
           };
           const X = window.XMLHttpRequest, oo = X.prototype.open, os = X.prototype.send;
           X.prototype.open = function (m, u) { this.__u = u; return oo.apply(this, arguments); };
-          X.prototype.send = function () { const self = this; this.addEventListener('load', function () { try { if (/poppy\/v1.*search/.test(self.__u) && hit(self.responseText)) window.__rsTemuCap.push(self.responseText); } catch (e) {} }); return os.apply(this, arguments); };
+          X.prototype.send = function () { const self = this; this.addEventListener('load', function () { try { if (/poppy\/v1.*search/.test(self.__u)) { window.__rsTemuStatus = self.status; if (hit(self.responseText)) window.__rsTemuCap.push(self.responseText); } } catch (e) {} }); return os.apply(this, arguments); };
         }
         // Gõ vào ô search + Enter để trang tự gọi API sản phẩm (dùng native setter cho React).
         try {
@@ -1710,25 +1717,36 @@ async function searchTemu(keyword, count) {
         } catch (e) {}
         return true;
       },
-    });
+    }), 5000, null);
 
     // Đợi hook chộp được response sản phẩm (do mount hoặc do lần gõ Enter ở trên).
     const deadline = Date.now() + 18000;
     let texts = [];
+    let status = 0;
     while (Date.now() < deadline) {
       await sleep(800);
-      let r = null;
-      try {
-        const out = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: () => ({ a: window.__rsTemuCap || [], b: (window.__rsCap || []).filter((c) => /poppy\/v1.*search/.test(c.url) && /goods_list|goods_id/.test(c.text)).map((c) => c.text), href: location.href }) });
-        r = out && out[0] && out[0].result;
-      } catch (e) {}
+      // Mỗi lượt dò cũng có hạn — cùng lý do như lúc cài hook ở trên.
+      const out = await withTimeout(chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: () => ({ a: window.__rsTemuCap || [], b: (window.__rsCap || []).filter((c) => /poppy\/v1.*search/.test(c.url) && /goods_list|goods_id/.test(c.text)).map((c) => c.text), href: location.href, s: window.__rsTemuStatus || 0 }) }), 4000, null);
+      const r = out && out[0] && out[0].result;
       if (r) {
-        if (/login\.html/.test(r.href)) { await focusTab(tab.id); return { items: [], blocked: true, error: 'chưa đăng nhập — đã mở tab Temu, đăng nhập xong rồi bấm Research lại' }; }
+        status = r.s || status;
         const got = (r.a || []).concat(r.b || []);
         if (got.length) { texts = got; break; }
+        // TEMU CHẶN TÌM KIẾM KHI CHƯA ĐĂNG NHẬP: API trả 401/403 rồi trang mới chuyển sang
+        // login.html (đo 2026-09-15). Bắt dấu hiệu nào tới trước, và nói thẳng đó là đăng nhập —
+        // câu cũ "gõ search 1 lần trong tab" đẩy người dùng đi sửa sai chỗ.
+        if (/login\.html/.test(r.href) || r.s === 401 || r.s === 403) {
+          await focusTab(tab.id);
+          const why = r.s === 401 || r.s === 403 ? 'tìm kiếm trả HTTP ' + r.s : 'bị chuyển sang trang đăng nhập';
+          return { items: [], blocked: true, error: 'Temu đòi đăng nhập (' + why + ') — đăng nhập temu.com trong Chrome chạy extension rồi bấm Research lại' };
+        }
       }
     }
-    if (!texts.length) { await focusTab(tab.id); return { items: [], blocked: true, error: 'chưa bắt được lưới SP — đã mở tab, gõ search 1 lần trong tab Temu rồi bấm Research lại' }; }
+    if (!texts.length) {
+      await focusTab(tab.id);
+      const why = status ? 'Temu trả HTTP ' + status + ' nhưng không có lưới SP' : 'chưa bắt được lưới SP';
+      return { items: [], blocked: true, error: why + ' — đã mở tab Temu, kiểm tra tab đó (đăng nhập / xác minh) rồi bấm Research lại' };
+    }
     let items = parseTemuTexts(texts, count);
 
     // LẤY THÊM TRANG CHO ĐỦ `count`. Temu chỉ trả ~40 SP một trang và tải trang kế khi CUỘN tới đáy
@@ -3665,6 +3683,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     withHeartbeat(kdStatus())
       .then((r) => sendResponse({ ok: true, ...r }))
       .catch((e) => sendResponse({ ok: true, loggedIn: null, error: String(e) }));
+    return true;
+  }
+
+  // Link PHÁT của một video Kalodata (không tốn credit). Gọi khi người dùng bấm xem một video.
+  if (msg.type === 'RS_KD_VIDEO_URL') {
+    withHeartbeat(kdVideoUrl(msg.videoId))
+      .then((r) => sendResponse({ ok: true, ...r }))
+      .catch((e) => sendResponse({ ok: true, url: null, error: String(e) }));
     return true;
   }
 
