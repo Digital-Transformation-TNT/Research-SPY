@@ -390,6 +390,8 @@ export default function KeywordResearch({
       // "handbag" ở thị trường Philippines trong khi bảng vẫn liệt kê "móc khóa" tiếng Việt.
       setResult(null)
       setResultWindow(null)
+      // Mốc bắt đầu để đo độ trễ "bấm tìm → ra kết quả".
+      const t0 = performance.now()
       try {
         // Không gửi `depth`, `includeInformational` hay `limit`: backend đã cố định 30 dòng
         // và tự chọn độ sâu. Ba tham số đó từng có nút riêng trên giao diện, nhưng chúng
@@ -409,6 +411,7 @@ export default function KeywordResearch({
         // Chạy RA KẾT QUẢ = thành công (kể cả 0 từ khoá — không phải lỗi). Ghi sau khi có phản hồi.
         trackTask('keywords', 'keyword_search', {
           status: 'ok',
+          durationMs: Math.round(performance.now() - t0),
           results: found.keywords.length,
           keyword: seed.trim(),
           platforms: selected,
@@ -426,7 +429,12 @@ export default function KeywordResearch({
         setResult(null)
         setResultWindow(null)
         // Lỗi thật (backend chết, mạng…) = FAIL của lượt chạy.
-        trackTask('keywords', 'keyword_search', { status: 'error', error: msg, keyword: seed.trim() })
+        trackTask('keywords', 'keyword_search', {
+          status: 'error',
+          durationMs: Math.round(performance.now() - t0),
+          error: msg,
+          keyword: seed.trim(),
+        })
       } finally {
         setLoading(false)
       }

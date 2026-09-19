@@ -1522,6 +1522,7 @@ async function translateForRegions(keyword, regions) {
 }
 
 async function research() {
+  const t0 = performance.now();  // mốc đo độ trễ "bấm tìm → ra kết quả"
   const keywords = $('kw').value.split(',').map((s) => s.trim()).filter(Boolean);
   const count = Number($('count').value);
   const activePf = [...selectedPlatforms].filter((p) => PLATFORMS[p]?.active);
@@ -1607,6 +1608,7 @@ async function research() {
   rsTrackAds('ads_search', {
     status: backendDown ? 'error' : 'ok',
     error: backendDown ? 'không gọi được backend' : undefined,
+    durationMs: Math.round(performance.now() - t0),
     results: all.length,
     keyword: keywords.join(', '),
     platforms: activePf,
@@ -1952,6 +1954,7 @@ async function openCostModal(p) {
   $('costModal').classList.add('on');
   setCostStatus('Đang tìm giá vốn trên 1688 theo ảnh…');
 
+  const t0 = performance.now();
   const res = await fetch1688Offers(p.img, p.name);
   if (my !== costToken) return; // user đã mở dòng khác trong lúc chờ → bỏ kết quả cũ
   // Đo lượt tra giá vốn: chỉ FAIL khi lỗi thật (không tải được ảnh, backend lỗi). 1688 không có
@@ -1959,6 +1962,7 @@ async function openCostModal(p) {
   rsTrackAds('cost_lookup', {
     status: res.failed ? 'error' : 'ok',
     error: res.failed ? res.error : undefined,
+    durationMs: Math.round(performance.now() - t0),
     results: res.offers.length,
   });
   if (!res.offers.length) { setCostStatus(res.error || '1688 không tìm thấy hàng khớp ảnh này.', 'err'); return; }
@@ -2309,23 +2313,24 @@ async function openVideoModal(p) {
   else params.set('keyword', ($('kw') && $('kw').value || '').trim());
 
   let data;
+  const t0 = performance.now();
   try {
     const r = await fetch(`${BACKEND}/api/ads/search?${params.toString()}`);
     data = await r.json();
     if (my !== vidToken) return; // đã mở modal khác → bỏ kết quả cũ
     if (!r.ok) {
-      rsTrackAds('video_result', { status: 'error', error: (data && data.error) || 'HTTP lỗi' });
+      rsTrackAds('video_result', { status: 'error', durationMs: Math.round(performance.now() - t0), error: (data && data.error) || 'HTTP lỗi' });
       setVidStatus((data && data.error) || 'Chưa lấy được dữ liệu — thử lại sau ít phút.', 'err');
       return;
     }
   } catch (e) {
     if (my !== vidToken) return;
-    rsTrackAds('video_result', { status: 'error', error: e.message });
+    rsTrackAds('video_result', { status: 'error', durationMs: Math.round(performance.now() - t0), error: e.message });
     setVidStatus('Chưa lấy được video quảng cáo — thử lại sau ít phút.', 'err');
     return;
   }
   // Có phản hồi = ra kết quả (kể cả 0 video — không phải lỗi).
-  rsTrackAds('video_result', { status: 'ok', results: (data.ads || []).length });
+  rsTrackAds('video_result', { status: 'ok', durationMs: Math.round(performance.now() - t0), results: (data.ads || []).length });
 
   // `tiktokvideo`/`douyinvideo` LÀ TikTok và Douyin, chỉ khác đường tìm. Đổi tên nguồn NGAY TẠI
   // ĐÂY để mọi thứ phía sau — chip lọc, `vidMerge`, player nhúng — thấy đúng một nền tảng.

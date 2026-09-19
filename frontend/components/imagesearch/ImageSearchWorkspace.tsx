@@ -744,6 +744,7 @@ export default function ImageSearchWorkspace() {
     setVnNotice('')
     setVnStatus('')
     setLoading(true)
+    const t0 = performance.now()
     try {
       const form = new FormData()
       form.append('file', file)
@@ -754,13 +755,19 @@ export default function ImageSearchWorkspace() {
       // Chạy RA KẾT QUẢ = thành công (kể cả không match được gì — không phải lỗi).
       trackTask('image', 'image_upload', {
         status: 'ok',
+        durationMs: Math.round(performance.now() - t0),
         results: found.matches?.length ?? 0,
         sources: chosen,
       })
     } catch (e) {
       const msg = (e as Error).message
       setError(msg)
-      trackTask('image', 'image_upload', { status: 'error', error: msg, sources: chosen })
+      trackTask('image', 'image_upload', {
+        status: 'error',
+        durationMs: Math.round(performance.now() - t0),
+        error: msg,
+        sources: chosen,
+      })
     } finally {
       setLoading(false)
     }

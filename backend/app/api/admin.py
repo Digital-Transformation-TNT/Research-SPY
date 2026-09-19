@@ -473,21 +473,22 @@ async def stats(request: Request, period: str = "week") -> JSONResponse:
         # "Thành công" = lượt chạy RA KẾT QUẢ (không lỗi) — CÙNG định nghĩa với bảng theo nhân sự
         # (`_run_failed`). Trước đây KPI này đo "user vừa search vừa bấm link", nên một người
         # search ra kết quả nhưng không bấm sản phẩm bị tính 0% — lệch hẳn bảng bên dưới.
-        ok_runs = sum(1 for ev in searches if not _run_failed(ev.get("meta") or {}))
-        success_rate = round(100 * ok_runs / len(searches)) if searches else 0
-        # Thời gian trung bình 1 task: lấy từ meta của event 'session_end' nếu có.
-        session_ends = [ev for ev in events if ev.get("event_type") == "session_end"]
-        durations = [ev.get("meta", {}).get("durationSec", 0) for ev in session_ends]
-        durations = [d for d in durations if isinstance(d, (int, float)) and d > 0]
-        avg_time_min = round(sum(durations) / len(durations) / 60, 1) if durations else None
-        # Hours saved: baseline 30 phút thủ công vs actual time. Tổng theo số task hoàn tất.
-        hours_saved = round(len(session_ends) * (30 - (avg_time_min or 30)) / 60) if avg_time_min else 0
+        ok = [ev for ev in searches if not _run_failed(ev.get("meta") or {})]
+        success_rate = round(100 * len(ok) / len(searches)) if searches else 0
+        # THỜI GIAN TB / TASK = độ trễ MỖI LƯỢT CHẠY (bấm tìm → ra kết quả), lấy từ
+        # `meta.durationMs` của lượt chạy OK. TRƯỚC ĐÂY lấy nhầm `session_end.durationSec` (thời
+        # lượng cả phiên mở web) nên ra vài phút; một lượt search thực tế chỉ vài–vài chục giây.
+        run_ms = [
+            (ev.get("meta") or {}).get("durationMs")
+            for ev in ok
+        ]
+        run_ms = [d for d in run_ms if isinstance(d, (int, float)) and d > 0]
+        avg_time_sec = round(sum(run_ms) / len(run_ms) / 1000, 1) if run_ms else None
         return {
             "wau": len(users),
             "search_count": len(searches),
             "task_success_rate": success_rate,
-            "avg_time_min": avg_time_min,
-            "hours_saved": max(0, hours_saved),
+            "avg_time_sec": avg_time_sec,
         }
 
     curr = _kpi(_events_between(supa, curr_start, now))
@@ -510,8 +511,7 @@ async def stats(request: Request, period: str = "week") -> JSONResponse:
         "trends": {
             "wau": _trend(curr["wau"], prev["wau"]),
             "task_success_rate": _trend(curr["task_success_rate"], prev["task_success_rate"]),
-            "avg_time_min": _trend(prev["avg_time_min"], curr["avg_time_min"]),  # ít hơn = tốt hơn → đảo
-            "hours_saved": _trend(curr["hours_saved"], prev["hours_saved"]),
+            "avg_time_sec": _trend(prev["avg_time_sec"], curr["avg_time_sec"]),  # nhanh hơn = tốt hơn → đảo
         },
     })
 

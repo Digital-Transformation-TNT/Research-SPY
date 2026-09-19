@@ -196,6 +196,7 @@ export default function OpportunityWorkspace({ hub = false }: { hub?: boolean } 
             },
       )
 
+      const t0 = performance.now()
       try {
         const answer = hub
           ? await browserPostJson<Answer>('/api/hub/signal/ask', { messages })
@@ -204,13 +205,21 @@ export default function OpportunityWorkspace({ hub = false }: { hub?: boolean } 
         history.current = next
         setTurns(next)
         // Có câu trả lời = thành công (dù ít hay nhiều gợi ý).
-        trackTask(feature, 'ai_ask', { status: 'ok', turns: asked.length })
+        trackTask(feature, 'ai_ask', {
+          status: 'ok',
+          durationMs: Math.round(performance.now() - t0),
+          turns: asked.length,
+        })
       } catch (failure) {
         // Câu vừa hỏi ở lại trên màn hình. Nuốt nó đi cùng lỗi sẽ buộc người dùng gõ lại
         // nguyên câu, và đó là thứ họ vừa mất công viết nhất.
         const msg = (failure as Error).message
         setError(msg)
-        trackTask(feature, 'ai_ask', { status: 'error', error: msg })
+        trackTask(feature, 'ai_ask', {
+          status: 'error',
+          durationMs: Math.round(performance.now() - t0),
+          error: msg,
+        })
       } finally {
         setLoading(false)
       }

@@ -140,6 +140,13 @@ function fmtWhen(iso?: string | null) {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
+/** Độ trễ một lượt chạy: giây (mặc định), đổi sang phút khi ≥60s. */
+function fmtDur(sec: any) {
+  if (typeof sec !== 'number' || !isFinite(sec)) return '—'
+  if (sec < 60) return `${sec.toFixed(1).replace('.', ',')} giây`
+  return `${(sec / 60).toFixed(1).replace('.', ',')} phút`
+}
+
 function fmtCompact(n: any) {
   if (typeof n !== 'number' || !isFinite(n)) return '—'
   if (n < 1000) return String(n)
@@ -634,16 +641,11 @@ Lý do (owner sẽ đọc):`,
                 </div>
                 <div className={s.kpiCard}>
                   <div className={s.kpiLabel}>Thời gian TB / task</div>
-                  <div className={s.kpiValue}>{stats.current.avg_time_min != null ? stats.current.avg_time_min + ' phút' : '—'}</div>
-                  <Delta curr={stats.current.avg_time_min} prev={stats.previous.avg_time_min} trend={stats.trends?.avg_time_min} invert />
+                  <div className={s.kpiValue}>{fmtDur(stats.current.avg_time_sec)}</div>
+                  <Delta curr={stats.current.avg_time_sec} prev={stats.previous.avg_time_sec} trend={stats.trends?.avg_time_sec} invert />
                 </div>
                 <div className={s.kpiCard}>
-                  <div className={s.kpiLabel}>Giờ tiết kiệm</div>
-                  <div className={s.kpiValue}>{fmtCompact(stats.current.hours_saved)} h</div>
-                  <Delta curr={stats.current.hours_saved} prev={stats.previous.hours_saved} trend={stats.trends?.hours_saved} />
-                </div>
-                <div className={s.kpiCard}>
-                  <div className={s.kpiLabel}>Số lượt search</div>
+                  <div className={s.kpiLabel}>Số lượt chạy</div>
                   <div className={s.kpiValue}>{fmtCompact(stats.current.search_count)}</div>
                   <div className={s.kpiDelta}>kỳ trước: {fmtCompact(stats.previous.search_count)}</div>
                 </div>
@@ -767,9 +769,9 @@ Lý do (owner sẽ đọc):`,
             <ul className={s.notes}>
               <li><b>WAU</b>: số user riêng biệt hoạt động trong kỳ.</li>
               <li><b>Task Success Rate</b>: % lượt chạy tool ra kết quả (không lỗi) — cùng cách tính với bảng “Theo nhân sự”.</li>
-              <li><b>Thời gian trung bình/task</b>: từ event <code>session_end</code>, đơn vị phút.</li>
-              <li><b>Giờ tiết kiệm</b>: baseline 30 phút thủ công × số task hoàn tất − thời gian thực tế.</li>
-              <li><b>Trend</b>: so với kỳ trước ±5%. Thời gian ít hơn là ↑ tốt (đảo dấu).</li>
+              <li><b>Thời gian TB / task</b>: độ trễ mỗi lượt chạy — từ lúc bấm tìm/chạy đến khi ra kết quả (<code>durationMs</code>), tính bằng giây.</li>
+              <li><b>Số lượt chạy</b>: tổng số lần chạy tool (search từ khoá/quảng cáo, tra ảnh, hỏi AI, xem Trend, tra giá vốn, lấy video).</li>
+              <li><b>Trend</b>: so với kỳ trước ±5%. Thời gian nhanh hơn là ↑ tốt (đảo dấu).</li>
               <li><b>Theo nhân sự / theo tool</b>: <b>%success = % lượt chạy RA KẾT QUẢ</b> (kể cả sàn không có dữ liệu). Chỉ tính <b>Lỗi</b> khi có sự cố thật: lag/giật, không truy cập được, backend chết. <b>Link ngoài</b> chỉ đo độ sâu (bấm sang sàn), không quyết định thành công.</li>
             </ul>
           </div>

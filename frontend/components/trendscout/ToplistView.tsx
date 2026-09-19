@@ -37,17 +37,18 @@ export default function ToplistView({
     // loại tiền đứng cạnh nhau trên màn hình với một nhãn sàn sai.
     setData(null)
     setError(null)
+    const t0 = performance.now()
     browserGet<Toplist>(`/api/hub/scout/toplist?san=${encodeURIComponent(san)}&loai=${loai}`)
       .then((d) => {
         if (!live) return
         setData(d)
         // Tải ra bảng = một lượt chạy thành công (kể cả bảng ngắn — không phải lỗi).
-        trackTask('trend-signal', 'trend_view', { status: 'ok', view: 'toplist', san, results: d.items?.length ?? 0 })
+        trackTask('trend-signal', 'trend_view', { status: 'ok', durationMs: Math.round(performance.now() - t0), view: 'toplist', san, results: d.items?.length ?? 0 })
       })
       .catch((e: Error) => {
         if (!live) return
         setError(e.message)
-        trackTask('trend-signal', 'trend_view', { status: 'error', view: 'toplist', san, error: e.message })
+        trackTask('trend-signal', 'trend_view', { status: 'error', durationMs: Math.round(performance.now() - t0), view: 'toplist', san, error: e.message })
       })
     return () => {
       live = false
