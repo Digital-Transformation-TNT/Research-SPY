@@ -766,7 +766,7 @@ Lý do (owner sẽ đọc):`,
             <h2>Ghi chú</h2>
             <ul className={s.notes}>
               <li><b>WAU</b>: số user riêng biệt hoạt động trong kỳ.</li>
-              <li><b>Task Success Rate</b>: % user vừa search vừa có click (product/video) — đo xấp xỉ.</li>
+              <li><b>Task Success Rate</b>: % lượt chạy tool ra kết quả (không lỗi) — cùng cách tính với bảng “Theo nhân sự”.</li>
               <li><b>Thời gian trung bình/task</b>: từ event <code>session_end</code>, đơn vị phút.</li>
               <li><b>Giờ tiết kiệm</b>: baseline 30 phút thủ công × số task hoàn tất − thời gian thực tế.</li>
               <li><b>Trend</b>: so với kỳ trước ±5%. Thời gian ít hơn là ↑ tốt (đảo dấu).</li>

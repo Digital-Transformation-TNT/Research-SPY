@@ -470,12 +470,11 @@ async def stats(request: Request, period: str = "week") -> JSONResponse:
     def _kpi(events: list[dict]) -> dict:
         users = {ev["user_id"] for ev in events if ev.get("user_id")}
         searches = [ev for ev in events if ev.get("event_type") in _RUN_EVENTS]
-        clicks = [ev for ev in events if ev.get("event_type") in _LINK_EVENTS]
-        # Search "thành công" = có ≥1 click cùng user trong 15 phút sau đó. Xấp xỉ: đếm số user
-        # có cả search và click.
-        users_with_search = {ev["user_id"] for ev in searches if ev.get("user_id")}
-        users_with_click = {ev["user_id"] for ev in clicks if ev.get("user_id")}
-        success_rate = round(100 * len(users_with_click & users_with_search) / max(1, len(users_with_search)))
+        # "Thành công" = lượt chạy RA KẾT QUẢ (không lỗi) — CÙNG định nghĩa với bảng theo nhân sự
+        # (`_run_failed`). Trước đây KPI này đo "user vừa search vừa bấm link", nên một người
+        # search ra kết quả nhưng không bấm sản phẩm bị tính 0% — lệch hẳn bảng bên dưới.
+        ok_runs = sum(1 for ev in searches if not _run_failed(ev.get("meta") or {}))
+        success_rate = round(100 * ok_runs / len(searches)) if searches else 0
         # Thời gian trung bình 1 task: lấy từ meta của event 'session_end' nếu có.
         session_ends = [ev for ev in events if ev.get("event_type") == "session_end"]
         durations = [ev.get("meta", {}).get("durationSec", 0) for ev in session_ends]
