@@ -421,3 +421,11 @@
 .actLabel {
   flex: 1;
 }
+
+/* Lượt chạy bị lỗi trong timeline: chấm đỏ + nhãn đỏ, đè lên màu theo loại event. */
+.actItem[data-error='1'] .actDot {
+  background: var(--bad);
+}
+.actItem[data-error='1'] .actLabel {
+  color: var(--bad);
+}

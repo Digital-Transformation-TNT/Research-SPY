@@ -38,8 +38,17 @@ export default function ToplistView({
     setData(null)
     setError(null)
     browserGet<Toplist>(`/api/hub/scout/toplist?san=${encodeURIComponent(san)}&loai=${loai}`)
-      .then((d) => live && setData(d))
-      .catch((e: Error) => live && setError(e.message))
+      .then((d) => {
+        if (!live) return
+        setData(d)
+        // Tải ra bảng = một lượt chạy thành công (kể cả bảng ngắn — không phải lỗi).
+        trackTask('trend-signal', 'trend_view', { status: 'ok', view: 'toplist', san, results: d.items?.length ?? 0 })
+      })
+      .catch((e: Error) => {
+        if (!live) return
+        setError(e.message)
+        trackTask('trend-signal', 'trend_view', { status: 'error', view: 'toplist', san, error: e.message })
+      })
     return () => {
       live = false
     }

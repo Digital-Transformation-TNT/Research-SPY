@@ -43,30 +43,31 @@ type UserStat = {
   bu?: string
   role?: string
   runs: number
+  errs: number
+  ok: number
+  success_rate: number | null
   links: number
   tasks: number
-  success: number
-  success_rate: number | null
-  links_per_task: number
   sessions: number
   avg_session_min: number | null
   last_active?: string | null
 }
 type ToolStat = {
   feature: string
-  tasks: number
-  success: number
+  runs: number
+  errs: number
+  ok: number
   success_rate: number | null
   links: number
-  runs: number
+  tasks: number
 }
 type ByUser = {
   users: UserStat[]
   tools: ToolStat[]
-  anon: { runs: number; links: number; tasks: number; sessions: number } | null
+  anon: { runs: number; errs: number; links: number; sessions: number } | null
 }
 
-type ActEvent = { ts?: string; event_type: string; feature?: string | null; label: string }
+type ActEvent = { ts?: string; event_type: string; feature?: string | null; label: string; error?: boolean }
 type ActSession = {
   session_id: string
   device?: string | null
@@ -76,6 +77,7 @@ type ActSession = {
   ended?: string | null
   links: number
   runs: number
+  errs?: number
   events: ActEvent[]
 }
 type Activity = { loading: boolean; error?: string; sessions?: ActSession[]; truncated?: boolean }
@@ -192,7 +194,9 @@ function UserActivity({ act, s }: { act?: Activity; s: Record<string, string> })
             <span className={s.sub}>
               {se.device || '—'}
               {se.duration_sec ? ` · ${Math.round(se.duration_sec / 60)}′` : ''}
-              {` · ${se.runs} chạy · ${se.links} link`}
+              {` · ${se.runs} chạy`}
+              {se.errs ? ` · ${se.errs} lỗi` : ''}
+              {` · ${se.links} link`}
               {se.tools_used && se.tools_used.length
                 ? ` · ${se.tools_used.map(toolLabel).join(', ')}`
                 : ''}
@@ -200,7 +204,7 @@ function UserActivity({ act, s }: { act?: Activity; s: Record<string, string> })
           </div>
           <ol className={s.actList}>
             {se.events.map((e, i) => (
-              <li key={i} className={s.actItem} data-kind={e.event_type}>
+              <li key={i} className={s.actItem} data-kind={e.event_type} data-error={e.error ? '1' : undefined}>
                 <span className={s.actTime}>{fmtWhen(e.ts).split(' ')[1] || ''}</span>
                 <span className={s.actDot} />
                 <span className={s.actLabel}>{e.label}</span>
@@ -663,11 +667,10 @@ Lý do (owner sẽ đọc):`,
                     <th></th>
                     <th>Người dùng</th>
                     <th>BU</th>
-                    <th title="Số lần chạy tool: search từ khoá/quảng cáo, tra ảnh, hỏi AI">Chạy</th>
-                    <th title="Link ra ngoài: product_click + video_open + image_result_click">Link ngoài</th>
-                    <th title="Số task (mỗi lần mở một tool)">Task</th>
-                    <th title="% task có ra ít nhất 1 link ngoài — dùng tool có hiệu quả không">%success</th>
-                    <th title="Trung bình số link ngoài mỗi task — research sâu tới đâu">Link/task</th>
+                    <th title="Số lần chạy tool: search từ khoá/quảng cáo, tra ảnh, hỏi AI, xem Trend">Chạy</th>
+                    <th title="Số lần chạy bị lỗi (lag/giật, không truy cập được). Sàn trả 0 dữ liệu KHÔNG tính lỗi">Lỗi</th>
+                    <th title="% lượt chạy ra kết quả (không lỗi)">%success</th>
+                    <th title="Link ra ngoài: product_click + video_open + image_result_click — đo độ sâu research">Link ngoài</th>
                     <th title="Thời gian trung bình mỗi phiên">TB phiên</th>
                     <th>Hoạt động gần nhất</th>
                   </tr>
@@ -690,8 +693,7 @@ Lý do (owner sẽ đọc):`,
                           </td>
                           <td>{u.bu || '—'}</td>
                           <td>{fmtCompact(u.runs)}</td>
-                          <td>{fmtCompact(u.links)}</td>
-                          <td>{u.tasks}</td>
+                          <td>{u.errs ? <span className={s.rateBad}>{fmtCompact(u.errs)}</span> : 0}</td>
                           <td>
                             {u.success_rate == null ? (
                               '—'
@@ -699,13 +701,13 @@ Lý do (owner sẽ đọc):`,
                               <span className={rateClass(u.success_rate, s)}>{u.success_rate}%</span>
                             )}
                           </td>
-                          <td>{u.links_per_task}</td>
+                          <td>{fmtCompact(u.links)}</td>
                           <td>{u.avg_session_min != null ? `${u.avg_session_min}′` : '—'}</td>
                           <td>{fmtDate(u.last_active || undefined)}</td>
                         </tr>
                         {open && (
                           <tr className={s.actRow}>
-                            <td colSpan={10}>
+                            <td colSpan={9}>
                               <UserActivity act={act} s={s} />
                             </td>
                           </tr>
@@ -719,9 +721,8 @@ Lý do (owner sẽ đọc):`,
             {byUser?.anon && (byUser.anon.runs > 0 || byUser.anon.links > 0) && (
               <p className={`${s.sub} ${s.anonNote}`}>
                 ⚠️ Ẩn danh (chưa quy được về người): {fmtCompact(byUser.anon.runs)} lượt chạy ·{' '}
-                {fmtCompact(byUser.anon.links)} link · {byUser.anon.tasks} task. Event không có vé
-                nay đã bị chặn ghi — còn thấy dòng này là sót hiếm (vé hết hạn ngay lúc bấm) hoặc
-                dữ liệu cũ.
+                {fmtCompact(byUser.anon.links)} link. Event không có vé nay đã bị chặn ghi — còn thấy
+                dòng này là sót hiếm (vé hết hạn ngay lúc bấm) hoặc dữ liệu cũ.
               </p>
             )}
           </div>
@@ -734,19 +735,18 @@ Lý do (owner sẽ đọc):`,
                 <thead>
                   <tr>
                     <th>Tool</th>
-                    <th>Task</th>
-                    <th title="Số task có ≥1 link ngoài">Thành công</th>
-                    <th>%success</th>
-                    <th>Link ngoài</th>
-                    <th title="Trung bình link mỗi task">Link/task</th>
+                    <th title="Số lượt chạy tool">Chạy</th>
+                    <th title="Số lượt lỗi (không truy cập được / lag)">Lỗi</th>
+                    <th title="% lượt chạy ra kết quả (không lỗi)">%success</th>
+                    <th title="Link ra ngoài — độ sâu research">Link ngoài</th>
                   </tr>
                 </thead>
                 <tbody>
                   {byUser.tools.map((t) => (
                     <tr key={t.feature}>
                       <td><b>{toolLabel(t.feature)}</b></td>
-                      <td>{t.tasks}</td>
-                      <td>{t.success}</td>
+                      <td>{fmtCompact(t.runs)}</td>
+                      <td>{t.errs ? <span className={s.rateBad}>{fmtCompact(t.errs)}</span> : 0}</td>
                       <td>
                         {t.success_rate == null ? (
                           '—'
@@ -755,7 +755,6 @@ Lý do (owner sẽ đọc):`,
                         )}
                       </td>
                       <td>{fmtCompact(t.links)}</td>
-                      <td>{t.tasks ? Math.round((t.links / t.tasks) * 10) / 10 : 0}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -771,7 +770,7 @@ Lý do (owner sẽ đọc):`,
               <li><b>Thời gian trung bình/task</b>: từ event <code>session_end</code>, đơn vị phút.</li>
               <li><b>Giờ tiết kiệm</b>: baseline 30 phút thủ công × số task hoàn tất − thời gian thực tế.</li>
               <li><b>Trend</b>: so với kỳ trước ±5%. Thời gian ít hơn là ↑ tốt (đảo dấu).</li>
-              <li><b>Theo nhân sự / theo tool</b>: một task = một lần mở tool; “thành công” = task có ≥1 link ra ngoài. %success thấp + 0 link = mở tool nhưng chưa ra kết quả (cần hỗ trợ/đào tạo, hoặc tool chưa hợp việc).</li>
+              <li><b>Theo nhân sự / theo tool</b>: <b>%success = % lượt chạy RA KẾT QUẢ</b> (kể cả sàn không có dữ liệu). Chỉ tính <b>Lỗi</b> khi có sự cố thật: lag/giật, không truy cập được, backend chết. <b>Link ngoài</b> chỉ đo độ sâu (bấm sang sàn), không quyết định thành công.</li>
             </ul>
           </div>
         </>

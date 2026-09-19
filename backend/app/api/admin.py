@@ -407,11 +407,20 @@ async def decide_role_request(
 # ("keyword_search", "ads_search"…) để log cũ và log mới cùng cộng được. Khớp
 # `frontend/lib/analytics.ts` và `frontend/public/research/research.js`.
 
-#: "Chạy tool" — đầu một task: search từ khoá/quảng cáo, upload ảnh, hỏi AI.
-_RUN_EVENTS = {"search", "keyword_search", "ads_search", "image_upload", "ai_ask"}
+#: "Chạy tool" — một lượt chạy tool có thể ra kết quả hoặc lỗi (xem `meta.status`).
+_RUN_EVENTS = {"search", "keyword_search", "ads_search", "image_upload", "ai_ask", "trend_view"}
 
-#: "Bấm ra ngoài" — kết quả cuối, đo độ sâu research. Mỗi cái = 1 link.
+#: "Bấm ra ngoài" — đo ĐỘ SÂU research (không còn là thước đo thành công). Mỗi cái = 1 link.
 _LINK_EVENTS = {"product_click", "video_open", "image_result_click", "ai_link_click"}
+
+
+def _run_failed(meta: dict) -> bool:
+    """
+    Một lượt chạy bị coi là FAIL chỉ khi có LỖI THẬT (`meta.status == 'error'`): lag/giật,
+    không truy cập được, backend chết… Sàn trả về 0 dữ liệu KHÔNG phải lỗi — vẫn là chạy ra
+    kết quả. Event cũ (trước khi có `status`) mặc định coi là OK, vì hồi đó chỉ bắn khi thành công.
+    """
+    return (meta or {}).get("status") == "error"
 
 
 def _events_between(supa, start: int, end: int) -> list[dict]:
@@ -519,52 +528,27 @@ def _feature_label(feature: str | None) -> str:
     return feature
 
 
-def _task_success(t: dict) -> bool:
-    """
-    Task thành công hay không — LUẬT KHÁC NHAU THEO TOOL (mục "Định nghĩa thành công").
-
-    Cùng đo bằng một thước ("có ≥1 link ngoài") thì oan cho Keyword: kết quả của Keyword là
-    bắc cầu sang Ads chứ không phải bấm link, nên nó gần như luôn 0 link và sẽ luôn bị tính là
-    thất bại. Vì vậy mỗi tool có mốc riêng:
-
-      - keywords : có keyword_search VÀ (keyword_expand HOẶC keyword_to_ads)
-      - ads      : có ads_search VÀ ≥1 link (product_click / video_open)
-      - oneshot  : có hỏi AI (ai_ask) — câu hỏi chính là kết quả
-      - còn lại  : có ≥1 link ngoài (image_result_click / product_click…)
-    """
-    feat = t.get("feature")
-    ets = t.get("events", set())
-    links = t.get("links", 0)
-    if feat == "keywords":
-        return "keyword_search" in ets and ("keyword_expand" in ets or "keyword_to_ads" in ets)
-    if feat == "ads":
-        return "ads_search" in ets and links >= 1
-    if feat in ("oneshot", "opportunity"):
-        return "ai_ask" in ets
-    return links >= 1
-
-
 def _aggregate_by_user(events: list[dict]) -> dict:
     """
     Gom event thô thành hai bảng: theo NGƯỜI và theo TOOL, cộng phần ẩn danh riêng.
 
-    Ba tầng đo (Session › Task › Event) ráp lại ở đây:
-      - Task gom theo `meta.task_id`; "thành công" tính THEO TỪNG TOOL (xem `_task_success`) —
-        task Keyword thành công khi có search + (expand hoặc bắc cầu sang Ads) DÙ 0 link ngoài,
-        vì kết quả của Keyword là bắc cầu chứ không phải bấm link. Feature lấy từ event có
-        `meta.feature`.
-      - Người gom theo `user_id`; số phiên đếm theo `meta.session_id`, thời gian lấy từ
-        `session_end.durationSec`.
+    ĐO THEO KẾT QUẢ CHẠY (chốt 19/09/2026): mỗi lượt chạy tool (keyword_search, ads_search,
+    image_upload, ai_ask, trend_view) mang `meta.status`. "Thành công" = chạy RA KẾT QUẢ (kể cả
+    sàn không có dữ liệu); "lỗi" = `status == 'error'` (lag/giật, không truy cập được…). Đây KHÔNG
+    còn đo bằng "có bấm link ngoài" nữa — link ngoài giữ lại làm chỉ số độ sâu, cột riêng.
+
+      - Người gom theo `user_id`: đếm chạy (runs) / lỗi (errs) / link ngoài; phiên theo
+        `meta.session_id`; thời gian từ `session_end.durationSec`.
+      - Tool gom theo `meta.feature` (mọi event chạy/bấm link đều mang sẵn feature).
     """
-    # task_id -> {"user", "feature", "links", "runs", "events": set}
-    tasks: dict[str, dict] = {}
-    # user_id (str | None) -> bộ đếm cấp người
     per_user: dict[Any, dict] = {}
+    ttool: dict[str, dict] = {}
 
     def _u(uid: Any) -> dict:
         return per_user.setdefault(
             uid,
-            {"runs": 0, "links": 0, "sessions": set(), "durations": [], "last": ""},
+            {"runs": 0, "errs": 0, "links": 0, "tasks": set(), "sessions": set(),
+             "durations": [], "last": ""},
         )
 
     for ev in events:
@@ -576,11 +560,19 @@ def _aggregate_by_user(events: list[dict]) -> dict:
         feat = meta.get("feature")
         ts = ev.get("ts") or ""
 
+        is_run = et in _RUN_EVENTS
+        is_link = et in _LINK_EVENTS
+        failed = is_run and _run_failed(meta)
+
         u = _u(uid)
-        if et in _RUN_EVENTS:
+        if is_run:
             u["runs"] += 1
-        if et in _LINK_EVENTS:
+            if failed:
+                u["errs"] += 1
+        if is_link:
             u["links"] += 1
+        if (is_run or is_link) and tid:
+            u["tasks"].add(tid)
         if sid:
             u["sessions"].add(sid)
         if et == "session_end":
@@ -590,44 +582,27 @@ def _aggregate_by_user(events: list[dict]) -> dict:
         if ts > u["last"]:
             u["last"] = ts
 
-        if tid:
-            t = tasks.setdefault(
-                tid, {"user": uid, "feature": None, "links": 0, "runs": 0, "events": set()}
+        if feat and (is_run or is_link):
+            g = ttool.setdefault(
+                _feature_label(feat),
+                {"runs": 0, "errs": 0, "links": 0, "tasks": set()},
             )
-            if uid and not t["user"]:
-                t["user"] = uid
-            if feat and not t["feature"]:
-                t["feature"] = feat
-            t["events"].add(et)
-            if et in _RUN_EVENTS:
-                t["runs"] += 1
-            if et in _LINK_EVENTS:
-                t["links"] += 1
+            if is_run:
+                g["runs"] += 1
+                if failed:
+                    g["errs"] += 1
+            if is_link:
+                g["links"] += 1
+            if tid:
+                g["tasks"].add(tid)
 
-    # Gom task về người và về tool. "Thành công" tính theo luật của từng tool.
-    utask: dict[Any, dict] = {}
-    ttool: dict[str, dict] = {}
-    for t in tasks.values():
-        ok = _task_success(t)
-        d = utask.setdefault(t["user"], {"total": 0, "success": 0, "links": 0})
-        d["total"] += 1
-        d["links"] += t["links"]
-        if ok:
-            d["success"] += 1
-
-        f = _feature_label(t["feature"])
-        g = ttool.setdefault(f, {"total": 0, "success": 0, "links": 0, "runs": 0})
-        g["total"] += 1
-        g["links"] += t["links"]
-        g["runs"] += t["runs"]
-        if ok:
-            g["success"] += 1
-
-    return {"per_user": per_user, "utask": utask, "ttool": ttool}
+    return {"per_user": per_user, "ttool": ttool}
 
 
-def _user_row(uid: Any, u: dict, tk: dict, info: dict) -> dict:
-    total = tk.get("total", 0)
+def _user_row(uid: Any, u: dict, info: dict) -> dict:
+    runs = u["runs"]
+    errs = u["errs"]
+    ok = runs - errs
     durations = u["durations"]
     return {
         "user_id": uid,
@@ -635,13 +610,13 @@ def _user_row(uid: Any, u: dict, tk: dict, info: dict) -> dict:
         "email": info.get("email"),
         "bu": info.get("bu"),
         "role": info.get("role"),
-        "runs": u["runs"],
+        "runs": runs,
+        "errs": errs,
+        "ok": ok,
+        # % lượt chạy RA KẾT QUẢ (không lỗi). None khi chưa chạy lần nào.
+        "success_rate": round(100 * ok / runs) if runs else None,
         "links": u["links"],
-        "tasks": total,
-        "success": tk.get("success", 0),
-        # % task có ra link ngoài — dùng tool có hiệu quả không. None khi chưa có task nào.
-        "success_rate": round(100 * tk.get("success", 0) / total) if total else None,
-        "links_per_task": round(tk.get("links", 0) / total, 1) if total else 0,
+        "tasks": len(u["tasks"]),
         "sessions": len(u["sessions"]),
         "avg_session_min": round(sum(durations) / len(durations) / 60, 1) if durations else None,
         "last_active": u["last"] or None,
@@ -675,7 +650,6 @@ async def stats_by_user(request: Request, period: str = "week") -> JSONResponse:
 
     agg = _aggregate_by_user(events)
     per_user = agg["per_user"]
-    utask = agg["utask"]
 
     # JOIN sang bảng users để ra tên + BU. Chỉ hỏi những user thật sự có event trong kỳ.
     uids = [str(uid) for uid in per_user if uid is not None]
@@ -688,7 +662,7 @@ async def stats_by_user(request: Request, period: str = "week") -> JSONResponse:
             umap = {}
 
     users_out = [
-        _user_row(uid, u, utask.get(uid, {}), umap.get(str(uid), {}))
+        _user_row(uid, u, umap.get(str(uid), {}))
         for uid, u in per_user.items()
         if uid is not None
     ]
@@ -697,27 +671,27 @@ async def stats_by_user(request: Request, period: str = "week") -> JSONResponse:
 
     tools_out = []
     for feat, g in agg["ttool"].items():
-        total = g["total"]
+        runs = g["runs"]
+        ok = runs - g["errs"]
         tools_out.append({
             "feature": feat,
-            "tasks": total,
-            "success": g["success"],
-            "success_rate": round(100 * g["success"] / total) if total else None,
+            "runs": runs,
+            "errs": g["errs"],
+            "ok": ok,
+            "success_rate": round(100 * ok / runs) if runs else None,
             "links": g["links"],
-            "runs": g["runs"],
+            "tasks": len(g["tasks"]),
         })
-    tools_out.sort(key=lambda r: r["tasks"], reverse=True)
+    tools_out.sort(key=lambda r: r["runs"], reverse=True)
 
-    # Phần ẩn danh: event login-chưa-ra-JWT → user_id NULL, mất dấu nhân sự. Đưa ra để admin
-    # thấy có bao nhiêu chưa quy được về người (bẫy attribution trong tài liệu).
+    # Phần ẩn danh: event không quy được về người (đã chặn ghi, chỉ còn sót hiếm / dữ liệu cũ).
     anon = per_user.get(None)
-    atk = utask.get(None, {})
     anon_out = None
     if anon:
         anon_out = {
             "runs": anon["runs"],
+            "errs": anon["errs"],
             "links": anon["links"],
-            "tasks": atk.get("total", 0),
             "sessions": len(anon["sessions"]),
         }
 
@@ -775,6 +749,15 @@ def _event_label(et: str, m: dict) -> str:
     return et
 
 
+def _labelled(et: str, m: dict) -> str:
+    """Nhãn + đuôi trạng thái: lượt chạy lỗi thì gắn '— lỗi' để đọc thẳng trên timeline."""
+    base = _event_label(et, m)
+    if et in _RUN_EVENTS and _run_failed(m):
+        reason = (m or {}).get("error")
+        return base + (f" — lỗi: {reason}" if reason else " — lỗi")
+    return base
+
+
 @router.get("/user-activity")
 async def user_activity(request: Request, user_id: str, period: str = "week", limit: int = 400) -> JSONResponse:
     """
@@ -825,7 +808,8 @@ async def user_activity(request: Request, user_id: str, period: str = "week", li
             "ts": ev.get("ts"),
             "event_type": et,
             "feature": meta.get("feature"),
-            "label": _event_label(et, meta),
+            "error": et in _RUN_EVENTS and _run_failed(meta),
+            "label": _labelled(et, meta),
         })
         if et == "session_start" and meta.get("device"):
             se["device"] = meta.get("device")
@@ -845,6 +829,7 @@ async def user_activity(request: Request, user_id: str, period: str = "week", li
         se["ended"] = evs[-1]["ts"] if evs else None
         se["links"] = sum(1 for e in evs if e["event_type"] in _LINK_EVENTS)
         se["runs"] = sum(1 for e in evs if e["event_type"] in _RUN_EVENTS)
+        se["errs"] = sum(1 for e in evs if e.get("error"))
         out.append(se)
 
     return JSONResponse({

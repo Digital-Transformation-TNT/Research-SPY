@@ -203,12 +203,14 @@ export default function OpportunityWorkspace({ hub = false }: { hub?: boolean } 
         const next: Turn[] = [...asked, { role: 'assistant', answer }]
         history.current = next
         setTurns(next)
-        // Đo lượt hỏi AI — "chạy" của tool One-shot. Ghi sau khi có câu trả lời.
-        trackTask(feature, 'ai_ask', { turns: asked.length })
+        // Có câu trả lời = thành công (dù ít hay nhiều gợi ý).
+        trackTask(feature, 'ai_ask', { status: 'ok', turns: asked.length })
       } catch (failure) {
         // Câu vừa hỏi ở lại trên màn hình. Nuốt nó đi cùng lỗi sẽ buộc người dùng gõ lại
         // nguyên câu, và đó là thứ họ vừa mất công viết nhất.
-        setError((failure as Error).message)
+        const msg = (failure as Error).message
+        setError(msg)
+        trackTask(feature, 'ai_ask', { status: 'error', error: msg })
       } finally {
         setLoading(false)
       }

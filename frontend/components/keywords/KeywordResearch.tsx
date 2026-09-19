@@ -406,9 +406,10 @@ export default function KeywordResearch({
         const found = await browserGet<KeywordResult>(`/api/keywords?${params}`)
         setResult(found)
         setResultWindow(window)
-        // Đo lượt tìm từ khoá — đầu một task Keyword. Ghi sau khi có kết quả để không đếm cả
-        // những lượt bấm hụt (thiếu từ gốc, chưa chọn nguồn) đã chặn ở đầu hàm.
+        // Chạy RA KẾT QUẢ = thành công (kể cả 0 từ khoá — không phải lỗi). Ghi sau khi có phản hồi.
         trackTask('keywords', 'keyword_search', {
+          status: 'ok',
+          results: found.keywords.length,
           keyword: seed.trim(),
           platforms: selected,
           country,
@@ -420,9 +421,12 @@ export default function KeywordResearch({
           void translate(found.keywords.map((k) => k.keyword), seed.trim(), country)
         }
       } catch (e) {
-        setError((e as Error).message)
+        const msg = (e as Error).message
+        setError(msg)
         setResult(null)
         setResultWindow(null)
+        // Lỗi thật (backend chết, mạng…) = FAIL của lượt chạy.
+        trackTask('keywords', 'keyword_search', { status: 'error', error: msg, keyword: seed.trim() })
       } finally {
         setLoading(false)
       }

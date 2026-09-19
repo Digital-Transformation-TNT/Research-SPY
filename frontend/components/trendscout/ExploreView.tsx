@@ -57,8 +57,17 @@ export default function ExploreView({
     setTrang(1)
     const q = new URLSearchParams({ san, main: mainId, sub: subId, lens, limit: String(CAP) })
     browserGet<Explore>(`/api/hub/scout/kham-pha?${q}`)
-      .then((d) => live && setData(d))
-      .catch((e: Error) => live && setError(e.message))
+      .then((d) => {
+        if (!live) return
+        setData(d)
+        // Tải ra danh sách = một lượt chạy thành công (kể cả danh sách rỗng — không phải lỗi).
+        trackTask('trend-signal', 'trend_view', { status: 'ok', view: 'explore', san, lens, results: d.items?.length ?? 0 })
+      })
+      .catch((e: Error) => {
+        if (!live) return
+        setError(e.message)
+        trackTask('trend-signal', 'trend_view', { status: 'error', view: 'explore', san, lens, error: e.message })
+      })
       .finally(() => live && setLoading(false))
     return () => {
       live = false

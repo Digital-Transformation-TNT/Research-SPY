@@ -751,10 +751,16 @@ export default function ImageSearchWorkspace() {
       form.append('sources', chosen.join(','))
       const found = await browserPost<ImageSearchResult>('/api/imagesearch', form)
       setResult(found)
-      // Đo lượt tìm bằng ảnh — đầu một task Image. Ghi sau khi có kết quả để không đếm lượt hụt.
-      trackTask('image', 'image_upload', { sources: chosen })
+      // Chạy RA KẾT QUẢ = thành công (kể cả không match được gì — không phải lỗi).
+      trackTask('image', 'image_upload', {
+        status: 'ok',
+        results: found.matches?.length ?? 0,
+        sources: chosen,
+      })
     } catch (e) {
-      setError((e as Error).message)
+      const msg = (e as Error).message
+      setError(msg)
+      trackTask('image', 'image_upload', { status: 'error', error: msg, sources: chosen })
     } finally {
       setLoading(false)
     }

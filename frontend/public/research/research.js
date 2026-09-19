@@ -1573,9 +1573,6 @@ async function research() {
 
   setStatus(`Đang chạy ${jobs.length} truy vấn (sàn × region × từ khoá)${translatedAny ? ' · đã dịch theo sàn' : ''}…`);
 
-  // Đo lượt search Ads — đầu một task. Ghi sau khi qua hết bước kiểm (đủ sàn, đủ từ khoá).
-  rsTrackAds('ads_search', { keyword: keywords.join(', '), platforms: activePf, count: count });
-
   const all = [];
   let backendDown = false;
   const notices = [];
@@ -1604,6 +1601,16 @@ async function research() {
   $('go').disabled = false;
   renderRegions();
   void refreshLogin(); // vừa có sàn bị chặn → hỏi lại trạng thái thật thay vì đoán (crawl đã xong)
+
+  // Đo lượt search Ads SAU KHI chạy xong, một lần cho cả hai lối thoát bên dưới. Chỉ coi là LỖI
+  // khi không truy cập được backend; sàn trả 0 sản phẩm KHÔNG phải lỗi (vẫn là chạy ra kết quả).
+  rsTrackAds('ads_search', {
+    status: backendDown ? 'error' : 'ok',
+    error: backendDown ? 'không gọi được backend' : undefined,
+    results: all.length,
+    keyword: keywords.join(', '),
+    platforms: activePf,
+  });
 
   if (!all.length) {
     // Câu cuối cùng phải nói về ĐÚNG những sàn vừa chạy. Bản trước ghi cứng "Shopee: kiểm tra
