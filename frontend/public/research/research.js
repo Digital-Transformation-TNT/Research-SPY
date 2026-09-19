@@ -2403,12 +2403,11 @@ async function openVideoModal(p) {
   // hình trống suốt quãng ấy, trong khi thứ họ hỏi ("có ai đang chạy quảng cáo món này không")
   // thì Facebook đã trả lời xong rồi.
   const san = sanAds.concat(marketAds);
-  renderVideos(vidMerge(fbAds, bingTk, bingDy, ytAds, san));
-  setVidStatus(
-    `Facebook ${fbAds.length} · TikTok ${bingTk.length} · YouTube ${ytAds.length}` +
-    ` · Douyin ${bingDy.length} · Sàn ${san.length}${srvNote} — đang tìm thêm TikTok…`,
-    srvNote ? 'err' : '',
-  );
+  const soBanDau = vidMerge(fbAds, bingTk, bingDy, ytAds, san);
+  renderVideos(soBanDau);
+  // Đang chạy: MỘT dòng gọn "đang tìm thêm" (kèm số đã có cho đỡ tưởng treo). KHÔNG liệt kê từng
+  // nguồn / từng ghi chú "nguồn X không có" — nhìn như báo lỗi. Số theo nguồn đã có ở dãy tab dưới.
+  setVidStatus(soBanDau.length ? `Đã có ${soBanDau.length} video · đang tìm thêm…` : 'Đang tìm video…');
 
   await loadModalTiktok(region);
 }
@@ -2536,7 +2535,7 @@ async function loadModalTiktok(region) {
   st.kdAds = [];
   st.kdNote = '';
   if (KD_REGIONS.includes(region)) {
-    setVidStatus(`FB ${st.fbAds.length} · YouTube ${(st.ytAds || []).length} · đang lấy video bán hàng TikTok ${flag} từ Kalodata “${tkTerm}”…`);
+    setVidStatus('Đang tìm thêm video bán hàng (Kalodata)…');
     const kd = await fetchKalodata('video', tkTerm, region, 1);
     if (!alive()) return;
     // Xếp theo doanh thu: thẻ đầu lưới là video bán được nhiều nhất, đúng thứ người research tìm.
@@ -2553,7 +2552,7 @@ async function loadModalTiktok(region) {
   }
 
   // BƯỚC 1 — GOOGLE. Vài giây, không đăng nhập, không cá nhân hoá. Vẽ ngay khi có.
-  setVidStatus(`Kalodata ${st.kdAds.length}${st.kdNote} · FB ${st.fbAds.length} · TikTok ${(st.bingTk || []).length} · YouTube ${(st.ytAds || []).length} · Douyin ${(st.bingDy || []).length} · Sàn ${(st.sanAds || []).length + st.marketAds.length} · đang hỏi Google “${tkTerm}”…`);
+  setVidStatus('Đang tìm thêm video…');
   const g = await fetchGoogleVideos('tiktok', tkTerm, region);
   if (!alive()) return;
   st.gAds = g.ads;
@@ -2568,7 +2567,7 @@ async function loadModalTiktok(region) {
 
   // BƯỚC 2 — lượt tìm THẬT trong tab TikTok. Chậm (tới hơn hai phút) nhưng thấy được cả những
   // video Google chưa lập chỉ mục, nên vẫn chạy — chỉ là chạy sau, và gộp thêm vào lưới đã có.
-  setVidStatus(`Google ${g.ads.length}${g.note} · đang tìm TikTok ${flag} ${country} · “${tkTerm}”… (tool tự cuộn)`);
+  setVidStatus('Đang tìm thêm video trên TikTok… (quét thật, có thể mất một chút)');
   let tkItems = [], tkNote = '', tkCounts = null, tkMode = null;
   try {
     const tk = await new Promise((res) => chrome.runtime.sendMessage({ type: 'RS_TIKTOK', keyword: tkTerm, keywords: [tkTerm], region, mode: 'mixed', count: 100 }, (x) => res(x)));
@@ -2627,8 +2626,10 @@ async function loadModalTiktok(region) {
   const langBreak = tkCounts
     ? ` (khớp ${flag} ${tkCounts.match} · trung tính ${tkCounts.neutral} · khác ngôn ngữ ${tkCounts.other})`
     : '';
-  const ccBreak = ccAds.length ? ` · CC ${flag}${ccAds.length}` : '';
-  setVidStatus(`${all.length} video · "${usedKw}" · Kalodata ${st.kdAds.length}${st.kdNote || ''} · Google ${(st.gAds || []).length} · Bing ${(st.bingTk || []).length} · TikTok ${flag}${country} ${tkItems.length} · ${tkMode || modeLabel}${langBreak}${ccBreak} · FB ${st.fbAds.length} · YouTube ${(st.ytAds || []).length} · Douyin ${(st.bingDy || []).length} · Sàn ${(st.sanAds || []).length + st.marketAds.length}${st.srvNote || ''}${g.note}${tkNote}`, 'ok');
+  // XONG: một dòng gọn. Số theo từng nguồn đã nằm ở dãy tab (Tất cả / TikTok bán hàng / FB…),
+  // nên KHÔNG lặp lại ở đây; và KHÔNG dán các ghi chú "nguồn X không có / thử cụm ngắn hơn" —
+  // chúng là "không có dữ liệu" chứ không phải lỗi, nhưng đọc trên thanh trạng thái thì tưởng hỏng.
+  setVidStatus(`${all.length} video · "${usedKw}"`, 'ok');
   renderVideos(all);
   // Vẽ xong rồi mới đi lấy tim/bình luận/lượt xem — xem ghi chú ở `fillTiktokStats`. Không
   // `await`: lưới đã dùng được ngay, số điền vào sau.
@@ -2660,9 +2661,9 @@ async function fillTiktokStats(ads, token) {
     data = await r.json();
     if (!r.ok) throw new Error((data && data.error) || `HTTP ${r.status}`);
   } catch (e) {
-    // Không có số thì thôi, nhưng NÓI RA. Một hàng thống kê trống mà không lời giải đọc thành
-    // "video này không ai xem" — sai, và sai theo hướng làm người dùng bỏ qua video tốt.
-    if (token === vidToken) setVidStatus($('vidStatusText').textContent + ' · chưa lấy được lượt tim', 'err');
+    // Lấy tim/lượt xem là phần BỔ SUNG (điền sau khi lưới đã hiện). Hỏng thì thôi — KHÔNG dán
+    // "chưa lấy được lượt tim" đỏ lên thanh trạng thái đang báo "N video", vì đọc thành cả lượt
+    // tìm bị lỗi trong khi video vẫn xem được bình thường.
     return;
   }
   if (token !== vidToken) return; // lượt tìm khác đã chen vào — bỏ kết quả cũ
@@ -2679,11 +2680,9 @@ async function fillTiktokStats(ads, token) {
     ad.startedAt = ad.startedAt || st.createdAt || null;
   }
   if (co) renderVideos(ads);
-  if (co < ids.length) {
-    // Nói rõ thiếu bao nhiêu. Video riêng tư hoặc đã xoá thì đọc không ra, và đó là chuyện
-    // bình thường — nhưng im lặng thì người dùng tưởng công cụ hỏng.
-    setVidStatus(`${$('vidStatusText').textContent} · thống kê ${co}/${ids.length} video`, co ? 'ok' : 'err');
-  }
+  // KHÔNG dán "thống kê co/N video" vào thanh trạng thái: điền tim/lượt xem là phần bổ sung, và
+  // video riêng tư/đã xoá đọc không ra là chuyện bình thường — nối vào đọc thành lỗi. Số hiện
+  // thẳng trên từng thẻ (thẻ nào chưa có thì bỏ trống), không cần đếm ở thanh trên.
 }
 
 /**
