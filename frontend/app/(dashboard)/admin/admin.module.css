@@ -310,3 +310,114 @@
   padding: 1px 5px;
   border-radius: 4px;
 }
+
+/* Màu tỉ lệ thành công trong bảng theo nhân sự / theo tool. */
+.rateGood {
+  color: var(--good);
+  font-weight: 600;
+}
+.rateMid {
+  color: var(--warn);
+  font-weight: 600;
+}
+.rateBad {
+  color: var(--bad);
+  font-weight: 600;
+}
+/* Dòng nhắc phần event ẩn danh (chưa quy được về người). */
+.anonNote {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: var(--warn-soft);
+  border-radius: var(--radius);
+  line-height: 1.5;
+}
+
+/* ── Bảng theo nhân sự: dòng bấm được để mở lịch sử ─────────────────────────── */
+.userRow {
+  cursor: pointer;
+}
+.userRow:hover {
+  background: var(--surface-2);
+}
+.caret {
+  width: 24px;
+  color: var(--text-mute);
+  text-align: center;
+  user-select: none;
+}
+.actRow > td {
+  background: var(--surface-2);
+  padding: 0;
+}
+.actLoading {
+  padding: 16px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* ── Dòng thời gian hoạt động của một người ─────────────────────────────────── */
+.act {
+  padding: 12px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.actSession {
+  border-left: 3px solid var(--brand-line);
+  padding-left: 14px;
+}
+.actHead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.actList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.actItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 13px;
+  color: var(--text);
+}
+.actTime {
+  width: 42px;
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-mute);
+  text-align: right;
+}
+.actDot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--border);
+}
+/* Tô đậm những mốc đáng chú ý: chạy tool và bấm link ra ngoài. */
+.actItem[data-kind='keyword_search'] .actDot,
+.actItem[data-kind='ads_search'] .actDot,
+.actItem[data-kind='image_upload'] .actDot,
+.actItem[data-kind='ai_ask'] .actDot {
+  background: var(--brand);
+}
+.actItem[data-kind='product_click'] .actDot,
+.actItem[data-kind='video_open'] .actDot,
+.actItem[data-kind='image_result_click'] .actDot,
+.actItem[data-kind='keyword_to_ads'] .actDot {
+  background: var(--good);
+}
+.actItem[data-kind='feature_abandon'] .actDot {
+  background: var(--bad);
+}
+.actLabel {
+  flex: 1;
+}

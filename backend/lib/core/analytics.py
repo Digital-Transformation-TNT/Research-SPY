@@ -19,12 +19,19 @@ from .db import supabase_or_none, is_configured
 
 async def track(user_id: str | None, event_type: str, meta: dict[str, Any] | None = None) -> None:
     """
-    Ghi 1 event. user_id có thể None cho event ẩn danh (chưa login).
+    Ghi 1 event, CHỈ khi quy được về một người (user_id khác None).
+
+    Trang research đã chặn login → mọi truy cập đều mang JWT, nên event không có user_id chỉ
+    xảy ra ở rìa (token hết hạn giữa chừng, hoặc gọi thẳng API không kèm vé). Bỏ ghi những
+    event ấy thay vì để lại một dòng NULL: bảng thống kê theo người chỉ có nghĩa khi mọi dòng
+    đều gắn đúng người, và một dòng mất dấu vừa không cộng vào ai vừa làm lệch tổng.
 
     KHÔNG await Supabase — bắn vào background task để trả về ngay. Nếu Supabase chậm/lỗi,
     request user vẫn nhẹ như không có analytics.
     """
     if not is_configured():
+        return
+    if not user_id:
         return
     asyncio.create_task(_insert(user_id, event_type, meta or {}))
 

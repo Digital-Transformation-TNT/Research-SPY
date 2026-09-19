@@ -5,8 +5,9 @@ search, product_click, video_open, session_end, rating.
 Body:
   { "event_type": "search", "meta": {"keyword": "...", "platforms": ["shopee"], "country": "VN"} }
 
-user_id lấy từ JWT (middleware đã gắn vào request.state.user). Không có JWT → user_id=null,
-event vẫn ghi ẩn danh (hữu ích để đo tổng lượng khi bật analytics trước khi bắt buộc login).
+user_id lấy từ JWT (middleware đã gắn vào request.state.user). Không có JWT → user_id=null, và
+`track()` BỎ GHI những event ấy (trang research đã chặn login nên mọi truy cập đều có vé; một
+dòng NULL chỉ làm lệch bảng thống kê theo người). Vẫn trả 202 để giữ hợp đồng fire-and-forget.
 
 KHÔNG middleware chặn (đường /api/analytics/track không nằm trong _PUBLIC_PATHS nhưng nếu
 JWT không cấu hình thì middleware cũng skip — track() tự xử user_id=None).

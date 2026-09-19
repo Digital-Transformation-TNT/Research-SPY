@@ -400,6 +400,38 @@ async def decide_role_request(
 # ---------------------------------------------------------------------------
 # STATS — KPI cho CEO
 # ---------------------------------------------------------------------------
+#
+# BỘ TÊN EVENT — một chỗ duy nhất, dùng chung cho cả `/stats` (tổng đội) và `/stats-by-user`
+# (bổ theo người). Frontend bắn tên nào thì phải liệt kê ở đây, nếu không con số ra 0 một cách
+# lặng lẽ. Giữ cả tên chung cũ ("search", "product_click") lẫn tên chi tiết mới
+# ("keyword_search", "ads_search"…) để log cũ và log mới cùng cộng được. Khớp
+# `frontend/lib/analytics.ts` và `frontend/public/research/research.js`.
+
+#: "Chạy tool" — đầu một task: search từ khoá/quảng cáo, upload ảnh, hỏi AI.
+_RUN_EVENTS = {"search", "keyword_search", "ads_search", "image_upload", "ai_ask"}
+
+#: "Bấm ra ngoài" — kết quả cuối, đo độ sâu research. Mỗi cái = 1 link.
+_LINK_EVENTS = {"product_click", "video_open", "image_result_click", "ai_link_click"}
+
+
+def _events_between(supa, start: int, end: int) -> list[dict]:
+    """Đọc event trong khoảng [start, end) tính bằng unix giây. Supabase lọc theo ISO string."""
+    from datetime import datetime, timezone
+
+    s = datetime.fromtimestamp(start, tz=timezone.utc).isoformat()
+    e = datetime.fromtimestamp(end, tz=timezone.utc).isoformat()
+    # ĐẶT `limit` RÕ RÀNG: PostgREST mặc định cắt ở 1000 dòng, và cắt LẶNG LẼ — thiếu event thì
+    # mọi con số nhỏ đi mà không có dấu hiệu gì. Trần 100k khớp mốc trong ghi chú STATS đầu file
+    # (trên mức đó thì chuyển sang materialized view chứ không nống trần).
+    r = (
+        supa.table("analytics_event")
+        .select("user_id, event_type, meta, ts")
+        .gte("ts", s)
+        .lt("ts", e)
+        .limit(100000)
+        .execute()
+    )
+    return r.data or []
 
 
 @router.get("/stats")
@@ -421,18 +453,10 @@ async def stats(request: Request, period: str = "week") -> JSONResponse:
     prev_start = now - 2 * days * 86400
     supa = supabase_or_none()
 
-    def _events_between(start: int, end: int) -> list[dict]:
-        # Supabase filter theo TIMESTAMPTZ — chuyển unix sec sang ISO string.
-        from datetime import datetime, timezone
-        s = datetime.fromtimestamp(start, tz=timezone.utc).isoformat()
-        e = datetime.fromtimestamp(end, tz=timezone.utc).isoformat()
-        r = supa.table("analytics_event").select("user_id, event_type, meta, ts").gte("ts", s).lt("ts", e).execute()
-        return r.data or []
-
     def _kpi(events: list[dict]) -> dict:
         users = {ev["user_id"] for ev in events if ev.get("user_id")}
-        searches = [ev for ev in events if ev.get("event_type") == "search"]
-        clicks = [ev for ev in events if ev.get("event_type") in ("product_click", "video_open")]
+        searches = [ev for ev in events if ev.get("event_type") in _RUN_EVENTS]
+        clicks = [ev for ev in events if ev.get("event_type") in _LINK_EVENTS]
         # Search "thành công" = có ≥1 click cùng user trong 15 phút sau đó. Xấp xỉ: đếm số user
         # có cả search và click.
         users_with_search = {ev["user_id"] for ev in searches if ev.get("user_id")}
@@ -453,8 +477,8 @@ async def stats(request: Request, period: str = "week") -> JSONResponse:
             "hours_saved": max(0, hours_saved),
         }
 
-    curr = _kpi(_events_between(curr_start, now))
-    prev = _kpi(_events_between(prev_start, curr_start))
+    curr = _kpi(_events_between(supa, curr_start, now))
+    prev = _kpi(_events_between(supa, prev_start, curr_start))
 
     def _trend(c, p):
         if c is None or p is None:
@@ -476,4 +500,356 @@ async def stats(request: Request, period: str = "week") -> JSONResponse:
             "avg_time_min": _trend(prev["avg_time_min"], curr["avg_time_min"]),  # ít hơn = tốt hơn → đảo
             "hours_saved": _trend(curr["hours_saved"], prev["hours_saved"]),
         },
+    })
+
+
+# ---------------------------------------------------------------------------
+# STATS THEO NGƯỜI — ai dùng tốt, ai mở cho có; và tool nào ra kết quả
+# ---------------------------------------------------------------------------
+#
+# `/stats` trả tổng cả đội. Tool này là tool NỘI BỘ, nên câu hỏi cuối cùng là "tool có giúp
+# từng nhân sự ra kết quả không". Endpoint này bổ mọi con số theo `user_id` (JOIN `users` ra
+# tên + BU) và theo `feature` (tool nào ra kết quả). Xem tài liệu "Research SPY — Cách đo".
+
+
+def _feature_label(feature: str | None) -> str:
+    """Gom tên tool về nhãn hiển thị. `None`/lạ → 'khác' để không rơi mất khỏi bảng theo-tool."""
+    if not feature:
+        return "khác"
+    return feature
+
+
+def _task_success(t: dict) -> bool:
+    """
+    Task thành công hay không — LUẬT KHÁC NHAU THEO TOOL (mục "Định nghĩa thành công").
+
+    Cùng đo bằng một thước ("có ≥1 link ngoài") thì oan cho Keyword: kết quả của Keyword là
+    bắc cầu sang Ads chứ không phải bấm link, nên nó gần như luôn 0 link và sẽ luôn bị tính là
+    thất bại. Vì vậy mỗi tool có mốc riêng:
+
+      - keywords : có keyword_search VÀ (keyword_expand HOẶC keyword_to_ads)
+      - ads      : có ads_search VÀ ≥1 link (product_click / video_open)
+      - oneshot  : có hỏi AI (ai_ask) — câu hỏi chính là kết quả
+      - còn lại  : có ≥1 link ngoài (image_result_click / product_click…)
+    """
+    feat = t.get("feature")
+    ets = t.get("events", set())
+    links = t.get("links", 0)
+    if feat == "keywords":
+        return "keyword_search" in ets and ("keyword_expand" in ets or "keyword_to_ads" in ets)
+    if feat == "ads":
+        return "ads_search" in ets and links >= 1
+    if feat in ("oneshot", "opportunity"):
+        return "ai_ask" in ets
+    return links >= 1
+
+
+def _aggregate_by_user(events: list[dict]) -> dict:
+    """
+    Gom event thô thành hai bảng: theo NGƯỜI và theo TOOL, cộng phần ẩn danh riêng.
+
+    Ba tầng đo (Session › Task › Event) ráp lại ở đây:
+      - Task gom theo `meta.task_id`; "thành công" tính THEO TỪNG TOOL (xem `_task_success`) —
+        task Keyword thành công khi có search + (expand hoặc bắc cầu sang Ads) DÙ 0 link ngoài,
+        vì kết quả của Keyword là bắc cầu chứ không phải bấm link. Feature lấy từ event có
+        `meta.feature`.
+      - Người gom theo `user_id`; số phiên đếm theo `meta.session_id`, thời gian lấy từ
+        `session_end.durationSec`.
+    """
+    # task_id -> {"user", "feature", "links", "runs", "events": set}
+    tasks: dict[str, dict] = {}
+    # user_id (str | None) -> bộ đếm cấp người
+    per_user: dict[Any, dict] = {}
+
+    def _u(uid: Any) -> dict:
+        return per_user.setdefault(
+            uid,
+            {"runs": 0, "links": 0, "sessions": set(), "durations": [], "last": ""},
+        )
+
+    for ev in events:
+        uid = ev.get("user_id")
+        et = ev.get("event_type") or ""
+        meta = ev.get("meta") or {}
+        tid = meta.get("task_id")
+        sid = meta.get("session_id")
+        feat = meta.get("feature")
+        ts = ev.get("ts") or ""
+
+        u = _u(uid)
+        if et in _RUN_EVENTS:
+            u["runs"] += 1
+        if et in _LINK_EVENTS:
+            u["links"] += 1
+        if sid:
+            u["sessions"].add(sid)
+        if et == "session_end":
+            d = meta.get("durationSec")
+            if isinstance(d, (int, float)) and d > 0:
+                u["durations"].append(d)
+        if ts > u["last"]:
+            u["last"] = ts
+
+        if tid:
+            t = tasks.setdefault(
+                tid, {"user": uid, "feature": None, "links": 0, "runs": 0, "events": set()}
+            )
+            if uid and not t["user"]:
+                t["user"] = uid
+            if feat and not t["feature"]:
+                t["feature"] = feat
+            t["events"].add(et)
+            if et in _RUN_EVENTS:
+                t["runs"] += 1
+            if et in _LINK_EVENTS:
+                t["links"] += 1
+
+    # Gom task về người và về tool. "Thành công" tính theo luật của từng tool.
+    utask: dict[Any, dict] = {}
+    ttool: dict[str, dict] = {}
+    for t in tasks.values():
+        ok = _task_success(t)
+        d = utask.setdefault(t["user"], {"total": 0, "success": 0, "links": 0})
+        d["total"] += 1
+        d["links"] += t["links"]
+        if ok:
+            d["success"] += 1
+
+        f = _feature_label(t["feature"])
+        g = ttool.setdefault(f, {"total": 0, "success": 0, "links": 0, "runs": 0})
+        g["total"] += 1
+        g["links"] += t["links"]
+        g["runs"] += t["runs"]
+        if ok:
+            g["success"] += 1
+
+    return {"per_user": per_user, "utask": utask, "ttool": ttool}
+
+
+def _user_row(uid: Any, u: dict, tk: dict, info: dict) -> dict:
+    total = tk.get("total", 0)
+    durations = u["durations"]
+    return {
+        "user_id": uid,
+        "name": info.get("full_name") or info.get("email") or "(không rõ)",
+        "email": info.get("email"),
+        "bu": info.get("bu"),
+        "role": info.get("role"),
+        "runs": u["runs"],
+        "links": u["links"],
+        "tasks": total,
+        "success": tk.get("success", 0),
+        # % task có ra link ngoài — dùng tool có hiệu quả không. None khi chưa có task nào.
+        "success_rate": round(100 * tk.get("success", 0) / total) if total else None,
+        "links_per_task": round(tk.get("links", 0) / total, 1) if total else 0,
+        "sessions": len(u["sessions"]),
+        "avg_session_min": round(sum(durations) / len(durations) / 60, 1) if durations else None,
+        "last_active": u["last"] or None,
+    }
+
+
+@router.get("/stats-by-user")
+async def stats_by_user(request: Request, period: str = "week") -> JSONResponse:
+    """
+    Bổ mọi chỉ số theo từng nhân sự + theo từng tool cho kỳ này.
+
+    period: 'week' (7 ngày) | 'month' (30 ngày)
+
+    Trả:
+      { period, period_days,
+        users: [ {name, bu, role, runs, links, tasks, success_rate, links_per_task,
+                  sessions, avg_session_min, last_active}, … ]  (xếp theo dùng nhiều → ít),
+        tools: [ {feature, tasks, success, success_rate, links, runs}, … ],
+        anon:  {runs, links, tasks, …}  — phần event chưa quy được về người (user_id NULL) }
+    """
+    _, err = _require_admin(request)
+    if err is not None:
+        return err
+    if not db_ready():
+        return _db_missing()
+
+    days = 30 if period == "month" else 7
+    now = int(time.time())
+    supa = supabase_or_none()
+    events = _events_between(supa, now - days * 86400, now)
+
+    agg = _aggregate_by_user(events)
+    per_user = agg["per_user"]
+    utask = agg["utask"]
+
+    # JOIN sang bảng users để ra tên + BU. Chỉ hỏi những user thật sự có event trong kỳ.
+    uids = [str(uid) for uid in per_user if uid is not None]
+    umap: dict[str, dict] = {}
+    if uids:
+        try:
+            res = supa.table("users").select("id, email, full_name, position, bu, role").in_("id", uids).execute()
+            umap = {str(u["id"]): u for u in (res.data or [])}
+        except Exception:
+            umap = {}
+
+    users_out = [
+        _user_row(uid, u, utask.get(uid, {}), umap.get(str(uid), {}))
+        for uid, u in per_user.items()
+        if uid is not None
+    ]
+    # Dùng nhiều nhất lên đầu: ưu tiên số lần chạy, rồi số link ra ngoài.
+    users_out.sort(key=lambda r: (r["runs"], r["links"]), reverse=True)
+
+    tools_out = []
+    for feat, g in agg["ttool"].items():
+        total = g["total"]
+        tools_out.append({
+            "feature": feat,
+            "tasks": total,
+            "success": g["success"],
+            "success_rate": round(100 * g["success"] / total) if total else None,
+            "links": g["links"],
+            "runs": g["runs"],
+        })
+    tools_out.sort(key=lambda r: r["tasks"], reverse=True)
+
+    # Phần ẩn danh: event login-chưa-ra-JWT → user_id NULL, mất dấu nhân sự. Đưa ra để admin
+    # thấy có bao nhiêu chưa quy được về người (bẫy attribution trong tài liệu).
+    anon = per_user.get(None)
+    atk = utask.get(None, {})
+    anon_out = None
+    if anon:
+        anon_out = {
+            "runs": anon["runs"],
+            "links": anon["links"],
+            "tasks": atk.get("total", 0),
+            "sessions": len(anon["sessions"]),
+        }
+
+    return JSONResponse({
+        "period": period,
+        "period_days": days,
+        "users": users_out,
+        "tools": tools_out,
+        "anon": anon_out,
+    })
+
+
+# ---------------------------------------------------------------------------
+# LỊCH SỬ MỘT NGƯỜI — bấm vào một user để xem họ đã đi tới đâu
+# ---------------------------------------------------------------------------
+
+
+def _event_label(et: str, m: dict) -> str:
+    """Một câu tiếng Việt gọn cho một event, đọc thẳng trên dòng thời gian."""
+    m = m or {}
+    pf = ", ".join(m.get("platforms") or [])
+    if et == "session_start":
+        return f"Mở phiên · {m.get('device', '?')}"
+    if et == "page_view":
+        return f"Xem trang {m.get('page', '')}"
+    if et == "feature_open":
+        return f"Mở tool {_feature_label(m.get('feature'))}"
+    if et == "keyword_search":
+        return f"Tìm từ khoá: {m.get('keyword', '')}" + (f" ({pf})" if pf else "")
+    if et == "keyword_expand":
+        return f"Mở rộng: {m.get('related', '')}"
+    if et == "keyword_to_ads":
+        return f"Bắc cầu sang Ads: {m.get('keyword', '')}"
+    if et == "ads_search":
+        return f"Search Ads: {m.get('keyword', '')}" + (f" ({pf})" if pf else "")
+    if et == "product_click":
+        return "Bấm sản phẩm" + (f" ({m.get('platform')})" if m.get("platform") else "")
+    if et == "video_open":
+        return "Mở video" + (f" ({m.get('platform')})" if m.get("platform") else "")
+    if et == "image_upload":
+        return "Tra bằng ảnh"
+    if et == "image_result_click":
+        return "Bấm kết quả ảnh" + (f" ({m.get('source')})" if m.get("source") else "")
+    if et == "ai_ask":
+        return "Hỏi AI"
+    if et == "feature_complete":
+        return f"Xong tool {_feature_label(m.get('feature'))}"
+    if et == "feature_abandon":
+        return f"Bỏ tool {_feature_label(m.get('feature'))}" + (
+            f" — {m.get('reason')}" if m.get("reason") else ""
+        )
+    if et == "session_end":
+        d = m.get("durationSec")
+        return "Kết phiên" + (f" · {round(d / 60, 1)}′" if isinstance(d, (int, float)) and d else "")
+    return et
+
+
+@router.get("/user-activity")
+async def user_activity(request: Request, user_id: str, period: str = "week", limit: int = 400) -> JSONResponse:
+    """
+    Dòng thời gian của MỘT người, gom theo phiên — "họ dùng tới đâu".
+
+    Trả các phiên gần nhất trước, mỗi phiên kèm event theo thứ tự thời gian (mở tool → search →
+    bấm link → kết phiên), cùng số lần chạy / số link để nhìn nhanh độ sâu của phiên đó.
+    """
+    _, err = _require_admin(request)
+    if err is not None:
+        return err
+    if not db_ready():
+        return _db_missing()
+
+    days = 30 if period == "month" else 7
+    now = int(time.time())
+    from datetime import datetime, timezone
+
+    start = datetime.fromtimestamp(now - days * 86400, tz=timezone.utc).isoformat()
+    supa = supabase_or_none()
+    try:
+        r = (
+            supa.table("analytics_event")
+            .select("event_type, meta, ts")
+            .eq("user_id", user_id)
+            .gte("ts", start)
+            .order("ts", desc=True)
+            .limit(max(1, min(limit, 2000)))
+            .execute()
+        )
+    except Exception as e:
+        return JSONResponse({"error": f"Không đọc được lịch sử: {e}"}, status_code=502)
+    rows = r.data or []
+
+    # Gom theo phiên. Event tới theo thứ tự MỚI→CŨ, nên phiên xuất hiện đầu tiên là phiên gần nhất.
+    sessions: dict[str, dict] = {}
+    order: list[str] = []
+    for ev in rows:
+        meta = ev.get("meta") or {}
+        sid = meta.get("session_id") or "—"
+        se = sessions.get(sid)
+        if se is None:
+            se = sessions[sid] = {"session_id": sid, "events": [], "device": None,
+                                  "duration_sec": None, "tools_used": []}
+            order.append(sid)
+        et = ev.get("event_type") or ""
+        se["events"].append({
+            "ts": ev.get("ts"),
+            "event_type": et,
+            "feature": meta.get("feature"),
+            "label": _event_label(et, meta),
+        })
+        if et == "session_start" and meta.get("device"):
+            se["device"] = meta.get("device")
+        if et == "session_end":
+            d = meta.get("durationSec")
+            if isinstance(d, (int, float)):
+                se["duration_sec"] = d
+            if meta.get("tools_used"):
+                se["tools_used"] = meta["tools_used"]
+
+    out = []
+    for sid in order:
+        se = sessions[sid]
+        evs = list(reversed(se["events"]))  # đổi về CŨ→MỚI để đọc như một dòng thời gian
+        se["events"] = evs
+        se["started"] = evs[0]["ts"] if evs else None
+        se["ended"] = evs[-1]["ts"] if evs else None
+        se["links"] = sum(1 for e in evs if e["event_type"] in _LINK_EVENTS)
+        se["runs"] = sum(1 for e in evs if e["event_type"] in _RUN_EVENTS)
+        out.append(se)
+
+    return JSONResponse({
+        "user_id": user_id,
+        "period": period,
+        "sessions": out,
+        "truncated": len(rows) >= max(1, min(limit, 2000)),
     })

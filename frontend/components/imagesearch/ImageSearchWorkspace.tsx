@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { browserPost } from '@/lib/api'
+import { openFeature, trackTask } from '@/lib/analytics'
 import {
   chonGiaThapNhat,
   CUA_SO_LIEN_QUAN,
@@ -242,6 +243,13 @@ function Rows({ items, vnPrices }: { items: ImageMatch[]; vnPrices?: VnPriceMap 
             target="_blank"
             rel="noreferrer"
             data-market={item.marketplace}
+            // +1 link ngoài — mỗi lần bấm sang một nguồn (1688, AliExpress…) là kết quả cuối.
+            onClick={() =>
+              trackTask('image', 'image_result_click', {
+                source: item.marketplace ?? item.source,
+                item_id: item.link,
+              })
+            }
           >
             {item.thumbnail ? (
               /* eslint-disable-next-line @next/next/no-img-element */
@@ -609,6 +617,8 @@ export default function ImageSearchWorkspace() {
       // Kho hỏng hoặc bị chặn: dùng mặc định, không làm hỏng lượt dùng.
     }
     loaded.current = true
+    // Mở tool Image = một task mới; image_upload/image_result_click sau đó gom về task này.
+    openFeature('image')
   }, [])
 
   // GHI Ở ĐÂY, KHÔNG ghi trong hàm cập nhật state. Bản đầu gọi `localStorage.setItem` ngay
@@ -741,6 +751,8 @@ export default function ImageSearchWorkspace() {
       form.append('sources', chosen.join(','))
       const found = await browserPost<ImageSearchResult>('/api/imagesearch', form)
       setResult(found)
+      // Đo lượt tìm bằng ảnh — đầu một task Image. Ghi sau khi có kết quả để không đếm lượt hụt.
+      trackTask('image', 'image_upload', { sources: chosen })
     } catch (e) {
       setError((e as Error).message)
     } finally {

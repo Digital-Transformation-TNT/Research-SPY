@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Dropdown from '@/components/keywords/Dropdown'
 import { browserGet } from '@/lib/api'
+import { openFeature } from '@/lib/analytics'
 import { LENSES, SAN, type CategoryTree, type LensKey, type SanKey } from '@/lib/trendscout'
 import ExploreView from './ExploreView'
 import ToplistView from './ToplistView'
@@ -41,6 +42,11 @@ export default function TrendScout() {
   const [lens, setLens] = useState<LensKey>('ban_chay')
   const [tree, setTree] = useState<CategoryTree | null>(null)
   const [treeError, setTreeError] = useState<string | null>(null)
+
+  // Mở Trend Signal Hub = một task mới; product_click trong hai view gom về task này.
+  useEffect(() => {
+    openFeature('trend-signal')
+  }, [])
 
   useEffect(() => {
     try {
@@ -131,8 +137,7 @@ export default function TrendScout() {
             <div className="field">
               <label>Xếp theo</label>
               {/* Không gắn con số vào nhãn ("Top 100 bán chạy"): trần hiển thị chỉnh được ở
-                  `top_n` nên nhãn cứng sẽ nói sai ngay lần đầu ai đó đổi mức. Số thật nằm ở
-                  dòng meta ngay dưới bảng. */}
+                  `top_n` nên nhãn cứng sẽ nói sai ngay lần đầu ai đó đổi mức. */}
               <div className="chips">
                 <button className="chip" data-on={loai === 'ban_chay'} onClick={() => setLoai('ban_chay')}>
                   Bán chạy

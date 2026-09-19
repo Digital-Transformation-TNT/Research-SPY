@@ -15,6 +15,7 @@ import {
 import SeedBridge, { type BridgeState } from './SeedBridge'
 import type { MarketMap } from '@/lib/keywords/providers'
 import { browserGet } from '@/lib/api'
+import { openFeature, trackTask } from '@/lib/analytics'
 import type { BridgeResult, KeywordGloss, KeywordResult, KeywordSource } from '@/lib/keywords/types'
 
 /**
@@ -145,6 +146,8 @@ export default function KeywordResearch({
     if (fromUrl) setSeed(fromUrl)
     const geo = (params.get('geo') ?? '').trim().toUpperCase()
     if (geo) setCountry(geo)
+    // Mở tool Keyword = một task mới. Mọi keyword_search/keyword_to_ads sau đó gom về task này.
+    openFeature('keywords')
   }, [])
 
   const labelOf = useMemo(
@@ -403,6 +406,13 @@ export default function KeywordResearch({
         const found = await browserGet<KeywordResult>(`/api/keywords?${params}`)
         setResult(found)
         setResultWindow(window)
+        // Đo lượt tìm từ khoá — đầu một task Keyword. Ghi sau khi có kết quả để không đếm cả
+        // những lượt bấm hụt (thiếu từ gốc, chưa chọn nguồn) đã chặn ở đầu hàm.
+        trackTask('keywords', 'keyword_search', {
+          keyword: seed.trim(),
+          platforms: selected,
+          country,
+        })
         // Cũng không `await`: dịch là phần thêm vào, bảng không được chờ nó. Truyền thị
         // trường của CHÍNH lượt tìm này vì cùng lý do với biểu đồ — người dùng đổi ô Quốc gia
         // trong lúc dịch thì hai lượt sẽ nói về hai thị trường khác nhau.

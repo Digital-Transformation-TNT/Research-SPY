@@ -78,22 +78,39 @@ window.rsAuthFetch = async function (url, options = {}) {
   return r;
 };
 
-// Fire-and-forget analytics tracker. Backend tự xử user_id từ JWT; không có JWT vẫn track ẩn danh.
+// Fire-and-forget analytics tracker. CHƯA CÓ TOKEN thì không gửi: trang đã chặn login nên mọi
+// người dùng thật đều có vé, và backend cũng bỏ event không kèm vé — chặn ở đây để khỏi tốn request.
 window.rsTrack = function (eventType, meta) {
   try {
-    const body = JSON.stringify({ event_type: eventType, meta: meta || {} });
     const token = localStorage.getItem('rs_token');
+    if (!token) return;
     fetch('/api/analytics/track', {
       method: 'POST',
-      headers: Object.assign(
-        { 'Content-Type': 'application/json' },
-        token ? { 'Authorization': 'Bearer ' + token } : {},
-      ),
-      body,
-      keepalive: true,  // cho phép request hoàn tất khi user điều hướng đi
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ event_type: eventType, meta: meta || {} }),
+      keepalive: true,  // cho phép user điều hướng đi mà request vẫn hoàn tất
     }).catch(() => {});
   } catch (e) {}
 };
+
+/*
+ * Đo tool Ads (trang research đa sàn này).
+ *
+ * PHIÊN dùng chung với khung Next: `AnalyticsBoot` đặt `rs_session_id` vào localStorage, mà
+ * iframe cùng origin nên đọc được cùng khoá — nhờ vậy lượt search ở đây gom về đúng phiên mà
+ * session_start/session_end của khung ngoài đã mở. TASK là của riêng lần mở trang research này
+ * (một lần mở tab Sản phẩm = một task Ads), khớp cách `lib/analytics.ts` sinh mã task.
+ */
+const RS_ADS_TASK = 'T_' + ((self.crypto && self.crypto.randomUUID)
+  ? self.crypto.randomUUID().replace(/[^a-z0-9]/gi, '').slice(0, 12)
+  : Date.now().toString(36));
+function rsTrackAds(eventType, meta) {
+  let sid = '';
+  try { sid = localStorage.getItem('rs_session_id') || ''; } catch (e) {}
+  window.rsTrack(eventType, Object.assign({ session_id: sid, task_id: RS_ADS_TASK, feature: 'ads' }, meta || {}));
+}
+// Mở tab Sản phẩm = một task Ads mới.
+rsTrackAds('feature_open', {});
 
 /*
  * ===========================================================================
@@ -271,7 +288,7 @@ async function detectMode() {
   // 1) Có extension NGAY TRÊN MÁY NÀY → dùng thẳng, không cần relay.
   if (await rsExtensionReady()) return;
 
-  // 2) Đi đường vòng được thì ĐI IM LẶNG.
+  // 2) Không có thì LUÔN đi máy-thợ, và ĐI IM LẶNG — kể cả khi lúc mở trang thợ đang offline.
   //
   // Bản trước hỏi `/api/relay/status` đúng MỘT LẦN lúc tải trang: thợ offline thì giữ đường cục bộ
   // (không có extension) suốt phiên, và dựng một băng đỏ "Các sàn cần đăng nhập... tạm thời chưa dùng
@@ -1245,29 +1262,57 @@ function kdMoney(s) {
   return isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : null;
 }
 
+/** Chuỗi Kalodata có nội dung, hay chỉ là ô trống ("-", "")? Giữ nguyên dạng chuỗi để HIỆN. */
+function kdTxt(v) {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s && s !== '-' ? s : null;
+}
+
 function parseKalodataProduct(it, region) {
   const id = String(it.id || '');
   const sale = typeof it.sale === 'number' ? it.sale : null;
+  // ĐƠN VỊ TIỀN LÀ CỦA TÀI KHOẢN KALODATA, KHÔNG PHẢI CỦA NƯỚC. Bảng PH ngày 2026-09-14 hiện tai nghe
+  // "286.780 PHP", 80 đơn mà GMV 26,1M — đúng cỡ giá bằng ₫ của tài khoản VN, chỉ bị dán nhãn theo
+  // nước. Nên đọc đơn vị từ KÝ HIỆU trong chính chuỗi tiền; nước chỉ là mặc định khi chuỗi không có.
+  const cur = curTuChu(it.unit_price || it.min_real_price || it.revenue) || TT_CUR[region] || 'USD';
   const lo = kdMoney(it.min_real_price), hi = kdMoney(it.max_real_price), unit = kdMoney(it.unit_price);
   let gmv = typeof it.revenue_raw === 'number' ? it.revenue_raw : null;
-  // ĐƠN VỊ CỦA `revenue_trend` MỚI ĐO Ở VN (đồng, không có tiền lẻ). Nước dùng tiền lẻ có thể trả
-  // theo cent — đối chiếu với giá đơn vị chính API ghi: lệch đúng cỡ ×100 thì quy lại.
+  // Tiền có số lẻ (USD cent…) có thể về theo đơn vị nhỏ hơn 100 lần — đối chiếu với giá đơn vị
+  // chính API ghi: lệch đúng cỡ ×100 thì quy lại. Tiền đồng không có số lẻ nên không bao giờ chạm.
   if (gmv && sale && unit) {
     const lech = gmv / sale / unit;
     if (lech > 50 && lech < 200) gmv = gmv / 100;
   }
   const price = lo || unit || (gmv && sale ? Math.round((gmv / sale) * 100) / 100 : null);
   const rating = typeof it.product_rating === 'number' && it.product_rating > 0 ? it.product_rating : null;
-  // Kalodata không trả tên shop ở trang tìm kiếm — dòng phụ dưới tên dùng cho thứ nó CÓ và
-  // người research hay hỏi: bao nhiêu creator đang bán, hoa hồng bao nhiêu, lên sàn từ khi nào.
+  const kd = {
+    revenue: kdTxt(it.revenue),
+    growth: kdTxt(it.revenue_grouping_rate),
+    trend: Array.isArray(it.revenue_trend) ? it.revenue_trend : null,
+    unitPrice: kdTxt(it.unit_price),
+    minPrice: kdTxt(it.min_real_price),
+    maxPrice: kdTxt(it.max_real_price),
+    commission: kdTxt(it.commission_rate),
+    creatorNum: typeof it.creator_num === 'number' ? it.creator_num : null,
+    creatorCR: typeof it.creator_conversion_ratio === 'number' ? it.creator_conversion_ratio : null,
+    videoRevenue: kdTxt(it.video_revenue),
+    liveRevenue: kdTxt(it.live_revenue),
+    showcaseRevenue: kdTxt(it.showcase_revenue),
+    launchDate: kdTxt(it.launch_date),
+    shippingFee: kdTxt(it.shipping_fee),
+    deliveryType: kdTxt(it.delivery_type),
+    overseas: it.is_overseas === 1 || it.is_overseas === true,
+  };
+  // Dòng phụ dưới tên cho BẢNG CHUNG đa sàn (bảng Kalodata có cột riêng cho từng thứ này).
   const phu = [
-    typeof it.creator_num === 'number' ? `${fmtInt(it.creator_num)} creator` : '',
-    it.commission_rate ? `hoa hồng ${it.commission_rate}` : '',
-    it.launch_date ? `lên sàn ${it.launch_date}` : '',
+    kd.creatorNum != null ? `${fmtInt(kd.creatorNum)} creator` : '',
+    kd.commission ? `hoa hồng ${kd.commission}` : '',
+    kd.launchDate ? `lên sàn ${kd.launchDate}` : '',
   ].filter(Boolean).join(' · ');
   const link = id ? `https://www.tiktok.com/view/product/${id}` : '#';
   return {
-    platform: 'TikTok Shop', region, currency: TT_CUR[region] || 'USD',
+    platform: 'TikTok Shop', region, currency: cur,
     itemid: id, shopid: '', catid: it.ter_cate_id || it.sec_cate_id || null,
     name: it.product_title || '',
     image: it.image || (id ? `https://img.kalocdn.com/tiktok.product/${id}/cover.png` : ''),
@@ -1277,6 +1322,7 @@ function parseKalodataProduct(it, region) {
     rating, ratingCount: null,
     // Giữ cả 0: sản phẩm không doanh thu phải được chấm "chất" 0, không rơi sang nhánh rating.
     gmv: gmv != null && gmv >= 0 ? gmv : null,
+    kd,
     shop: phu, isAd: false,
     link, similarUrl: link,
   };
@@ -1314,6 +1360,12 @@ function kdPick(o, keys) {
   return null;
 }
 
+/** Như `kdTxt` nhưng coi cả "0" / "0%" là trống — cho các số đo quảng cáo, nơi 0 nghĩa là không chạy QC. */
+function kdAdTxt(v) {
+  const s = kdTxt(v);
+  return s && !/^[^\d]*0([.,]0+)?%?$/.test(s) ? s : null;
+}
+
 function kdUnix(v) {
   if (typeof v === 'number') return v > 1e12 ? Math.floor(v / 1000) : v;
   if (typeof v === 'string' && v) { const t = Date.parse(v); return isFinite(t) ? Math.floor(t / 1000) : null; }
@@ -1345,7 +1397,11 @@ function kalodataVideoAd(v, region) {
     saleCount: typeof v.sale === 'number' ? v.sale : null,
     // Hai chuỗi Kalodata đã format sẵn — chỉ HIỆN, không tính toán gì trên chúng.
     followerText: typeof v.follower_count === 'string' || typeof v.follower_count === 'number' ? String(v.follower_count) : null,
-    adViewText: typeof v.ad_view_ratio === 'string' && v.ad_view_ratio && v.ad_view_ratio !== '0%' ? v.ad_view_ratio : null,
+    adViewText: kdAdTxt(v.ad_view_ratio),
+    durationText: kdTxt(v.duration),
+    adCostText: kdAdTxt(v.ad2Cost),
+    roasText: kdAdTxt(v.ad2Roas),
+    cpaText: kdAdTxt(v.ad_cpa),
     creatives: [{ kind: 'video', posterUrl: v.image || (id ? `https://img.kalocdn.com/tiktok.video/${id}/cover.png` : '') }],
   };
 }
@@ -1517,6 +1573,9 @@ async function research() {
 
   setStatus(`Đang chạy ${jobs.length} truy vấn (sàn × region × từ khoá)${translatedAny ? ' · đã dịch theo sàn' : ''}…`);
 
+  // Đo lượt search Ads — đầu một task. Ghi sau khi qua hết bước kiểm (đủ sàn, đủ từ khoá).
+  rsTrackAds('ads_search', { keyword: keywords.join(', '), platforms: activePf, count: count });
+
   const all = [];
   let backendDown = false;
   const notices = [];
@@ -1581,6 +1640,141 @@ async function research() {
 
 function scoreClass(v) { return v >= 65 ? 'hi' : v >= 40 ? 'mid' : 'lo'; }
 
+/*
+ * HAI BỘ CỘT.
+ *
+ * Bảng chung đa sàn chỉ có những cột MỌI sàn cùng trả lời được (bán/tháng, rating, giá). Kalodata
+ * trả nhiều hơn hẳn — doanh thu theo ngày, nguồn doanh thu, creator, hoa hồng — và ép nó vào bảng
+ * chung là vứt đi đúng phần đáng tiền nhất. Nên khi MỌI dòng đang hiện là TikTok Shop (có `p.kd`),
+ * bảng đổi sang bộ cột giống Kalodata. Trộn với sàn khác thì về bảng chung: cột Hoa hồng hay Nguồn
+ * doanh thu mà trống ở mọi dòng Shopee thì chỉ là nhiễu.
+ *
+ * Tiền trong bộ cột Kalodata hiện NGUYÊN CHUỖI Kalodata đã format ("₫1,02tỉ") — hiện thì đúng từng
+ * chữ số nó có; sắp xếp thì dùng số thô (`gmv`, `price`).
+ */
+const COLS_CHUNG = [
+  { label: '#', cls: 'num plain' },
+  { k: 'score', label: 'Điểm', cls: 'num' },
+  { k: 'name', label: 'Sản phẩm' },
+  { k: 'platform', label: 'Sàn' },
+  { k: 'monthly', label: 'Bán/tháng', cls: 'num' },
+  { k: 'sold', label: 'Tổng bán', cls: 'num' },
+  { k: 'rating', label: 'Rating', cls: 'num' },
+  { k: 'price', label: 'Giá đối thủ', cls: 'num' },
+  { label: 'Giá vốn 1688', cls: 'num plain' },
+  { label: 'Thao tác', cls: 'plain' },
+];
+const COLS_KALODATA = [
+  { label: '#', cls: 'num plain' },
+  { k: 'score', label: 'Điểm', cls: 'num' },
+  { k: 'name', label: 'Sản phẩm' },
+  { k: 'gmv', label: 'Doanh thu 30 ngày', cls: 'num' },
+  { k: 'monthly', label: 'Số bán', cls: 'num' },
+  { k: 'price', label: 'Giá TB', cls: 'num' },
+  { k: 'commission', label: 'Hoa hồng', cls: 'num' },
+  { k: 'creators', label: 'Creator', cls: 'num' },
+  { label: 'Nguồn doanh thu', cls: 'plain' },
+  { k: 'rating', label: 'Rating', cls: 'num' },
+  { k: 'launch', label: 'Lên sàn', cls: 'num' },
+  { label: 'Giá vốn 1688', cls: 'num plain' },
+  { label: 'Thao tác', cls: 'plain' },
+];
+
+function theadHtml(cols) {
+  return '<tr>' + cols.map((c) => {
+    const cls = [c.cls, c.k && c.k === sortKey ? 'sorted' : ''].filter(Boolean).join(' ');
+    return `<th${c.k ? ` data-k="${c.k}"` : ''}${cls ? ` class="${cls}"` : ''}>${esc(c.label)}</th>`;
+  }).join('') + '</tr>';
+}
+
+function scoreTd(p) {
+  return `<td class="num"><span class="score ${scoreClass(p.score.total)}">${p.score.total}</span>` +
+    `<div class="bar"><i style="width:${p.score.total}%"></i></div>` +
+    `<div class="sub">${scoreSub(p)}</div></td>`;
+}
+
+// CDN ảnh Kalodata CHẶN theo Referer: đo 2026-09-14, không Referer → 200, Referer tntecom.com → 403.
+// Chỉ bỏ Referer cho đúng CDN ấy — sàn khác giữ nguyên hành vi đang chạy.
+function noRef(url) { return /(^|\.)kalocdn\.com\//.test(String(url || '').replace(/^https?:\/\//, '')) ? ' referrerpolicy="no-referrer"' : ''; }
+
+function productTd(p, phu) {
+  return `<td><div class="prod">` +
+    `<img class="thumb" src="${p.image}" data-full="${p.image}" loading="lazy" alt=""${noRef(p.image)} />` +
+    `<div><a class="name" href="${p.link}" target="_blank" rel="noreferrer">${esc(p.name)}${p.isAd ? '<span class="adtag">Ad</span>' : ''}</a>` +
+    `${p.videoUrl ? ` <a class="hasvid" href="${esc(p.videoUrl)}" target="_blank" rel="noreferrer" title="Sản phẩm có video — bấm để xem">▶</a>` : ''}` +
+    `<div class="shop">${esc(phu)}</div></div></div></td>`;
+}
+
+function actionTd(p) {
+  return `<td><button class="sim cost" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-price="${giaDung(p) != null ? giaDung(p) : ''}" data-cur="${esc(curOf(p))}">💰 Giá vốn</button> ` +
+    `<button class="sim vid" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-region="${esc(p.region || '')}">🎬 Video</button></td>`;
+}
+
+function rowChung(p, i) {
+  return `<tr>` +
+    `<td class="num rank">${i + 1}</td>` +
+    scoreTd(p) +
+    productTd(p, p.shop) +
+    // NƯỚC NÓI MỘT LẦN: Windows không vẽ được emoji cờ, "Amazon 🇺🇸 US" tụt thành "Amazon us US".
+    `<td><span class="pill">${esc(p.platform)}${p.region ? ' · ' + esc(p.region) : ''}</span></td>` +
+    `${demandCell(p)}${soldCell(p)}${ratingCell(p)}` +
+    `<td class="num">${priceCell(p)}</td>` +
+    cost1688Td(p) +
+    actionTd(p) +
+    `</tr>`;
+}
+
+/** Đường xu hướng doanh thu theo ngày (`revenue_trend`) — thứ Kalodata vẽ cạnh mỗi sản phẩm. */
+function kdTrendSvg(trend) {
+  const v = (trend || []).map((x) => (typeof x === 'number' && x > 0 ? x : 0));
+  if (v.length < 2 || !v.some((x) => x > 0)) return '';
+  const max = Math.max(...v), w = 96, h = 22;
+  const pts = v.map((x, i) => `${((i / (v.length - 1)) * w).toFixed(1)},${(h - 1 - (x / max) * (h - 2)).toFixed(1)}`).join(' ');
+  return `<svg class="kdspark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">` +
+    `<polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+}
+
+function rowKalodata(p, i) {
+  const k = p.kd || {};
+  const trong = '<span class="sub">—</span>';
+  const giam = k.growth && k.growth.trim().startsWith('-');
+  const tang = k.growth
+    ? `<div class="sub" style="color:var(${giam ? '--disc' : '--good'})" title="Tăng trưởng doanh thu so với kỳ trước (Kalodata)">${esc(k.growth)}</div>`
+    : '';
+  const khoang = k.minPrice && k.maxPrice && k.minPrice !== k.maxPrice
+    ? `<div class="sub" title="Giá bán thực thấp nhất – cao nhất">${esc(k.minPrice)} – ${esc(k.maxPrice)}</div>`
+    : k.minPrice ? `<div class="sub" title="Giá bán thực">bán ${esc(k.minPrice)}</div>` : '';
+  const cr = k.creatorCR != null ? (k.creatorCR <= 1 ? k.creatorCR * 100 : k.creatorCR) : null;
+  const nguon = [['Video', k.videoRevenue], ['Live', k.liveRevenue], ['Gian hàng', k.showcaseRevenue]]
+    .filter(([, v]) => v)
+    .map(([ten, v]) => `<div><span class="sub">${ten}</span> ${esc(v)}</div>`)
+    .join('');
+  const noiDia = k.overseas ? 'hàng ngoài nước' : k.deliveryType === 'local' ? 'kho nội địa' : '';
+  const phu = [
+    p.region ? `${FLAG[p.region] || ''} ${COUNTRY[p.region] || p.region}`.trim() : '',
+    noiDia,
+    k.shippingFee ? `ship ${k.shippingFee}` : '',
+  ].filter(Boolean).join(' · ');
+  return `<tr>` +
+    `<td class="num rank">${i + 1}</td>` +
+    scoreTd(p) +
+    productTd(p, phu) +
+    `<td class="num"><span class="price">${k.revenue ? esc(k.revenue) : trong}</span>${tang}${kdTrendSvg(k.trend)}</td>` +
+    `<td class="num">${fmtInt(p.monthly)}</td>` +
+    `<td class="num"><span class="price" title="Giá bán trung bình = doanh thu ÷ số bán">${k.unitPrice ? esc(k.unitPrice) : trong}</span>${khoang}</td>` +
+    `<td class="num">${k.commission ? esc(k.commission) : trong}</td>` +
+    `<td class="num">${k.creatorNum != null ? fmtInt(k.creatorNum) : '—'}` +
+    `${cr != null ? `<div class="sub" title="Tỉ lệ creator đã ra đơn">${cr.toFixed(0)}% ra đơn</div>` : ''}</td>` +
+    `<td class="kdsrc">${nguon || trong}</td>` +
+    ratingCell(p) +
+    `<td class="num">${k.launchDate ? esc(k.launchDate) : '—'}</td>` +
+    cost1688Td(p) +
+    actionTd(p) +
+    `</tr>`;
+}
+
+function kdPct(p) { const v = parseFloat(String((p.kd && p.kd.commission) || '').replace(',', '.')); return isFinite(v) ? v : -1; }
+
 function render() {
   const kwPick = $('kwfilter').value || '__all';
 
@@ -1594,36 +1788,19 @@ function render() {
       case 'rating': return (b.rating || 0) - (a.rating || 0);
       case 'monthly': return (b.monthly || 0) - (a.monthly || 0);
       case 'sold': return (b.sold || 0) - (a.sold || 0);
+      case 'gmv': return (b.gmv || 0) - (a.gmv || 0);
+      case 'commission': return kdPct(b) - kdPct(a);
+      case 'creators': return ((b.kd && b.kd.creatorNum) || 0) - ((a.kd && a.kd.creatorNum) || 0);
+      case 'launch': return String((b.kd && b.kd.launchDate) || '').localeCompare(String((a.kd && a.kd.launchDate) || ''));
       default: return b.score.total - a.score.total;
     }
   });
 
+  const bangKalodata = list.length > 0 && list.every((p) => p.kd);
+  $('table').tHead.innerHTML = theadHtml(bangKalodata ? COLS_KALODATA : COLS_CHUNG);
   // Dựng toàn bộ HTML một lần rồi gán một phát — tránh reflow mỗi dòng khi bảng dài (120+ SP).
   // Handler hover/click gắn theo uỷ quyền trên #rows nên không bị ảnh hưởng khi thay innerHTML.
-  $('rows').innerHTML = list.map((p, i) =>
-    `<tr>` +
-    `<td class="num rank">${i + 1}</td>` +
-    `<td class="num"><span class="score ${scoreClass(p.score.total)}">${p.score.total}</span>` +
-    `<div class="bar"><i style="width:${p.score.total}%"></i></div>` +
-    `<div class="sub">${scoreSub(p)}</div></td>` +
-    `<td><div class="prod">` +
-    `<img class="thumb" src="${p.image}" data-full="${p.image}" loading="lazy" alt="" />` +
-    `<div><a class="name" href="${p.link}" target="_blank" rel="noreferrer">${esc(p.name)}${p.isAd ? '<span class="adtag">Ad</span>' : ''}</a>` +
-    `${p.videoUrl ? ` <a class="hasvid" href="${esc(p.videoUrl)}" target="_blank" rel="noreferrer" title="Sản phẩm có video — bấm để xem">▶</a>` : ''}` +
-    `<div class="shop">${esc(p.shop)}</div></div></div></td>` +
-    // NƯỚC NÓI MỘT LẦN. Trước đây ô này in cả cờ LẪN mã nước: `Amazon 🇺🇸 US`. Windows không
-    // vẽ được emoji cờ (nó dựng từ hai chữ cái vùng), nên trên đúng cái máy người dùng đang
-    // ngồi nó tụt xuống thành hai chữ thường và ô đọc ra "Amazon us US" — nhìn như lỗi dữ liệu.
-    // Chỗ khác dùng cờ thì nó đi kèm TÊN nước ("🇻🇳 Việt Nam") nên không trùng; riêng ô này
-    // trùng ở mọi hệ điều hành, chỉ là Windows làm nó lộ ra.
-    `<td><span class="pill">${esc(p.platform)}${p.region ? ' · ' + esc(p.region) : ''}</span></td>` +
-    `${demandCell(p)}${soldCell(p)}${ratingCell(p)}` +
-    `<td class="num">${priceCell(p)}</td>` +
-    cost1688Td(p) +
-    `<td><button class="sim cost" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-price="${giaDung(p) != null ? giaDung(p) : ''}" data-cur="${esc(curOf(p))}">💰 Giá vốn</button> ` +
-    `<button class="sim vid" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-region="${esc(p.region || '')}">🎬 Video</button></td>` +
-    `</tr>`
-  ).join('');
+  $('rows').innerHTML = list.map((p, i) => (bangKalodata ? rowKalodata(p, i) : rowChung(p, i))).join('');
   $('table').style.display = list.length ? 'table' : 'none';
   $('costAll').style.display = list.length ? '' : 'none'; // nút giá vốn hàng loạt chỉ hiện khi có list
 }
@@ -1642,6 +1819,8 @@ function positionZoom(x, y) {
 $('rows').addEventListener('mouseover', (e) => {
   const img = e.target.closest('img.thumb');
   if (!img || !img.dataset.full) return;
+  // Đặt TRƯỚC `src`: đổi chính sách sau khi đã gán nguồn thì ảnh không tải lại.
+  zoomImg.referrerPolicy = noRef(img.dataset.full) ? 'no-referrer' : '';
   zoomImg.src = img.dataset.full;
   zoom.style.display = 'block';
   positionZoom(e.clientX, e.clientY);
@@ -1651,6 +1830,13 @@ $('rows').addEventListener('mouseout', (e) => { if (e.target.closest('img.thumb'
 
 // ---- Click trong bảng: "Giá vốn" (tìm bằng ảnh trên 1688) hoặc "Video" (modal video khớp ảnh) ----
 $('rows').addEventListener('click', (e) => {
+  // Bấm ra sàn = kết quả cuối của task Ads (đo độ sâu research). Thẻ <a> vẫn tự mở tab bình
+  // thường; ở đây chỉ ghi thêm một event. Đặt TRƯỚC các nhánh `return` bên dưới.
+  const nameLink = e.target.closest('a.name');
+  if (nameLink) rsTrackAds('product_click', { link: nameLink.getAttribute('href') || '' });
+  const vidLink = e.target.closest('a.hasvid');
+  if (vidLink) rsTrackAds('video_open', { link: vidLink.getAttribute('href') || '' });
+
   const cost = e.target.closest('button.cost');
   if (cost) {
     const sell = cost.dataset.price !== '' && cost.dataset.price != null ? Number(cost.dataset.price) : null;
@@ -1659,6 +1845,8 @@ $('rows').addEventListener('click', (e) => {
   }
   const vid = e.target.closest('button.vid');
   if (vid) {
+    // Mở modal video từ một dòng sản phẩm cũng là một lượt xem video.
+    rsTrackAds('video_open', { name: vid.dataset.name || '' });
     openVideoModal({ img: vid.dataset.img, name: vid.dataset.name, region: vid.dataset.region });
     return;
   }
@@ -1943,13 +2131,13 @@ async function runCostBatch(n) {
 }
 
 // ---- Sort khi bấm tiêu đề cột ----
-document.querySelectorAll('th[data-k]').forEach((th) => {
-  th.addEventListener('click', () => {
-    sortKey = th.dataset.k;
-    document.querySelectorAll('th').forEach((h) => h.classList.remove('sorted'));
-    th.classList.add('sorted');
-    render();
-  });
+// Uỷ quyền trên <thead>: bộ cột đổi theo dữ liệu (xem `render`) nên các thẻ <th> được dựng lại mỗi
+// lượt vẽ — gắn thẳng vào từng <th> lúc nạp trang thì bảng Kalodata không sắp được cột nào.
+$('table').tHead.addEventListener('click', (e) => {
+  const th = e.target.closest('th[data-k]');
+  if (!th) return;
+  sortKey = th.dataset.k;
+  render();
 });
 
 $('go').addEventListener('click', research);
@@ -2182,7 +2370,8 @@ async function openVideoModal(p) {
  * tab TikTok có tim/bình luận — nên giữ bản NẶNG hơn rồi CHÉP SANG những số bản kia có mà nó thiếu.
  * Doanh thu nặng nhất: nó là thứ duy nhất không đường nào khác lấy được.
  */
-const VID_MERGE_FIELDS = ['likeCount', 'commentCount', 'shareCount', 'playCount', 'startedAt', 'gmv', 'gmvText', 'saleCount'];
+const VID_MERGE_FIELDS = ['likeCount', 'commentCount', 'shareCount', 'playCount', 'startedAt', 'gmv', 'gmvText', 'saleCount',
+  'followerText', 'adViewText', 'durationText', 'adCostText', 'roasText', 'cpaText'];
 function vidMerge(...lists) {
   const by = new Map();
   const weight = (x) => (x.likeCount != null) + (x.playCount != null) + (x.startedAt != null) + (x.gmv != null ? 3 : 0);
@@ -2602,7 +2791,11 @@ function kdSaleStats(ad) {
     // hai loại cần đọc khác nhau khi chọn content để làm theo.
     (ad.adViewText
       ? `<span title="Tỉ lệ lượt xem đến từ quảng cáo (Kalodata)">📣<span class="n">${esc(ad.adViewText)}</span><span class="k">từ QC</span></span>`
-      : '');
+      : '') +
+    (ad.adCostText ? `<span title="Chi phí quảng cáo ước tính (Kalodata)">💸<span class="n">${esc(ad.adCostText)}</span></span>` : '') +
+    (ad.roasText ? `<span title="ROAS quảng cáo — doanh thu ÷ chi phí QC (Kalodata)"><span class="k">ROAS</span><span class="n">${esc(ad.roasText)}</span></span>` : '') +
+    (ad.cpaText ? `<span title="Chi phí quảng cáo cho mỗi đơn (Kalodata)"><span class="k">CPA</span><span class="n">${esc(ad.cpaText)}</span></span>` : '') +
+    (ad.durationText ? `<span title="Thời lượng video">⏱<span class="n">${esc(ad.durationText)}</span></span>` : '');
 }
 
 function vidCard(ad, idx) {

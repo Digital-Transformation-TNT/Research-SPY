@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { browserGet } from '@/lib/api'
+import { trackTask } from '@/lib/analytics'
 import { dayLabel, money, short, type SanKey, type Toplist } from '@/lib/trendscout'
 import Pager from './Pager'
 import ProductThumb from './ProductThumb'
@@ -64,16 +65,10 @@ export default function ToplistView({
 
   return (
     <>
+      {/* Bỏ số đếm "N sản phẩm · trang x/y · đã loại … listing" (18/09/2026, gây nhiễu) — trang
+          đã có ở thanh chuyển trang. Giữ ngày quét: người xem cần biết số liệu mới tới đâu. */}
       <p className="ts-meta">
-        {bySold
-          ? 'Xếp theo lượt bán 30 ngày của sàn, gộp mọi ngành.'
-          : 'Xếp theo doanh số 30 ngày (giá × lượt bán), để hàng giá rẻ bán số lượng lớn không lấn át hàng giá trị cao.'}{' '}
-        <b>{data.items.length}</b> sản phẩm · trang {trangHienTai}/{soTrang} · quét{' '}
-        {dayLabel(data.ngay_moi_nhat)}
-        {/* Số hàng ảo đã loại nói ra chứ không giấu: bảng "bán chạy" của sàn vốn đầy ô quà tặng
-            bán hàng chục nghìn lượt, người quen nhìn bảng cũ sẽ thắc mắc chúng đi đâu mất. */}
-        {Boolean(data.da_loc) && <> · đã loại {short(data.da_loc)} listing quà tặng/hàng ảo</>}
-        {' '}· bấm một dòng để soi ngành ở Khám phá.
+        Cập nhật {dayLabel(data.ngay_moi_nhat)} · bấm một dòng để soi ngành ở Khám phá.
       </p>
 
       <div className="img-list ts-list">
@@ -99,7 +94,15 @@ export default function ToplistView({
                     href={it.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      // +1 link ngoài — kết quả cuối của task Trend Signal (đo độ sâu research).
+                      trackTask('trend-signal', 'product_click', {
+                        product_id: it.product_id,
+                        platform: san,
+                        position: i + 1,
+                      })
+                    }}
                     title="Mở trang sản phẩm trên sàn"
                   >
                     {it.title ?? it.product_id}

@@ -1,6 +1,7 @@
 'use client'
 
 import { withBase } from '@/lib/basePath'
+import { trackTask } from '@/lib/analytics'
 import type { KeywordCandidate, KeywordGloss, KeywordSource } from '@/lib/keywords/types'
 
 /** `markets` là `null` khi nguồn chạy ở mọi thị trường — xem `KeywordProvider.markets`. */
@@ -277,7 +278,12 @@ function Row({
             PHẢI bọc `withBase`: đây là thẻ `<a>` thường chứ không phải `<Link>`, nên Next
             KHÔNG tự ghép tiền tố `/research` — thiếu nó thì nút nhảy ra `tntecom.com/ads`
             và người dùng nhận trang "chưa có gì ở địa chỉ này". */}
-        <a href={withBase(`/ads?keyword=${encodeURIComponent(item.display)}`)} title="Mở tab Sản phẩm với từ khoá này điền sẵn">
+        <a
+          href={withBase(`/ads?keyword=${encodeURIComponent(item.display)}`)}
+          title="Mở tab Sản phẩm với từ khoá này điền sẵn"
+          // Kết task Keyword bằng cách bắc cầu sang Ads — đo được bước "Keyword → Ads".
+          onClick={() => trackTask('keywords', 'keyword_to_ads', { keyword: item.display })}
+        >
           Tìm sản phẩm ↗
         </a>
       </td>

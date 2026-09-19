@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { browserGet, browserPostJson } from '@/lib/api'
+import { trackTask } from '@/lib/analytics'
 import {
   LENSES,
-  dayLabel,
   money,
   short,
   whyText,
@@ -25,7 +25,7 @@ const MOI_TRANG = Math.ceil(CAP / SO_TRANG)
  * Khám phá & Tùy chỉnh — một ngành × bảy lăng kính.
  *
  * Mọi lăng kính trừ Bán chạy là HIỆU giữa các lần quét, nên khi lịch sử còn ngắn chúng rỗng
- * hoặc kém sắc. Trang nói thẳng điều đó bằng dòng "tính trên N ngày" và câu nhắc của backend,
+ * hoặc kém sắc. Trang nói thẳng điều đó bằng câu nhắc của backend,
  * thay vì để một dãy lăng kính số 0 tự nói — trông y hệt "thị trường không có gì".
  */
 export default function ExploreView({
@@ -119,7 +119,10 @@ export default function ExploreView({
         />
       )}
 
-      {fresh && <Readiness data={data} san={san} />}
+      {/* Không còn dòng thống kê "18,8k sản phẩm theo dõi · tính trên 8 ngày (6 lần quét…)" và
+          "Trang 1/3 · đang xem 67 trong 200… trên tổng 1.789 đạt mức" — chủ dự án bỏ 18/09/2026 vì
+          gây nhiễu. Chỉ giữ câu nhắc của backend khi lịch sử chưa đủ, vì nó giải thích bảng rỗng. */}
+      {fresh && data.ghi_chu && <div className="notice info">{data.ghi_chu}</div>}
 
       {error && (
         <div className="notice bad">
@@ -143,7 +146,20 @@ export default function ExploreView({
                     <ProductThumb src={it.image_url} className="ts-card-thumb" />
                     <div className="img-info">
                       {it.url ? (
-                        <a className="ts-title" href={it.url} target="_blank" rel="noopener noreferrer">
+                        <a
+                          className="ts-title"
+                          href={it.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          // +1 link ngoài — kết quả cuối của task Trend Signal.
+                          onClick={() =>
+                            trackTask('trend-signal', 'product_click', {
+                              product_id: it.product_id,
+                              platform: san,
+                              lens,
+                            })
+                          }
+                        >
                           {it.title ?? it.product_id}
                         </a>
                       ) : (
@@ -165,18 +181,10 @@ export default function ExploreView({
                       v={it.rating ? `${it.rating.toFixed(1)}★${it.reviews ? ` · ${short(it.reviews)}` : ''}` : '—'}
                     />
                   </div>
-                  {lens !== 'ban_chay' && <small className="ts-basis">tính trên {it.so_ngay} ngày</small>}
                 </article>
               ))}
             </div>
             <Pager trang={trangHienTai} soTrang={soTrang} onTrang={setTrang} />
-            <p className="ts-meta">
-              Trang {trangHienTai}/{soTrang} · đang xem {dangXem.length} trong {short(items.length)} sản phẩm
-              {data.dem[lens] > items.length && (
-                <> trên tổng {short(data.dem[lens])} đạt mức — chọn ngành hẹp hơn để xem gọn</>
-              )}
-              .
-            </p>
           </>
         ) : (
           // Chưa đủ lần quét thì câu nhắc ngay phía trên đã nói lý do — lặp lại nó trong một khung
@@ -186,23 +194,6 @@ export default function ExploreView({
           )
         )
       )}
-    </>
-  )
-}
-
-/** Dòng "tính trên N ngày" và nguồn số — chỗ người xem biết tin các lăng kính tới đâu. */
-function Readiness({ data, san }: { data: Explore; san: SanKey }) {
-  const days = data.ngay_quet
-  const range = days.length ? `${dayLabel(days[0])} → ${dayLabel(days[days.length - 1])}` : '—'
-  return (
-    <>
-      <p className="ts-meta">
-        <b>{short(data.tong_san_pham)}</b> sản phẩm theo dõi · tính trên <b>{data.so_ngay}</b> ngày ({data.so_lan_quet}{' '}
-        lần quét, {range})
-        {data.nguon === 'gop_nganh_con' && ' · ngành lớn chưa được quét riêng, đang gộp các ngành con'}
-        {san === '1688' && ' · bán/ngày của 1688 lấy từ lượt bán 30 ngày của sàn ÷ 30'}
-      </p>
-      {data.ghi_chu && <div className="notice info">{data.ghi_chu}</div>}
     </>
   )
 }

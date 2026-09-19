@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { withBase } from '@/lib/basePath'
 import s from './admin.module.css'
 
@@ -36,6 +36,70 @@ type User = {
 }
 type Stats = { current: any; previous: any; trends: any }
 
+type UserStat = {
+  user_id: string
+  name: string
+  email?: string
+  bu?: string
+  role?: string
+  runs: number
+  links: number
+  tasks: number
+  success: number
+  success_rate: number | null
+  links_per_task: number
+  sessions: number
+  avg_session_min: number | null
+  last_active?: string | null
+}
+type ToolStat = {
+  feature: string
+  tasks: number
+  success: number
+  success_rate: number | null
+  links: number
+  runs: number
+}
+type ByUser = {
+  users: UserStat[]
+  tools: ToolStat[]
+  anon: { runs: number; links: number; tasks: number; sessions: number } | null
+}
+
+type ActEvent = { ts?: string; event_type: string; feature?: string | null; label: string }
+type ActSession = {
+  session_id: string
+  device?: string | null
+  duration_sec?: number | null
+  tools_used?: string[]
+  started?: string | null
+  ended?: string | null
+  links: number
+  runs: number
+  events: ActEvent[]
+}
+type Activity = { loading: boolean; error?: string; sessions?: ActSession[]; truncated?: boolean }
+
+/** Nhãn tool cho người đọc — khớp `feature` mà frontend bắn lên. */
+const TOOL_LABEL: Record<string, string> = {
+  keywords: 'Keyword',
+  ads: 'Sản phẩm (Ads)',
+  image: 'Image Search',
+  'trend-signal': 'Trend Signal',
+  oneshot: 'One-shot AI',
+  opportunity: 'Cơ hội',
+  khác: 'Khác',
+}
+const toolLabel = (f: string) => TOOL_LABEL[f] ?? f
+
+/** Màu cho tỉ lệ thành công: xanh ≥60, vàng ≥30, đỏ dưới đó. `null` = chưa có task. */
+function rateClass(rate: number | null, s: Record<string, string>) {
+  if (rate == null) return ''
+  if (rate >= 60) return s.rateGood
+  if (rate >= 30) return s.rateMid
+  return s.rateBad
+}
+
 function clearAuthAndLogin() {
   AUTH_KEYS.forEach((k) => localStorage.removeItem(k))
   window.location.replace(withBase('/login'))
@@ -63,6 +127,15 @@ function fmtDate(iso?: string) {
   if (days === 1) return 'hôm qua'
   if (days < 30) return days + ' ngày trước'
   return d.toLocaleDateString('vi-VN')
+}
+
+/** Ngày giờ ngắn cho dòng thời gian: "17/09 09:02". */
+function fmtWhen(iso?: string | null) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 function fmtCompact(n: any) {
@@ -104,6 +177,45 @@ function Delta({ curr, prev, trend, invert }: { curr: any; prev: any; trend?: st
   return <div className={`${s.kpiDelta} ${cls}`}>{arrow} kỳ trước: {fmtCompact(prev)}{delta}</div>
 }
 
+/** Dòng thời gian hoạt động của một người — hiện khi bấm mở một dòng ở bảng theo nhân sự. */
+function UserActivity({ act, s }: { act?: Activity; s: Record<string, string> }) {
+  if (!act || act.loading) return <div className={s.actLoading}>Đang tải lịch sử…</div>
+  if (act.error) return <div className={`${s.status} ${s.statusErr}`}>Lỗi: {act.error}</div>
+  const sessions = act.sessions || []
+  if (sessions.length === 0) return <div className={s.actLoading}>Chưa có hoạt động nào trong kỳ này.</div>
+  return (
+    <div className={s.act}>
+      {sessions.map((se) => (
+        <div className={s.actSession} key={se.session_id}>
+          <div className={s.actHead}>
+            <b>{fmtWhen(se.started)}</b>
+            <span className={s.sub}>
+              {se.device || '—'}
+              {se.duration_sec ? ` · ${Math.round(se.duration_sec / 60)}′` : ''}
+              {` · ${se.runs} chạy · ${se.links} link`}
+              {se.tools_used && se.tools_used.length
+                ? ` · ${se.tools_used.map(toolLabel).join(', ')}`
+                : ''}
+            </span>
+          </div>
+          <ol className={s.actList}>
+            {se.events.map((e, i) => (
+              <li key={i} className={s.actItem} data-kind={e.event_type}>
+                <span className={s.actTime}>{fmtWhen(e.ts).split(' ')[1] || ''}</span>
+                <span className={s.actDot} />
+                <span className={s.actLabel}>{e.label}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ))}
+      {act.truncated && (
+        <p className={s.sub}>Chỉ hiện các event gần nhất (đã chạm trần) — thu hẹp kỳ để xem đủ.</p>
+      )}
+    </div>
+  )
+}
+
 export default function AdminPage() {
   const [ready, setReady] = useState(false)
   const [tab, setTab] = useState<'users' | 'stats'>('users')
@@ -119,6 +231,12 @@ export default function AdminPage() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [statsErr, setStatsErr] = useState('')
   const [statsLoading, setStatsLoading] = useState(false)
+
+  const [byUser, setByUser] = useState<ByUser | null>(null)
+  const [byUserErr, setByUserErr] = useState('')
+  //: User đang mở lịch sử (bấm một dòng để xem "dùng tới đâu"), và kho lịch sử theo user_id.
+  const [openUser, setOpenUser] = useState<string | null>(null)
+  const [activity, setActivity] = useState<Record<string, Activity>>({})
 
   // ---- Gate: chờ mounted rồi mới quyết định, tránh nháy nội dung admin cho non-admin ----
   useEffect(() => {
@@ -160,6 +278,46 @@ export default function AdminPage() {
     }
   }, [])
 
+  //: Bảng theo nhân sự + theo tool. Tách khỏi `loadStats` để một cái hỏng không kéo cái kia.
+  const loadByUser = useCallback(async (p: 'week' | 'month') => {
+    setByUserErr('')
+    try {
+      const r = await api(`/api/admin/stats-by-user?period=${p}`)
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`)
+      setByUser(data)
+    } catch (e: any) {
+      setByUserErr(e.message)
+      setByUser(null)
+    }
+  }, [])
+
+  //: Bấm một dòng user → tải (một lần) dòng thời gian hoạt động của họ.
+  const toggleUser = useCallback(
+    async (userId: string) => {
+      if (openUser === userId) {
+        setOpenUser(null)
+        return
+      }
+      setOpenUser(userId)
+      // Đã có trong kho (và không phải lần lỗi cần thử lại) thì khỏi gọi lại.
+      if (activity[userId] && !activity[userId].error) return
+      setActivity((prev) => ({ ...prev, [userId]: { loading: true } }))
+      try {
+        const r = await api(`/api/admin/user-activity?user_id=${encodeURIComponent(userId)}&period=${period}`)
+        const data = await r.json()
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`)
+        setActivity((prev) => ({
+          ...prev,
+          [userId]: { loading: false, sessions: data.sessions || [], truncated: data.truncated },
+        }))
+      } catch (e: any) {
+        setActivity((prev) => ({ ...prev, [userId]: { loading: false, error: e.message } }))
+      }
+    },
+    [openUser, activity, period],
+  )
+
   // ---- Yêu cầu đổi vai trò (admin xin, owner duyệt) ----
   const loadRoleReqs = useCallback(async () => {
     try {
@@ -178,8 +336,14 @@ export default function AdminPage() {
     }
   }, [ready, loadUsers, loadRoleReqs])
   useEffect(() => {
-    if (ready && tab === 'stats') loadStats(period)
-  }, [ready, tab, period, loadStats])
+    if (ready && tab === 'stats') {
+      loadStats(period)
+      loadByUser(period)
+      // Đổi kỳ → lịch sử đã tải là của kỳ cũ, dọn đi để lần mở sau tải lại đúng kỳ.
+      setActivity({})
+      setOpenUser(null)
+    }
+  }, [ready, tab, period, loadStats, loadByUser])
 
   async function askRoleChange(u: User, toRole: string) {
     const lyDo = prompt(
@@ -483,6 +647,122 @@ Lý do (owner sẽ đọc):`,
             ) : null}
           </div>
 
+          {/* ── THEO NHÂN SỰ — ai dùng tốt, ai mở cho có ─────────────────────────────── */}
+          <div className={s.panel}>
+            <h2>Theo nhân sự</h2>
+            {byUserErr ? (
+              <div className={`${s.status} ${s.statusErr}`}>Lỗi: {byUserErr}</div>
+            ) : !byUser ? (
+              <p className={s.sub}>Đang tải…</p>
+            ) : byUser.users.length === 0 ? (
+              <p className={s.sub}>Chưa có event nào quy được về người trong kỳ này.</p>
+            ) : (
+              <table className={s.table}>
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>Người dùng</th>
+                    <th>BU</th>
+                    <th title="Số lần chạy tool: search từ khoá/quảng cáo, tra ảnh, hỏi AI">Chạy</th>
+                    <th title="Link ra ngoài: product_click + video_open + image_result_click">Link ngoài</th>
+                    <th title="Số task (mỗi lần mở một tool)">Task</th>
+                    <th title="% task có ra ít nhất 1 link ngoài — dùng tool có hiệu quả không">%success</th>
+                    <th title="Trung bình số link ngoài mỗi task — research sâu tới đâu">Link/task</th>
+                    <th title="Thời gian trung bình mỗi phiên">TB phiên</th>
+                    <th>Hoạt động gần nhất</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byUser.users.map((u) => {
+                    const open = openUser === u.user_id
+                    const act = activity[u.user_id]
+                    return (
+                      <Fragment key={u.user_id}>
+                        <tr
+                          className={s.userRow}
+                          onClick={() => toggleUser(u.user_id)}
+                          title="Bấm để xem lịch sử hoạt động"
+                        >
+                          <td className={s.caret}>{open ? '▾' : '▸'}</td>
+                          <td>
+                            <b>{u.name}</b>
+                            {u.email && u.email !== u.name ? <div className={s.sub}>{u.email}</div> : null}
+                          </td>
+                          <td>{u.bu || '—'}</td>
+                          <td>{fmtCompact(u.runs)}</td>
+                          <td>{fmtCompact(u.links)}</td>
+                          <td>{u.tasks}</td>
+                          <td>
+                            {u.success_rate == null ? (
+                              '—'
+                            ) : (
+                              <span className={rateClass(u.success_rate, s)}>{u.success_rate}%</span>
+                            )}
+                          </td>
+                          <td>{u.links_per_task}</td>
+                          <td>{u.avg_session_min != null ? `${u.avg_session_min}′` : '—'}</td>
+                          <td>{fmtDate(u.last_active || undefined)}</td>
+                        </tr>
+                        {open && (
+                          <tr className={s.actRow}>
+                            <td colSpan={10}>
+                              <UserActivity act={act} s={s} />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+            {byUser?.anon && (byUser.anon.runs > 0 || byUser.anon.links > 0) && (
+              <p className={`${s.sub} ${s.anonNote}`}>
+                ⚠️ Ẩn danh (chưa quy được về người): {fmtCompact(byUser.anon.runs)} lượt chạy ·{' '}
+                {fmtCompact(byUser.anon.links)} link · {byUser.anon.tasks} task. Event không có vé
+                nay đã bị chặn ghi — còn thấy dòng này là sót hiếm (vé hết hạn ngay lúc bấm) hoặc
+                dữ liệu cũ.
+              </p>
+            )}
+          </div>
+
+          {/* ── THEO TOOL — tool nào ra kết quả ───────────────────────────────────────── */}
+          {byUser && byUser.tools.length > 0 && (
+            <div className={s.panel}>
+              <h2>Theo tool</h2>
+              <table className={s.table}>
+                <thead>
+                  <tr>
+                    <th>Tool</th>
+                    <th>Task</th>
+                    <th title="Số task có ≥1 link ngoài">Thành công</th>
+                    <th>%success</th>
+                    <th>Link ngoài</th>
+                    <th title="Trung bình link mỗi task">Link/task</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byUser.tools.map((t) => (
+                    <tr key={t.feature}>
+                      <td><b>{toolLabel(t.feature)}</b></td>
+                      <td>{t.tasks}</td>
+                      <td>{t.success}</td>
+                      <td>
+                        {t.success_rate == null ? (
+                          '—'
+                        ) : (
+                          <span className={rateClass(t.success_rate, s)}>{t.success_rate}%</span>
+                        )}
+                      </td>
+                      <td>{fmtCompact(t.links)}</td>
+                      <td>{t.tasks ? Math.round((t.links / t.tasks) * 10) / 10 : 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           <div className={s.panel}>
             <h2>Ghi chú</h2>
             <ul className={s.notes}>
@@ -491,6 +771,7 @@ Lý do (owner sẽ đọc):`,
               <li><b>Thời gian trung bình/task</b>: từ event <code>session_end</code>, đơn vị phút.</li>
               <li><b>Giờ tiết kiệm</b>: baseline 30 phút thủ công × số task hoàn tất − thời gian thực tế.</li>
               <li><b>Trend</b>: so với kỳ trước ±5%. Thời gian ít hơn là ↑ tốt (đảo dấu).</li>
+              <li><b>Theo nhân sự / theo tool</b>: một task = một lần mở tool; “thành công” = task có ≥1 link ra ngoài. %success thấp + 0 link = mở tool nhưng chưa ra kết quả (cần hỗ trợ/đào tạo, hoặc tool chưa hợp việc).</li>
             </ul>
           </div>
         </>

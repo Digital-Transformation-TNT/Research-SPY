@@ -6,6 +6,7 @@ import Dropdown from '@/components/keywords/Dropdown'
 import AnswerBlock from './AnswerBlock'
 import { DEFAULT_COUNTRY, countryOptions } from '@/lib/keywords/trendsOptions'
 import { browserPostJson } from '@/lib/api'
+import { openFeature, trackTask } from '@/lib/analytics'
 import type { Answer, AskTurn, Turn } from '@/lib/opportunity/types'
 
 /**
@@ -92,6 +93,14 @@ function reviveTurns(value: unknown): Turn[] {
 export default function OpportunityWorkspace({ hub = false }: { hub?: boolean } = {}) {
   const router = useRouter()
   const storageKey = hub ? 'hub-oneshot-v1' : STORAGE_KEY
+  //: Tên tool để đo — One-shot AI (Hub) tách khỏi trang Cơ hội cũ.
+  const feature = hub ? 'oneshot' : 'opportunity'
+
+  // Mở tool = một task mới; ai_ask sau đó gom về task này.
+  useEffect(() => {
+    openFeature(feature)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [countryState, setCountry] = useState(DEFAULT_COUNTRY)
   // Chế độ Hub KHÔNG có ô Quốc gia: backend tự đọc cả ba sàn và tự chọn thị trường đối chiếu
   // theo chính câu hỏi (`hub/signal/ask.py::_thi_truong`). Ô Quốc gia ở đây chỉ còn phục vụ
@@ -194,6 +203,8 @@ export default function OpportunityWorkspace({ hub = false }: { hub?: boolean } 
         const next: Turn[] = [...asked, { role: 'assistant', answer }]
         history.current = next
         setTurns(next)
+        // Đo lượt hỏi AI — "chạy" của tool One-shot. Ghi sau khi có câu trả lời.
+        trackTask(feature, 'ai_ask', { turns: asked.length })
       } catch (failure) {
         // Câu vừa hỏi ở lại trên màn hình. Nuốt nó đi cùng lỗi sẽ buộc người dùng gõ lại
         // nguyên câu, và đó là thứ họ vừa mất công viết nhất.
@@ -202,7 +213,7 @@ export default function OpportunityWorkspace({ hub = false }: { hub?: boolean } 
         setLoading(false)
       }
     },
-    [country, loading, hub],
+    [country, loading, hub, feature],
   )
 
   /**
