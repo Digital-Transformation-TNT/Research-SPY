@@ -575,10 +575,28 @@ async function refreshLogin({ tuDong = false } = {}) {
  * KHÔNG chạy khi tab đang ẩn: mỗi lượt là 11-19 lần hỏi máy-thợ, và một tab để quên trong nền
  * cả ngày sẽ ăn hết lượt của người đang thật sự dùng. Quay lại tab thì hỏi lại ngay.
  */
-const LOGIN_RECHECK_MS = 60_000;
-setInterval(() => {
-  if (document.visibilityState === 'visible') void refreshLogin({ tuDong: true });
-}, LOGIN_RECHECK_MS);
+// NHỊP THÍCH ỨNG. Khi một nước ĐANG CHỌN còn ✕ hoặc chưa rõ, kiểm lại NHANH (15s) để dấu ✕ tự
+// lật sang ✓ ngay sau khi máy-thợ đăng nhập lại — không phải ngồi bấm ⟳. Khi mọi nước đang chọn
+// đã ✓ thì giãn ra 60s cho nhẹ máy-thợ (mỗi lượt là 11-19 lần hỏi).
+const LOGIN_RECHECK_OK_MS = 60_000;
+const LOGIN_RECHECK_PROBLEM_MS = 15_000;
+function coVanDeDangNhap() {
+  for (const pf of regionPlatforms()) {
+    if (!LOGIN[pf]) continue; // sàn công khai không cần đăng nhập
+    for (const code of PLATFORMS[pf].regions) {
+      if (!LOGIN[pf].domain[code]) continue;
+      if (!selectedRegions.has(`${pf}:${code}`)) continue; // chỉ tính nước ĐANG CHỌN
+      if (loginStatus[`${pf}:${code}`] !== true) return true; // ✕ hoặc chưa rõ
+    }
+  }
+  return false;
+}
+async function vongKiemDangNhap() {
+  if (document.visibilityState === 'visible') await refreshLogin({ tuDong: true });
+  const cho = coVanDeDangNhap() ? LOGIN_RECHECK_PROBLEM_MS : LOGIN_RECHECK_OK_MS;
+  setTimeout(vongKiemDangNhap, cho);
+}
+setTimeout(vongKiemDangNhap, LOGIN_RECHECK_PROBLEM_MS);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') void refreshLogin({ tuDong: true });
 });
@@ -629,7 +647,11 @@ function renderRegions() {
       `<button class="rgtrigger" data-pf="${pf}" aria-expanded="${mo}" aria-haspopup="listbox">` +
       `<span class="rgname">${esc(cfg.label)}</span>` +
       `<span class="rgval">${esc(tomTat)}</span>` +
-      (loi ? '<span class="no" title="Có nước đang chọn chưa đăng nhập">✕</span>' : '') +
+      // Tự kiểm tra đăng nhập chạy nền: hiện ⟳ xoay để người dùng thấy nó ĐANG cập nhật, không
+      // tưởng dấu ✕ đứng im. Xong thì mới hiện ✕ (nếu vẫn còn nước chưa đăng nhập).
+      (_dangCheckLogin
+        ? '<span class="rs-spin" title="Đang tự kiểm tra đăng nhập…"></span>'
+        : (loi ? '<span class="no" title="Có nước đang chọn chưa đăng nhập">✕</span>' : '')) +
       '<i aria-hidden>▾</i></button>';
 
     if (mo) {
