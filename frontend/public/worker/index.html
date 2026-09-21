@@ -169,7 +169,12 @@ async function loop() {
       if (result && result.__timeout) {
         const why = `Máy-thợ chạy ${job.type} quá ${Math.round(budget / 1000)}s mà extension chưa trả lời.`;
         log('  extension không trả lời (timeout).', 'err');
-        result = { __workerError: true, ok: false, blocked: true, error: why, items: [] };
+        // Timeout CÓ THỂ là cầu nối đã chết (vừa Reload extension) chứ không phải job chạy chậm.
+        // `ping()` đi qua chrome.runtime nên bridge chết là nó trả false — lúc đó gắn dấu
+        // "context invalidated" để nhánh `deadBridge` bên dưới tự F5 lại trang, khỏi kẹt.
+        const bridgeAlive = await ping();
+        result = { __workerError: true, ok: false, blocked: true,
+          error: bridgeAlive ? why : (why + ' — Extension context invalidated (ping fail)'), items: [] };
       }
     } catch (e) {
       log('  lỗi chạy job: ' + e, 'err');
@@ -180,6 +185,10 @@ async function loop() {
       await fetch('/api/relay/result', { method: 'POST', headers: wkHeaders({ 'content-type': 'application/json' }), body: JSON.stringify({ id: job.id, result }) });
       done++; $('done').textContent = done; $('last').textContent = `${job.type} · ${new Date().toLocaleTimeString()}`;
       log(`  ✓ trả kết quả job ${job.id}`, result && !result.__workerError ? 'ok' : 'warn');
+      // Job CHẠY ĐƯỢC → cầu nối khoẻ. Reset bộ đếm tự-tải-lại: nếu không, sau 2 lần Reload
+      // extension trong một phiên thì `wk_reloads` cạn và lần Reload SAU sẽ để tab kẹt vĩnh viễn
+      // với cầu nối chết (mọi job timeout → "…"). Reset ở đây làm cái cap thành "2 lần MỖI đợt hỏng".
+      if (result && !result.__workerError) { try { sessionStorage.setItem('wk_reloads', '0'); } catch (e) {} }
     } catch (e) { log('  lỗi trả kết quả: ' + e, 'err'); }
 
     // CẦU NỐI CHẾT THÌ PHẢI NGỪNG NHẬN JOB. Sau khi Reload extension, `chrome.runtime` trong
