@@ -1808,9 +1808,9 @@ function productTd(p, phu) {
 }
 
 function actionTd(p) {
-  return `<td>${favBtnHtml(p)} ` +
-    `<button class="sim cost" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-price="${giaDung(p) != null ? giaDung(p) : ''}" data-cur="${esc(curOf(p))}">💰 Giá vốn</button> ` +
-    `<button class="sim vid" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-region="${esc(p.region || '')}" data-pid="${p.platform === 'TikTok Shop' ? esc(p.itemid || '') : ''}">🎬 Video</button></td>`;
+  return `<td><div class="acts">${favBtnHtml(p)}` +
+    `<button class="sim cost" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-price="${giaDung(p) != null ? giaDung(p) : ''}" data-cur="${esc(curOf(p))}">💰 Giá vốn</button>` +
+    `<button class="sim vid" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-region="${esc(p.region || '')}" data-pid="${p.platform === 'TikTok Shop' ? esc(p.itemid || '') : ''}">🎬 Video</button></div></td>`;
 }
 
 function rowChung(p, i) {
@@ -1932,16 +1932,8 @@ $('rows').addEventListener('mousemove', (e) => { if (zoom.style.display === 'blo
 $('rows').addEventListener('mouseout', (e) => { if (e.target.closest('img.thumb')) zoom.style.display = 'none'; });
 
 // ---- Click trong bảng: "Giá vốn" (tìm bằng ảnh trên 1688) hoặc "Video" (modal video khớp ảnh) ----
-/* ===================== SẢN PHẨM YÊU THÍCH =====================
- *
- * Danh sách riêng của từng người, nằm ở Supabase (`favorite_product`) qua `/api/favorites`.
- * Ở trang này chỉ giữ TẬP KHOÁ đã lưu (`favKeys`) chứ không giữ cả bản ghi: bảng kết quả vẽ
- * lại liên tục và chỉ cần trả lời đúng một câu — "cái này lưu chưa".
- *
- * KHOÁ = 'sàn|nước|mã'. Phải có NƯỚC: cùng một `itemid` tồn tại song song ở Shopee VN và
- * Shopee PH, thiếu nó thì lưu sản phẩm bên này sẽ làm sáng tim của sản phẩm bên kia. Khớp
- * đúng ràng buộc UNIQUE của bảng — xem docs/supabase-migration-favorites.sql.
- */
+/* Sản phẩm yêu thích — /api/favorites. Khoá 'sàn|nước|mã' phải có NƯỚC: cùng một `itemid`
+ * tồn tại song song ở Shopee VN và PH. */
 const favKeys = new Set();
 
 function favKeyOf(p) { return `${p.platform || ''}|${p.region || ''}|${p.itemid || ''}`; }
@@ -1951,18 +1943,13 @@ function favCount() {
   if (el) el.textContent = favKeys.size ? `· ${favKeys.size}` : '';
 }
 
-/* Tim RỖNG/ĐẶC chứ không chỉ đổi màu — xem ghi chú `button.fav` trong index.html. */
+// data-key chứ không phải data-id: một lượt search nhiều nước có thể trả hai dòng trùng `itemid`.
 function favBtnHtml(p) {
   const on = favKeys.has(favKeyOf(p));
-  // data-key CHỨ KHÔNG PHẢI data-id: `productById` tra theo mỗi `itemid`, mà một lượt search
-  // nhiều nước có thể trả hai dòng cùng `itemid` ở hai sàn/nước khác nhau — khi đó bấm tim
-  // dòng này sẽ lưu dòng kia. Khoá đầy đủ 'sàn|nước|mã' là thứ duy nhất chỉ đúng một dòng.
   return `<button class="sim fav${on ? ' on' : ''}" data-key="${esc(favKeyOf(p))}" ` +
     `title="${on ? 'Bỏ khỏi danh sách yêu thích' : 'Lưu vào danh sách yêu thích của bạn'}">${on ? '❤' : '🤍'}</button>`;
 }
 
-/* Tải tập khoá đã lưu. CHƯA ĐĂNG NHẬP thì im lặng bỏ qua: trang đã chặn login nên chuyện này
- * chỉ xảy ra ở rìa, và một thông báo lỗi đỏ ở đây không giúp được gì. */
 async function favLoadKeys() {
   try {
     if (!localStorage.getItem('rs_token')) return;
@@ -1972,11 +1959,10 @@ async function favLoadKeys() {
     favKeys.clear();
     (j.keys || []).forEach((k) => favKeys.add(k));
     favCount();
-  } catch (e) { /* danh sách phụ — hỏng thì trang vẫn chạy, chỉ là tim chưa tô */ }
+  } catch (e) { /* hỏng thì chỉ là tim chưa tô, không chặn trang */ }
 }
 
-/* Bấm tim: đã lưu thì bỏ lưu, chưa thì lưu. CHỐT TRẠNG THÁI TỪ `favKeys` chứ không từ class
- * của nút — nút được vẽ lại mỗi lần `render()`, còn `favKeys` là nguồn sự thật duy nhất. */
+// Trạng thái chốt từ `favKeys`, không từ class của nút — nút vẽ lại mỗi lần `render()`.
 async function favToggle(btn, p) {
   const key = favKeyOf(p);
   const dangCo = favKeys.has(key);
@@ -1994,7 +1980,6 @@ async function favToggle(btn, p) {
           platform: p.platform || '', region: p.region || '', item_id: String(p.itemid || ''),
           name: p.name || '', image: p.image || null, link: p.link || null,
           price: giaDung(p), currency: curOf(p), shop: p.shop || null,
-          // Ảnh chụp các số đo tại thời điểm lưu — sàn gỡ sản phẩm thì đây là thứ còn lại.
           meta: {
             score: p.score ? p.score.total : null,
             monthly: p.monthly != null ? p.monthly : null,
@@ -2020,7 +2005,6 @@ async function favToggle(btn, p) {
   }
 }
 
-/* ===== CỬA SỔ YÊU THÍCH ===== */
 let favItems = [];
 
 function favMoneyHtml(it) {
@@ -2060,9 +2044,7 @@ async function favLoadList() {
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
     favItems = j.items || [];
-    // `keys` về kèm CẢ mục đã ẩn, nên tiện thể đồng bộ luôn tim ngoài bảng: xoá ở đây rồi
-    // quay ra bảng mà tim vẫn đỏ thì cú bấm sau là LƯU LẠI, không phải bỏ lưu như người dùng
-    // tưởng.
+    // `keys` kèm cả mục đã ẩn — đồng bộ luôn tim ngoài bảng.
     favKeys.clear();
     (j.keys || []).forEach((k) => favKeys.add(k));
     favCount();
@@ -2104,7 +2086,7 @@ $('favList').addEventListener('click', async (e) => {
         body: JSON.stringify({ hidden: btn.dataset.to === '1' }),
       });
     } else {
-      // XOÁ LÀ MẤT HẲN, khác với ẩn — hỏi một câu trước. Ẩn thì không hỏi: nó quay lại được.
+      // Xoá là mất hẳn nên hỏi trước; ẩn thì không, vì quay lại được.
       const it = favItems.find((x) => String(x.id) === String(id));
       if (!confirm(`Xoá hẳn "${(it && it.name) || 'mục này'}" khỏi danh sách yêu thích?`)) { btn.disabled = false; return; }
       r = await window.rsAuthFetch(`/api/favorites/${id}`, { method: 'DELETE' });
@@ -2532,10 +2514,7 @@ const _kw = new URLSearchParams(location.search).get('kw');
 if (_kw) $('kw').value = _kw;
 // Xác định extension/relay TRƯỚC, rồi mới kiểm tra đăng nhập (để chạy đúng đường). KHÔNG tự research.
 detectMode().then(refreshLogin);
-// Tập khoá yêu thích nạp SONG SONG, không nối vào chuỗi trên: nó không liên quan gì tới
-// extension hay phiên đăng nhập sàn, và một lượt đọc Supabase chậm không được phép giữ chân
-// việc dò extension.
-void favLoadKeys();
+void favLoadKeys();  // song song, không chờ detectMode
 
 // ===== TAB CONTENT (Facebook Ads) + TAB TÌM BẰNG ẢNH =====
 // ===== MODAL VIDEO — "video quảng cáo khớp ẢNH sản phẩm" cho một dòng ở tab Sản phẩm =====

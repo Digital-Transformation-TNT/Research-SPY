@@ -33,9 +33,6 @@
       /* Giá dùng CHUNG màu thương hiệu, giống `.img-price` bên Image Search — trước đây là một
          mã cam riêng (#d9711c) lệch nhẹ so với nút, đặt cạnh nhau nhìn ra ngay là hai màu. */
       --money: var(--accent); --disc: #e11d48; --good: #16a34a;
-      /* Tim đã lưu. KHÔNG dùng `--accent` (cam thương hiệu): nút ❤ nằm ngay cạnh hai nút cam
-         khác ở cột Thao tác, cùng màu thì không còn đọc ra cái nào đang bật. Chung mã đỏ với
-         `--disc` để cả trang chỉ có một sắc đỏ. */
       --fav: #e11d48;
       /* Bán kính và bóng đổ dùng CHUNG cho mọi khối — một nơi chỉnh, cả trang đổi theo,
          thay vì mỗi nút mỗi bảng tự chọn một con số khác nhau như bản trước. */
@@ -130,16 +127,14 @@
     button.sim { padding: 6px 10px; font-size: 12px; border-radius: var(--radius-sm); background: var(--panel); border: 1px solid var(--line); color: var(--fg); cursor: pointer; white-space: nowrap; }
     button.sim:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
-    /* ===== NÚT ❤ LƯU YÊU THÍCH =====
-       Trái tim RỖNG khi chưa lưu, ĐẶC + đỏ khi đã lưu. Hai trạng thái phân biệt bằng hình
-       dạng chứ không chỉ bằng màu: một phần người dùng không phân biệt được đỏ nhạt với xám
-       trên nền sáng, và cái nút này là thứ duy nhất nói cho họ biết đã lưu hay chưa. */
-    button.fav { min-width: 34px; }
+    /* Cột Thao tác: một hàng ngang, không xuống dòng. */
+    .acts { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+    .acts button.sim { padding: 6px 9px; }
+    button.fav { min-width: 32px; padding: 6px 7px; font-size: 13px; line-height: 1; }
     button.fav.on { border-color: var(--fav); color: var(--fav); background: color-mix(in srgb, var(--fav) 12%, transparent); }
     button.fav:disabled { opacity: .55; cursor: progress; }
     button#favOpen .favn { font-family: var(--font-mono); font-weight: 600; }
 
-    /* Danh sách trong cửa sổ Yêu thích — một dòng một sản phẩm, ảnh bên trái. */
     .favlist { display: flex; flex-direction: column; gap: 10px; }
     .favitem { display: flex; gap: 12px; align-items: flex-start; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); }
     .favitem.hid { opacity: .5; }
@@ -471,12 +466,9 @@
     </div>
 
     <div class="status" id="status">
-      <span id="statusText">Nhập từ khoá (nhiều từ cách nhau dấu phẩy) rồi Research. Shopee cần đăng nhập region đã chọn; TikTok Shop cần đăng nhập Kalodata.</span>
+      <span id="statusText"></span>
       <span id="filterWrap" style="display:none">· Lọc từ khoá: <select id="kwfilter"></select></span>
       <button id="costAll" class="ghost" style="display:none">💰 Giá vốn hàng loạt</button>
-      <!-- LUÔN HIỆN, không như `costAll` (chỉ hiện khi có kết quả): danh sách yêu thích tồn
-           tại độc lập với lần search này, và mở trang lên để xem lại thứ đã lưu là một việc
-           chính đáng — bắt người ta search một phát rồi mới thấy nút là vô lý. -->
       <button id="favOpen" class="ghost">❤ Yêu thích <span class="favn" id="favCount"></span></button>
       <button id="login" class="link" style="display:none">Mở để đăng nhập</button>
     </div>
@@ -566,7 +558,7 @@
     </div>
   </div>
 
-  <!-- ===== CỬA SỔ YÊU THÍCH ===== Danh sách riêng của từng người, đọc từ /api/favorites. -->
+  <!-- Cửa sổ Yêu thích -->
   <div id="favModal" class="vidmodal">
     <div class="vidpanel">
       <div class="vidhead">
@@ -589,6 +581,6 @@
   <!-- ?v= để phá cache: research.js nhúng tĩnh, không có hash tên file như bundle của Next, nên
        khi sửa JS phải BUMP số này — nếu không trình duyệt chạy bản cũ trong cache (HTML mới +
        JS cũ = lỗi khó hiểu, vd sàn vẫn chọn sẵn dù mặc định đã đổi thành rỗng). -->
-  <script src="research.js?v=20260924fav"></script>
+  <script src="research.js?v=20260924fav2"></script>
 </body>
 </html>
