@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
+import time
 
 from datetime import date, datetime, timezone
 
@@ -58,6 +60,30 @@ CHO_THO_S = 900
 #: đốt thời gian, và vì vòng lịch từng chạy tuần tự nên đốt luôn giờ của `sig1688`. Ba chứ không
 #: phải một: một lần đơn lẻ có thể là trang xác minh thoáng qua, ba lần liền thì là tường thật.
 DUNG_SAU_DANG_NHAP = 3
+
+
+#: 1688 dính captcha (slider Baxia) giữa vòng cào: CHỜ NGƯỜI GIẢI tối đa ngần này giây, thử lại
+#: đúng ngành đang dở mỗi `NHIP_THU_CAPTCHA_S` giây, và gửi mail cảnh báo ngay lúc dính.
+#:
+#: Sáng 18/09/2026 slider bật giữa chừng và 182/205 ngành hỏng liền một mạch — vòng cào cứ thế
+#: đi tiếp, mỗi ngành một lỗi `FAIL_SYS_USER_VALIDATE`, trong khi slider đã bật thì ngành nào
+#: sau đó cũng hỏng cho tới khi có người kéo. Đi tiếp là vô ích; dừng hẳn thì phải chạy lại tay.
+#: Chờ + báo mail thì người trực kéo slider xong là vòng cào tự chạy nốt.
+#:
+#: Nhịp 2 phút chứ không dày hơn: mỗi lần thử lại, extension mở lại tab xác minh với địa chỉ mới
+#: (`openVerifyTab`) — thử dày quá thì tab bị nạp lại đúng lúc người ta đang kéo.
+CHO_CAPTCHA_S = 60 * 60
+NHIP_THU_CAPTCHA_S = 120
+
+
+def _la_captcha(loi: str) -> bool:
+    """Lỗi này có phải 1688 đòi kéo slider không — theo đúng câu extension soạn (`search1688`)."""
+    return bool(re.search(r"VALIDATE|punish|bắt xác minh", loi or "", re.I))
+
+
+def _bao_captcha(tieu_de: str, noi_dung: str) -> None:
+    from .. import canh_bao
+    canh_bao.gui_mail(tieu_de, noi_dung)
 
 
 class SanDoiDangNhap(RuntimeError):
@@ -456,7 +482,12 @@ async def snapshot_keyword_categories(platform: str = "1688", market: str = "cn"
                     "bảng `crawl_categories` chưa có ngành nào — gọi /db/1688-categories?save=true"}}
 
     total, failures, trace = 0, {}, {}
-    for i, ten in enumerate(cats):
+    captcha_tu: float | None = None   # lúc bắt đầu dính captcha; None = đang không dính
+    tho_vang: bool = False            # đã báo mail "thợ offline" cho lượt này chưa
+    dung: str | None = None
+    i = 0
+    while i < len(cats):
+        ten = cats[i]
         # NGHỈ GIỮA HAI LƯỢT. 1688 gọi API thẳng nên một lượt chỉ mất ~1,2 giây — cào liền mạch
         # là ~50 request/phút, quá dày và nó bật slider Baxia giữa chừng. Đo 11/09/2026: chạy
         # 205 ngành không nghỉ thì 30 ngành đầu đã dính `FAIL_SYS_USER_VALIDATE`, và một khi
@@ -472,9 +503,98 @@ async def snapshot_keyword_categories(platform: str = "1688", market: str = "cn"
         try:
             rows = await _items_job("RS_" + platform.upper(), ten, tr)
         except (WorkerOffline, WorkerTimeout, RuntimeError) as e:
-            failures[ten] = str(e)
-            store.log_crawl(platform, market, ten, day, "error", 0, str(e), bat_dau)
+            loi = str(e)
+            if platform == "1688" and _la_captcha(loi):
+                # DÍNH CAPTCHA: báo mail một lần, rồi chờ người giải và thử lại ĐÚNG ngành này.
+                # Xem `CHO_CAPTCHA_S`.
+                if captcha_tu is None:
+                    captcha_tu = time.monotonic()
+                    log.warning("1688 dinh captcha o nganh %d/%d (%s) — gui mail, cho nguoi giai",
+                                i + 1, len(cats), ten)
+                    await asyncio.to_thread(
+                        _bao_captcha,
+                        f"[Research SPY] 1688 dính CAPTCHA — cần người kéo slider ({day})",
+                        "\n\n".join([
+                            f"Vòng cào 1688 hằng ngày bị chặn bằng slider xác minh lúc "
+                            f"{datetime.now().strftime('%H:%M %d/%m/%Y')}, ở ngành "
+                            f"{i + 1}/{len(cats)} ({ten}). Đã cào xong {total:,} dòng trước đó.",
+                            "CẦN LÀM: vào máy chủ chạy máy-thợ (VPS), mở Chrome đang chạy extension,"
+                            " tìm tab 1688 xác minh vừa bật lên và kéo slider ở ĐÚNG tab đó.",
+                            f"Trang xác minh: {tr.get('verifyUrl') or '(extension không gửi địa chỉ)'}",
+                            f"Vòng cào đang CHỜ: tự thử lại mỗi {NHIP_THU_CAPTCHA_S // 60} phút, "
+                            f"trong {CHO_CAPTCHA_S // 60} phút. Giải xong thì nó tự chạy nốt. Quá "
+                            f"{CHO_CAPTCHA_S // 60} phút vòng cào sẽ dừng — khi đó giải slider rồi "
+                            "chạy lại: POST /api/hub/scheduler/run?job=sig1688 (chỉ cào các ngành "
+                            "còn thiếu).",
+                            f"Lỗi gốc: {loi[:300]}",
+                        ]))
+                if time.monotonic() - captcha_tu < CHO_CAPTCHA_S:
+                    await asyncio.sleep(NHIP_THU_CAPTCHA_S)
+                    continue
+                dung = (f"dừng ở ngành {i + 1}/{len(cats)}: captcha 1688 chưa được giải sau "
+                        f"{CHO_CAPTCHA_S // 60} phút")
+                failures[ten] = loi
+                store.log_crawl(platform, market, ten, day, "error", 0, loi, bat_dau)
+                await asyncio.to_thread(
+                    _bao_captcha,
+                    f"[Research SPY] 1688 đã DỪNG — captcha không được giải ({day})",
+                    f"Chờ {CHO_CAPTCHA_S // 60} phút mà slider 1688 vẫn chưa được giải, vòng cào đã "
+                    f"dừng. Còn {len(cats) - i} ngành chưa cào hôm nay.\n\n"
+                    f"Giải slider trong Chrome máy-thợ rồi chạy lại: "
+                    f"POST /api/hub/scheduler/run?job=sig1688 — nó chỉ cào các ngành còn thiếu.")
+                break
+            if isinstance(e, WorkerOffline):
+                # TAB MÁY-THỢ RỚT: chờ nó quay lại rồi làm tiếp ĐÚNG ngành này, và báo mail ngay
+                # lần đầu. Trước đây nhánh này rơi vào xử lý chung bên dưới (`i += 1`), nên cả
+                # 205 ngành thành `error` trong 14 phút mà KHÔNG một lời báo nào — mail chỉ soạn
+                # cho captcha. Ngày 21/09 và 23/09/2026 hỏng đúng như vậy: Shopee 01:00 chạy ngon
+                # (tab còn sống), tới 09:00 tab đã chết và 1688 mất trắng cả ngày, chỉ phát hiện
+                # ra khi có người mở bảng dữ liệu lên xem.
+                #
+                # Cùng cách xử lý với vòng Shopee (xem `CHO_THO_S` và nhánh `WorkerOffline` ở
+                # `snapshot_categories`): chờ — thử lại — dừng, chứ không đi tiếp cho hết danh
+                # sách. Ngành chưa cào không có dòng nào, nên lượt sau tự nhặt lại (chỉ bỏ qua
+                # ngành `ok`).
+                if not tho_vang:
+                    tho_vang = True
+                    log.warning("may-tho offline o nganh %d/%d (%s) — gui mail, cho tab quay lai",
+                                i + 1, len(cats), ten)
+                    await asyncio.to_thread(
+                        _bao_captcha,
+                        f"[Research SPY] {platform} DỪNG — tab máy-thợ offline ({day})",
+                        "\n\n".join([
+                            f"Vòng cào {platform} hằng ngày không chạy được lúc "
+                            f"{datetime.now().strftime('%H:%M %d/%m/%Y')}: không có máy-thợ nào "
+                            f"online, dừng ở ngành {i + 1}/{len(cats)} ({ten}). Đã cào "
+                            f"{total:,} dòng trước đó.",
+                            "CẦN LÀM: vào máy chủ chạy máy-thợ (VPS), mở Chrome đang chạy "
+                            "extension và mở lại tab https://tntecom.com/research/worker/ "
+                            "— GIỮ TAB MỞ.",
+                            f"Vòng cào đang CHỜ tab quay lại trong {CHO_THO_S // 60} phút. Quá hạn "
+                            "thì nó dừng — khi đó mở tab rồi chạy lại: "
+                            f"POST /api/hub/scheduler/run?job={'sig1688' if platform == '1688' else 'sigcat'}"
+                            " (chỉ cào các ngành còn thiếu).",
+                        ]))
+                if await _cho_may_tho(CHO_THO_S):
+                    log.info("may-tho quay lai — chay tiep nganh %d/%d", i + 1, len(cats))
+                    tho_vang = False
+                    continue
+                dung = (f"dừng ở ngành {i + 1}/{len(cats)}: máy-thợ offline quá "
+                        f"{CHO_THO_S // 60} phút")
+                failures[ten] = loi
+                store.log_crawl(platform, market, ten, day, "error", 0, loi, bat_dau)
+                break
+            failures[ten] = loi
+            store.log_crawl(platform, market, ten, day, "error", 0, loi, bat_dau)
+            i += 1
             continue
+        if captcha_tu is not None:
+            log.info("1688 het captcha sau %.0f phut — chay tiep", (time.monotonic() - captcha_tu) / 60)
+            captcha_tu = None
+            await asyncio.to_thread(
+                _bao_captcha,
+                f"[Research SPY] 1688 đã qua captcha — vòng cào chạy tiếp ({day})",
+                f"Slider đã được giải, vòng cào 1688 chạy tiếp từ ngành {i + 1}/{len(cats)}.")
         for r in rows:
             r.setdefault("sold_type", SOLD_TYPE.get(platform, "cumulative"))
             r.update(platform=platform, market=market, day=day,
@@ -483,10 +603,11 @@ async def snapshot_keyword_categories(platform: str = "1688", market: str = "cn"
         total += ghi
         store.log_crawl(platform, market, ten, day, "ok" if ghi else "empty",
                         ghi, None, bat_dau)
+        i += 1
 
     return {"platform": platform, "market": market, "day": day,
             "categories": len(cats), "rows": total, "skipped_done": len(done),
-            "failures": failures, "trace": trace}
+            "failures": failures, "trace": trace, **({"dung": dung} if dung else {})}
 
 
 async def snapshot(platform: str, market: str, keywords: list[str]) -> dict:
