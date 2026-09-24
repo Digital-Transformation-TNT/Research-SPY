@@ -51,6 +51,31 @@ def co(q: str, *cum: str) -> bool:
     return any(f" {c} " in q for c in cum)
 
 
+def khoang_cach(a: str, b: str, toi_da: int) -> int:
+    """
+    Khoảng cách chỉnh sửa (Levenshtein) giữa `a` và `b`, CÓ CHẶN TRÊN.
+
+    Trả về đúng khoảng cách nếu ≤ `toi_da`, ngược lại trả `toi_da + 1` (không tính tiếp cho phí).
+    Dùng để khớp MỜ tên sàn: "philippnes" cách "philippines" 1 ký tự thì vẫn về đúng sàn, mà
+    không phải liệt kê tay từng lỗi gõ. Tự viết thay vì kéo thư viện ngoài — chuỗi ở đây rất ngắn.
+    """
+    la, lb = len(a), len(b)
+    if abs(la - lb) > toi_da:
+        return toi_da + 1
+    truoc = list(range(lb + 1))
+    for i in range(1, la + 1):
+        nay = [i] + [0] * lb
+        tot = nay[0]
+        for j in range(1, lb + 1):
+            phi = 0 if a[i - 1] == b[j - 1] else 1
+            nay[j] = min(truoc[j] + 1, nay[j - 1] + 1, truoc[j - 1] + phi)
+            tot = min(tot, nay[j])
+        if tot > toi_da:                     # cả hàng đã vượt ngưỡng → không thể cứu
+            return toi_da + 1
+        truoc = nay
+    return truoc[lb]
+
+
 # ═══════════════════════════ kết quả ═══════════════════════════
 
 #: Mọi ý định. `khong_ro` không phải lỗi — nó là một kết cục hợp lệ, và cách xử lý đúng là
@@ -113,6 +138,44 @@ TU_SAN: dict[str, tuple[str, ...]] = {
 
 #: Viết tắt — phải là MỘT TỪ RIÊNG, không khớp chuỗi con ("vn" nằm trong "advn").
 TU_SAN_NGUYEN = {"vn": "shopee_vn", "ph": "shopee_ph", "1688": "1688"}
+
+#: Biến thể CHÍNH TẢ của tên nước, khớp bằng regex trên TỪNG TỪ (đã bỏ dấu).
+#:
+#: Liệt kê tay không bao giờ đủ: người Việt gõ "Philippines" ra đủ kiểu — philipin, philippin,
+#: philipine, philippines, pilipinas (Tagalog)… Đo 22/09/2026, câu "bán chạy nhất thị trường
+#: philipin" rơi về CẢ BA SÀN vì "philipin" không khớp "philippines" cũng không khớp
+#: "phi lip pin". Regex bắt trọn họ "phi…pin/pine/pines" và "pilipin…" trong một từ.
+#: Dạng CÓ DẤU CÁCH ("phi lip pin") vẫn nằm ở `TU_SAN` vì regex một-từ không bắt qua khoảng trắng.
+TU_SAN_REGEX = {
+    "shopee_ph": re.compile(r"^(phi|pi)li?p+in(e|es|as)?$"),
+}
+
+#: Khớp MỜ tên sàn — mỗi khoá là một dạng chuẩn (đã bỏ dấu), giá trị là sàn. Một từ trong câu
+#: khớp nếu KHOẢNG CÁCH CHỈNH SỬA tới dạng chuẩn nằm trong ngân sách (xem `_budget_gan`).
+#:
+#: VÌ SAO CÓ THÊM TẦNG NÀY dù đã có `TU_SAN_REGEX`: regex bắt họ tên theo ÂM (rụng chữ:
+#: "philipin"), còn tầng này bắt lỗi GÕ PHÍM (thừa/thiếu/sai 1–2 ký tự: "philippnes", "vietnamm",
+#: "alibba") — hai loại lỗi khác nhau, không cái nào phủ hết cái kia. Liệt kê tay không bao giờ đủ;
+#: một dạng chuẩn + ngân sách chỉnh sửa phủ được cả một vùng lỗi quanh nó.
+#:
+#: CHỈ tên ĐỦ DÀI VÀ ĐẶC THÙ mới đặt ở đây. Không đưa "ph"/"vn" (quá ngắn, khớp mờ sẽ dính bừa) —
+#: chúng đã nằm ở `TU_SAN_NGUYEN` khớp nguyên từ.
+TU_SAN_GAN = {
+    "philippines": "shopee_ph",
+    "pilipinas":   "shopee_ph",   # tên Tagalog, dân Phi hay tự gõ
+    "vietnam":     "shopee_vn",
+    "alibaba":     "1688",
+    "taobao":      "1688",
+}
+
+#: Chỉ xét khớp mờ cho từ dài từ ngần này trở lên. Ngắn hơn thì một hai ký tự sai đã đủ biến nó
+#: thành từ khác hẳn, khớp mờ chỉ tổ nhận nhầm ("phi", "phe", "mua"…).
+DAI_TOI_THIEU_GAN = 5
+
+
+def _budget_gan(chuan_ten: str) -> int:
+    """Ngân sách chỉnh sửa cho một dạng chuẩn: tên càng dài càng chịu được nhiều lỗi gõ hơn."""
+    return 2 if len(chuan_ten) >= 9 else 1
 
 #: Chữ phủ định đứng TRƯỚC tên sàn thì đó là loại sàn đó ra.
 TU_PHU_DINH = ("khong", "dung", "chang", "bo qua", "bo", "tru", "ngoai tru", "loai",
@@ -212,6 +275,26 @@ def _doc_san(q: str, yc: YeuCau) -> None:
     for t, san in TU_SAN_NGUYEN.items():
         if t in tu:
             ghi_nhan(san, tu.index(t))
+    # Biến thể chính tả tên nước — xem `TU_SAN_REGEX`. Xét theo từng từ để "philipin",
+    # "philippin", "pilipinas"… đều về đúng Shopee PH thay vì rơi về cả ba sàn.
+    for i, t in enumerate(tu):
+        for san, pat in TU_SAN_REGEX.items():
+            if pat.match(t):
+                ghi_nhan(san, i)
+
+    # Khớp MỜ — bắt lỗi GÕ PHÍM quanh một dạng chuẩn ("philippnes", "vietnamm", "alibba"). Chỉ xét
+    # từ đủ dài (xem `DAI_TOI_THIEU_GAN`); với mỗi từ chọn dạng chuẩn GẦN NHẤT còn trong ngân sách,
+    # tránh việc một từ mơ hồ bị gán cho nhiều sàn. Xem `TU_SAN_GAN`.
+    for i, t in enumerate(tu):
+        if len(t) < DAI_TOI_THIEU_GAN:
+            continue
+        tot: tuple[int, str] | None = None
+        for chuan_ten, san in TU_SAN_GAN.items():
+            d = khoang_cach(t, chuan_ten, _budget_gan(chuan_ten))
+            if d <= _budget_gan(chuan_ten) and (tot is None or d < tot[0]):
+                tot = (d, san)
+        if tot:
+            ghi_nhan(tot[1], i)
 
     # "shopee" trơn không kèm thị trường = cả hai sàn Shopee, KHÔNG kéo theo 1688.
     if not nhan and "shopee" in tu:
@@ -520,11 +603,40 @@ MAU: tuple[tuple[str, str], ...] = (
 )
 
 
+#: Bảng kiểm phần SÀN — (câu hỏi, danh sách sàn mong đợi). Tách khỏi `MAU` vì `MAU` chỉ soi ý
+#: định, mà lỗi "hỏi Philippines ra cả ba sàn" (22/09/2026) nằm ở khâu đọc sàn nên lọt lưới trọn.
+#: Nhiều cách gõ sai của "Philippines" ở đây là cố ý — đó chính là thứ regex `TU_SAN_REGEX` giữ.
+MAU_SAN: tuple[tuple[str, list[str]], ...] = (
+    # họ tên theo ÂM — regex `TU_SAN_REGEX` giữ
+    ("bán chạy nhất thị trường philipin tháng qua", ["shopee_ph"]),
+    ("top bán chạy philippin", ["shopee_ph"]),
+    ("top bán chạy philipines", ["shopee_ph"]),
+    ("top bán chạy pilipinas", ["shopee_ph"]),
+    # lỗi GÕ PHÍM — chỉ tầng khớp mờ `TU_SAN_GAN` bắt được (regex ở trên không khớp)
+    ("top bán chạy philippnes", ["shopee_ph"]),      # thiếu 'i'
+    ("hàng bán chạy ở vietnamm", ["shopee_vn"]),     # thừa 'm', "viet nam" không khớp
+    ("bán chạy trên alibba", ["1688"]),              # thiếu 'a'
+    # viết tắt / tên chuẩn
+    ("hàng bán chạy ở PH", ["shopee_ph"]),
+    ("top bán chạy Shopee VN", ["shopee_vn"]),
+    ("top bán chạy 1688", ["1688"]),
+    # chống nhận nhầm
+    ("phí ship rẻ nhất", []),                        # "phí" KHÔNG phải Philippines
+    ("cà phê sữa đá bán chạy", []),                  # "phê" KHÔNG phải Philippines
+    ("điện thoại philips còn bán không", []),        # thương hiệu Philips ≠ Philippines
+    ("top sản phẩm bán chạy", []),                   # không nói sàn → rỗng, ask.py tự lấy cả ba
+)
+
+
 def kiem_tra(tim_nganh=None, co_trong_kho=None) -> list[str]:
     """Chạy bảng câu mẫu, trả về danh sách dòng SAI (rỗng = tất cả đúng)."""
     sai = []
     for cau, mong in MAU:
         ra = doc(cau, tim_nganh, co_trong_kho).y_dinh
         if ra != mong:
-            sai.append(f"{cau!r}: mong {mong}, ra {ra}")
+            sai.append(f"{cau!r}: mong ý định {mong}, ra {ra}")
+    for cau, mong in MAU_SAN:
+        ra = doc(cau, tim_nganh, co_trong_kho).sans
+        if ra != mong:
+            sai.append(f"{cau!r}: mong sàn {mong}, ra {ra}")
     return sai

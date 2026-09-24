@@ -9,6 +9,7 @@ import {
   type HubProduct,
   type OpportunityItem,
   type OpportunityStatus,
+  type WebSource,
 } from '@/lib/opportunity/types'
 
 const NHAN_LANG_KINH: Record<string, string> = {
@@ -239,14 +240,48 @@ function DaHieu({ g }: { g: NonNullable<Answer['grounding']> }) {
   )
 }
 
+/**
+ * Nguồn web AI đã đọc cho lượt này. Đánh số đúng như mã [W1], [W2]… trong lời đáp, để người đọc
+ * mở được bài gốc thay vì phải tin lời tóm tắt — web là bài viết của người khác, không phải số kho.
+ */
+function WebSources({ sources }: { sources: WebSource[] }) {
+  return (
+    <div className="ans-web">
+      <div className="ans-web-head">Nguồn web đã tham khảo</div>
+      <ol>
+        {sources.map((s, i) => (
+          <li key={s.url}>
+            <span className="ans-web-id">W{i + 1}</span>
+            <a href={s.url} target="_blank" rel="noopener noreferrer" title={s.snippet}>
+              {s.title}
+            </a>
+            <small>{hostOf(s.url)}</small>
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return ''
+  }
+}
+
 export default function AnswerBlock({
   answer,
   onPick,
   onAsk,
+  onOpenHub,
 }: {
   answer: Answer
   onPick: (term: string) => void
   onAsk: (question: string) => void
+  /** Mở mục Trend Signal Hub — chỉ dùng cho lượt `hubRedirect` (One-shot AI). */
+  onOpenHub?: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const shown = expanded ? answer.items : answer.items.slice(0, PREVIEW)
@@ -263,6 +298,15 @@ export default function AnswerBlock({
       {answer.situation && <p className="ans-situation">{answer.situation}</p>}
 
       {answer.message && <div className="notice warn">{answer.message}</div>}
+
+      {/* Câu hỏi top / bảng / một món / lăng kính: One-shot AI không tra bảng nữa (số hay lệch
+          giữa các sàn) mà mời sang Trend Signal Hub. Nút mở thẳng để người dùng không phải tự
+          đi tìm mục đó trên sidebar. */}
+      {answer.hubRedirect && onOpenHub && (
+        <button className="btn ans-hub-cta" onClick={onOpenHub}>
+          Mở Trend Signal Hub →
+        </button>
+      )}
 
       {answer.items.length > 0 && (
         <div className="ans-card">
@@ -282,6 +326,8 @@ export default function AnswerBlock({
       {answer.hubProducts && answer.hubProducts.length > 0 && (
         <HubProducts products={answer.hubProducts} ngay={answer.grounding?.ngay} />
       )}
+
+      {answer.webSources && answer.webSources.length > 0 && <WebSources sources={answer.webSources} />}
 
       {answer.followUps.length > 0 && (
         <div className="ans-next">

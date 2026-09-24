@@ -296,6 +296,7 @@ export default function OpportunityWorkspace({ hub = false }: { hub?: boolean } 
                   answer={turn.answer}
                   onPick={openInKeywords}
                   onAsk={send}
+                  onOpenHub={() => router.push('/trend-signal')}
                 />
               ),
             )}

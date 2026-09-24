@@ -92,6 +92,14 @@ export type Answer = {
   /** Chỉ có ở One-shot AI: dữ liệu kho đã lọc theo câu hỏi và đưa cho AI đọc. */
   hubProducts?: HubProduct[]
   /**
+   * Chỉ có ở One-shot AI: câu hỏi top / bảng xếp hạng / một món / lăng kính — backend KHÔNG tra
+   * bảng trong ô chat nữa (số theo từng sản phẩm hay lệch giữa các sàn) mà hướng người dùng sang
+   * Trend Signal Hub. Giao diện bày nút mở thẳng Hub. Xem `backend/hub/signal/ask.py::CHUYEN_HUB`.
+   */
+  hubRedirect?: boolean
+  /** Chỉ có ở One-shot AI: kết quả web đã đưa cho AI, đúng thứ tự mã [W1], [W2]… trong lời đáp. */
+  webSources?: WebSource[]
+  /**
    * Hệ thống đã HIỂU câu hỏi như thế nào, và lấy dữ liệu ở đâu.
    * Nguồn: `backend/hub/signal/truy_van.py` (đọc ý định) + `ask.py::digest` (truy hồi).
    */
@@ -114,6 +122,9 @@ export type Answer = {
     giaMax?: number | null
   }
 }
+
+/** Một kết quả tìm web — xem `backend/hub/signal/web.py`. */
+export type WebSource = { title: string; url: string; snippet: string }
 
 /** Ý định của câu hỏi. Đúng một cái cho mỗi lượt — xem `truy_van.Y_DINH`. */
 export type YDinh =

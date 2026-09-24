@@ -27,7 +27,7 @@ from lib.keywords.types import SearchContext
 from lib.core.model import dump
 from lib.opportunity.demand_map import ChatTurn, map_demand
 
-from . import scout, truy_van
+from . import scout, truy_van, web
 
 #: Bao nhiêu dòng mỗi bảng đi vào lượt tóm tắt. Đủ để định hướng, không đủ để nhấn chìm câu hỏi
 #: thật của người dùng — và mỗi dòng tốn khoảng 30 token.
@@ -236,9 +236,86 @@ HUONG_DAN = {
     "ngoai_pham_vi": "Câu hỏi nằm ngoài phạm vi công cụ (công cụ chỉ nói về hàng hoá và số liệu"
                      " bán hàng trên Shopee VN, Shopee PH, 1688). Nói thẳng là không trả lời"
                      " được câu này, rồi gợi ý vài câu hỏi đúng phạm vi. KHÔNG bịa câu trả lời.",
-    "khong_ro": "Chưa hiểu người dùng muốn gì. HỎI LẠI cho rõ và đưa 2–3 ví dụ câu hỏi cụ thể."
-                " KHÔNG đoán bừa rồi đổ ra một bảng dữ liệu không ai xin.",
+    # MẶC ĐỊNH LÀ TRÒ CHUYỆN, KHÔNG PHẢI TỪ CHỐI (chốt 22/09/2026). Câu rơi vào đây là câu KHÔNG
+    # khớp một dạng tra số cụ thể nào — nhưng phần lớn vẫn là câu buôn bán, và ép nó "hỏi lại" thì
+    # người dùng thấy như bot không hiểu gì. Để Gemini trả lời như một cố vấn TMĐT bằng kiến thức
+    # chung của nó. RANH GIỚI DUY NHẤT phải giữ: Gemini không có số thật của kho, nên cấm nó bịa
+    # CON SỐ bán hàng cụ thể; tư vấn/kinh nghiệm/hướng đi chung thì thoải mái. Câu ngoài lề thật sự
+    # (thời tiết, kể chuyện…) đã bị chặn ở nhánh `ngoai_pham_vi` phía trên, không lọt xuống đây.
+    "khong_ro": "Câu này không khớp một dạng tra số cụ thể nào (bảng xếp hạng, lăng kính, một món,"
+                " hay hỏi về chính cái kho). Nếu câu LIÊN QUAN buôn bán / hàng hoá / kinh doanh trên"
+                " sàn — kể cả hỏi tư vấn, kinh nghiệm, cách làm, xu hướng chung — hãy TRẢ LỜI THẲNG"
+                " và hữu ích như một cố vấn thương mại điện tử, dùng kiến thức chung của bạn; được"
+                " đưa lời khuyên, gợi ý hướng đi, giải thích. CHỈ MỘT ĐIỀU CẤM: đừng bịa ra CON SỐ"
+                " bán hàng / doanh số / số listing cụ thể như thể lấy từ kho — nếu người dùng cần số"
+                " thật, mời họ hỏi 'top bán chạy …' theo sàn/ngành để tra kho. Chỉ khi câu quá mơ hồ"
+                " hoặc vô nghĩa (không rõ đang hỏi gì) thì mới hỏi lại kèm 2–3 ví dụ cụ thể.",
 }
+
+
+#: Ý ĐỊNH CHUYỂN SANG TREND SIGNAL HUB — chốt 22/09/2026.
+#:
+#: Ba ý định này hỏi TOP / BẢNG XẾP HẠNG / MỘT MÓN CỤ THỂ / LĂNG KÍNH — đúng phần mà One-shot AI
+#: hay trả lời sai: hỏi Shopee lại trả về hàng 1688, số theo từng sản phẩm lệch giữa các sàn. Chủ
+#: dự án chốt: KHÔNG tra bảng sản phẩm trong ô chat nữa, thay bằng một câu tất định hướng người
+#: dùng mở Trend Signal Hub — nơi bảng đúng theo từng sàn, có ảnh và link. `digest` không kéo kho
+#: cho nhóm này, và `ask()` chặn trước khi gọi Gemini.
+#:
+#: Ba hàm `_lay_toplist` / `_lay_lang_kinh` / `_lay_san_pham` ở trên nay KHÔNG còn được gọi — giữ
+#: lại (dạng ngủ) phòng khi cần bật lại việc tra thẳng trong chat.
+CHUYEN_HUB = frozenset({"toplist", "san_pham", "lang_kinh"})
+
+#: Tên lăng kính dạng thường, để chèn vào câu chuyển hướng cho người đọc.
+_LANG_KINH_TEN = {
+    "hot": "đang tăng tốc", "spike": "đột biến", "steady": "bán khoẻ ổn định",
+    "gap": "khe hở", "new": "tân binh bán chạy", "ban_chay": "bán chạy",
+}
+
+
+def _loi_chuyen_hub(dg: dict) -> str:
+    """
+    Câu hướng người dùng sang Trend Signal Hub, thay cho việc tra bảng sản phẩm trong ô chat.
+
+    Tất định (không gọi AI) và nhắc lại ĐÚNG thứ hệ thống hiểu được từ câu hỏi — sàn, ngành, lăng
+    kính — để người đọc thấy nó không lờ câu mình hỏi mà chỉ đổi nơi trả lời cho chính xác hơn.
+    """
+    y = dg["y_dinh"]
+    pham_vi = dg["pham_vi"]
+    nganh = ", ".join(dg["nganh"]) if dg["nganh"] else ""
+    dia = f" ở {pham_vi}" if dg["san"] else ""
+    nganh_str = f", ngành {nganh}" if nganh else ""
+
+    if y == "lang_kinh":
+        ten = _LANG_KINH_TEN.get(dg["lang_kinh"] or "", "phân tích")
+        return (f"Câu này hỏi lăng kính “{ten}”{dia}{nganh_str}. Mời bạn mở Trend Signal Hub → "
+                "Khám phá để xem trực tiếp theo từng sàn và ngành — ở đó số liệu chuẩn theo đúng "
+                "sàn, có ảnh và link sản phẩm.")
+
+    if y == "san_pham":
+        mon = ", ".join(f"“{k}”" for k in dg["tu_khoa"]) if dg["tu_khoa"] else "món này"
+        return (f"Câu này hỏi chi tiết {mon}. One-shot AI không tra chi tiết từng sản phẩm nữa "
+                "vì số hay bị lệch giữa các sàn. Mời bạn mở Trend Signal Hub để tra theo đúng sàn "
+                "và ngành, có ảnh và link mở thẳng ra trang sản phẩm.")
+
+    # toplist
+    theo = "doanh số" if dg["bang"] == "doanh_so" else "lượt bán"
+    return (f"Bạn đang hỏi top sản phẩm theo {theo}{dia}{nganh_str}. Mục One-shot AI không tra "
+            "bảng xếp hạng nữa — số theo từng sản phẩm hay bị lệch giữa các sàn. Mời bạn mở Trend "
+            "Signal Hub để xem top sản phẩm theo đúng từng sàn và ngành, có ảnh, giá và link.")
+
+
+def _grounding(dg: dict) -> dict:
+    """Khối "hệ thống đã hiểu câu hỏi như thế nào" cho giao diện — chỉ phụ thuộc `dg`."""
+    return {
+        "nTop": dg["n_top"], "ngay": dg["ngay"], "nganh": dg["nganh"],
+        "san": dg["san"], "phamVi": dg["pham_vi"],
+        # Vì sao hệ thống hiểu câu hỏi như vậy — hiện ra được cho người dùng, và là thứ đọc đầu
+        # tiên khi họ bảo "nó trả lời sai câu tôi hỏi".
+        "yDinh": dg["y_dinh"], "lyDo": dg["ly_do"], "langKinh": dg["lang_kinh"],
+        "bang": dg["bang"], "tuKhoa": dg["tu_khoa"],
+        "giaMin": dg["gia_min"], "giaMax": dg["gia_max"],
+        "sanLoai": dg["san_loai"],
+    }
 
 
 def digest(cau_hoi: str) -> dict:
@@ -255,19 +332,16 @@ def digest(cau_hoi: str) -> dict:
     parts: list[str] = []
     the: list[dict] = []
     ngay = None
-    if yc.y_dinh == "toplist":
-        parts, the, ngay = _lay_toplist(yc, sans)
-    elif yc.y_dinh == "lang_kinh":
-        parts, the, ngay = _lay_lang_kinh(yc, sans)
-    elif yc.y_dinh == "san_pham":
-        parts, the, ngay = _lay_san_pham(yc, sans)
-    elif yc.y_dinh == "meta":
+    # toplist / san_pham / lang_kinh (CHUYEN_HUB): KHÔNG kéo bảng sản phẩm từ kho nữa — `ask()`
+    # chặn lại và hướng người dùng sang Trend Signal Hub. Chỉ `meta` còn tra kho ở tầng này.
+    if yc.y_dinh == "meta":
         parts, the, ngay = _lay_meta()
     # y_tuong / xa_giao / ngoai_pham_vi / khong_ro: cố ý KHÔNG kéo bảng nào.
 
     # Hỏi số liệu mà kho không trả được dòng nào thì phải NÓI RA. Im lặng gửi prompt rỗng là để
-    # mô hình tự do bịa một bảng nghe rất thật.
-    if yc.can_so_lieu and not parts:
+    # mô hình tự do bịa một bảng nghe rất thật. Nhóm CHUYEN_HUB cố ý không tra kho (đã có câu
+    # chuyển hướng riêng) nên KHÔNG gắn "kho không có" cho nó.
+    if yc.can_so_lieu and not parts and yc.y_dinh not in CHUYEN_HUB:
         parts = [f"KHO KHÔNG CÓ DỮ LIỆU khớp câu hỏi này (phạm vi: {pham_vi}"
                  + (f", khoảng giá đã lọc" if yc.gia_min or yc.gia_max else "")
                  + "). Nói thẳng là chưa có, đừng bịa sản phẩm."]
@@ -350,6 +424,20 @@ async def ask(turns: list[dict]) -> dict:
     # LỌC THEO CHÍNH CÂU VỪA HỎI. Dựng khối dữ liệu sau khi biết câu hỏi chứ không phải trước:
     # đó là cả điểm của "lọc trước rồi hỏi AI".
     dg = digest(cau_hoi)
+
+    # CHUYỂN SANG TREND SIGNAL HUB (chốt 22/09/2026). Với câu hỏi top / bảng xếp hạng / một món
+    # cụ thể / lăng kính, KHÔNG tra bảng sản phẩm trong ô chat nữa: số theo từng sản phẩm hay lệch
+    # giữa các sàn (hỏi Shopee lại trả về hàng 1688). Trả về một câu tất định hướng người dùng mở
+    # Trend Signal Hub — nơi bảng đúng theo từng sàn, có ảnh và link. Không gọi Gemini (nhanh và
+    # không thể bịa). `hubRedirect` để giao diện bày nút mở thẳng Hub. Câu xin ý tưởng (`y_tuong`)
+    # KHÔNG rơi vào đây — vẫn trả lời như cũ, kèm số kho gắn vào từng món.
+    if dg["y_dinh"] in CHUYEN_HUB:
+        return {
+            "seed": cau_hoi, "country": dg["thi_truong"], "mode": "talk",
+            "reply": _loi_chuyen_hub(dg), "situation": "",
+            "items": [], "followUps": [], "hubProducts": [], "webSources": [],
+            "hubRedirect": True, "grounding": _grounding(dg),
+        }
     # Lượt này do HUB nói, không phải người dùng: đặt vai assistant để mô hình đọc nó như dữ kiện
     # đã có trên bàn, chứ không như một yêu cầu phải trả lời.
     #
@@ -364,11 +452,23 @@ async def ask(turns: list[dict]) -> dict:
            if dg["san_loai"] else ""),
         "QUY TẮC CHUNG: chỉ dùng số trong khối này, tuyệt đối không bịa thêm sản phẩm; luôn nói"
         " rõ sản phẩm thuộc sàn nào; không cộng hay so tiền giữa hai sàn khác đơn vị"
-        " (VND/PHP/CNY); không có trong khối này thì nói là kho chưa có.",
+        " (VND/PHP/CNY); không có trong khối này thì nói là kho chưa có. Thông tin web (nếu"
+        " có, mã [W#]) chỉ để giải thích bối cảnh — không phải số liệu kho.",
         f"YÊU CẦU CHO LƯỢT NÀY: {dg['huong_dan']}",
     ]
     if dg["text"]:
         khung.append("DỮ LIỆU:\n" + dg["text"])
+    # TÌM WEB — phần thêm, chỉ cho câu mà kho thiếu bối cảnh hoặc người dùng đòi tra web. Hỏng
+    # thì thôi, câu trả lời vẫn đi bằng số kho như trước. Xem `web.py`.
+    tim_web = None
+    if web.nen_tim(cau_hoi, dg["y_dinh"]):
+        tim_web = await web.tim(cau_hoi, dg["thi_truong"])
+        if tim_web["results"]:
+            khung.append(web.khoi_prompt(tim_web))
+            if dg["y_dinh"] in ("khong_ro", "ngoai_pham_vi"):
+                khung.append("Nếu thông tin web ở trên trả lời được câu hỏi VÀ câu hỏi liên quan"
+                             " tới buôn bán / hàng hoá / sàn thương mại điện tử, hãy trả lời ngắn"
+                             " dựa trên nó kèm mã nguồn [W#] thay vì hỏi lại hay từ chối.")
     chat.append(ChatTurn(role="assistant", text="\n\n".join(khung), items=[]))
     for t in turns:
         chat.append(ChatTurn(
@@ -388,14 +488,7 @@ async def ask(turns: list[dict]) -> dict:
                                               else "shopee_vn")
     payload["items"] = _gan_kho(payload.get("items") or [], san_tim)
     payload["hubProducts"] = _the_san_pham(dg["products"])
-    payload["grounding"] = {
-        "nTop": dg["n_top"], "ngay": dg["ngay"], "nganh": dg["nganh"],
-        "san": dg["san"], "phamVi": dg["pham_vi"],
-        # Vì sao hệ thống hiểu câu hỏi như vậy — hiện ra được cho người dùng, và là thứ đọc đầu
-        # tiên khi họ bảo "nó trả lời sai câu tôi hỏi".
-        "yDinh": dg["y_dinh"], "lyDo": dg["ly_do"], "langKinh": dg["lang_kinh"],
-        "bang": dg["bang"], "tuKhoa": dg["tu_khoa"],
-        "giaMin": dg["gia_min"], "giaMax": dg["gia_max"],
-        "sanLoai": dg["san_loai"],
-    }
+    # Nguồn web đã đưa cho AI, đúng thứ tự [W1], [W2]… để giao diện dẫn link được.
+    payload["webSources"] = (tim_web or {}).get("results") or []
+    payload["grounding"] = _grounding(dg)
     return payload

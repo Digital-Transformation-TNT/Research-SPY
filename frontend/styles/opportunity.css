@@ -300,6 +300,12 @@
   color: var(--brand);
 }
 
+/* Nút mời sang Trend Signal Hub (lượt hubRedirect). `.ans` là flex column căng ngang, nên phải
+   ghì nút về bên trái để nó bằng đúng nội dung chứ không kéo dài cả hàng. */
+.ans-hub-cta {
+  align-self: flex-start;
+}
+
 .ans-next {
   display: flex;
   flex-wrap: wrap;
@@ -395,4 +401,21 @@
   border-color: #f2cac7;
   background: var(--bad-soft);
   color: var(--bad);
+}
+
+/* ===== Nguồn web của One-shot AI — đánh số khớp mã [W1], [W2]… trong lời đáp ===== */
+.ans-web { margin-top: var(--s-3); font-size: 12.5px; }
+.ans-web-head { font-size: 11.5px; color: var(--text-mute); margin-bottom: 4px; }
+.ans-web ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.ans-web li { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.ans-web li a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; color: var(--brand); }
+.ans-web li small { color: var(--text-mute); white-space: nowrap; }
+.ans-web-id {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-mute);
+  border: 1px solid var(--border, currentColor);
+  border-radius: 5px;
+  padding: 0 4px;
 }
