@@ -1,5 +1,11 @@
 # Research SPY
 
+> **Nhận bàn giao dự án?** Đọc [docs/tai-lieu-du-an/](docs/tai-lieu-du-an/) — ba tài liệu cập nhật
+> 24/09/2026: ① cài đặt & deploy, ② chức năng & logic, ③ tài khoản & sự cố. Chúng mô tả **bản
+> đang chạy trên `https://tntecom.com/research/`**; phần dưới của README này còn vài chỗ lệch
+> (sidebar hiện tại là Keyword · Image Search · Sản phẩm · Trend Signal Hub · One-shot AI ·
+> Quản trị) — chỗ nào lệch thì tin tài liệu bàn giao.
+
 Công cụ nội bộ cho phòng test sản phẩm. Bốn mục lớn, độc lập với nhau:
 
 | Mục | Đường dẫn | Làm gì | Lấy dữ liệu từ |
