@@ -78,9 +78,10 @@ NGUONG: dict[str, float] = {
     "khe_ho_luy_ke": 1000,        # lũy kế > 1.000
     "khe_ho_deu": 90,             # P20 ≥ 90% mức thường
     "khe_ho_rating": 4.0,         # dẫn đầu có rating < 4.0★
-    # 🆕 Tân binh bán chạy (để cuối)
-    "tan_binh_ngay": 21,          # xuất hiện không quá 21 ngày
-    "tan_binh_da_ban": 300,       # đã bán ≥ 300
+    # 🆕 Tân binh bán chạy (để cuối). Siết 22/09/2026: 7 ngày + đã bán 350 (từ 21 ngày / 300) —
+    # chủ dự án muốn tân binh phải MỚI THẬT (≤ 1 tuần) và đã bán khá.
+    "tan_binh_ngay": 7,           # xuất hiện không quá 7 ngày
+    "tan_binh_da_ban": 350,       # đã bán ≥ 350
     "tan_binh_ty_le": 1.2,        # VÀ lũy kế ≤ 1,2 × bán-30-ngày (xem `_tinh`)
 }
 
@@ -100,6 +101,13 @@ BOUNDS: dict[str, tuple[float, float]] = {
 #: Mẫu số tối thiểu (sp/ngày) cho các phép %. Nền 0 → 3 là "+∞%", và xếp thuần theo % thì cả
 #: bảng toàn những dòng như thế. Cùng giá trị `floor` của top10.
 NEN_TOI_THIEU = 1.0
+
+#: Đối chiếu lũy kế với bán-30-ngày của sàn — xem `_chuoi`. Bước có tốc độ < 30% mức sàn khai
+#: là lũy kế đứng (chỉ xét khi sàn khai ≥ 3/ngày); > 20 lần mức 30 ngày trước đó là bộ đếm nhảy
+#: (xét khi mức đó ≥ `NEN_TOI_THIEU`).
+LUY_KE_DUNG = 0.3
+BO_DEM_NHAY = 20.0
+LECH_MUC_TOI_THIEU = 3.0
 
 #: Không tính lịch sử xa hơn kho giữ (db.GIU_NGAY) — cửa sổ dài nhất là 5 ngày cộng nền.
 NGAY_TOI_DA = 90
@@ -329,6 +337,23 @@ def _chuoi(points: list[dict], platform: str) -> list[tuple[date, float, float]]
             if monthly and gap <= 30 and delta > monthly:
                 continue
             rate = delta / gap
+            # ĐỐI CHIẾU VỚI BÁN-30-NGÀY CỦA SÀN — hai bộ đếm của cùng một sản phẩm phải khớp nhau.
+            # Đo 18/09/2026 vì bảng Tăng tốc hiện "+19.300%": cây massage bán ~13.000/30 ngày
+            # (≈430/ngày) mà lũy kế chỉ nhích 11 cái trong 4 ngày → nền 2,8/ngày, rồi lũy kế chạy
+            # lại → 578/ngày = +19.300%. Không phải hàng bùng nổ, là LŨY KẾ ĐỨNG (xem ghi chú lũy
+            # kế cập nhật trễ). Ở PH còn kiểu ngược: lũy kế và bán-30-ngày cùng nhảy ×100 trong
+            # hai ngày (bộ đếm lật giữa hai phiên bản, hoặc gộp listing) → +146.144%.
+            #   • bước chậm hơn hẳn mức sàn tự khai → lũy kế đứng, bỏ bước (để lỗ);
+            #   • bước nhanh gấp nhiều lần mức 30 ngày TRƯỚC đó → bộ đếm nhảy, bỏ bước.
+            # Phép 'đứng' chỉ áp khi sàn khai ≥ LECH_MUC_TOI_THIEU/ngày — hàng bán lèo tèo thì ngày 0 là thật.
+            # Đo trên kho: bỏ ~10% bước (7.613 đứng + 58 nhảy / 75.391), đỉnh % Tăng tốc VN
+            # 19.300 → 1.221, PH 146.144 → 1.300; số sản phẩm lọt lăng kính giảm ~7–10%.
+            m0, m1 = prev.get("sold_monthly") or 0, monthly or 0
+            chuan = min(m0, m1) / 30.0
+            if chuan >= LECH_MUC_TOI_THIEU and rate < LUY_KE_DUNG * chuan:
+                continue
+            if m0 / 30.0 >= NEN_TOI_THIEU and rate > BO_DEM_NHAY * (m0 / 30.0):
+                continue
         gia = cur["price"] or 0.0
         for i in range(1, gap + 1):
             out.append((d0 + timedelta(days=i), rate, rate * gia))
@@ -879,13 +904,95 @@ def tong_quan_kho() -> dict:
     return {"san": ra, "lang_kinh": list(LANG_KINH)}
 
 
+#: CẦU VIỆT→PH cho khớp ngành. Cây PH đặt tên TIẾNG ANH ("Makeup & Fragrances", "Skin Care") nên
+#: câu hỏi tiếng Việt ("sắc đẹp", "chăm sóc da") không tự chạm được — đó là lỗ hổng người dùng gặp
+#: nhất. Bảng này gắn CÁC CÁCH GỌI TIẾNG VIỆT (kể cả gọi không chuẩn) vào từng ngành PH.
+#:
+#: VÌ SAO BẢNG TAY, KHÔNG DỊCH MÁY: dịch tên ngành hay sai ("Sức Khỏe" ↔ "Health"? "Bách Hóa" ↔
+#: "Groceries"?), và mỗi lần dịch là một lượt gọi mạng/độ trễ. Bảng tay thì tất định, kiểm được
+#: bằng `MAU_NGANH_PH`, và mỗi khi hụt một cách gọi thì thêm đúng một dòng.
+#:
+#: KHOÁ = (main_id, sub_id|None) lấy từ CÂY PH THẬT (market='ph'); sub_id None = cả ngành lớn.
+#: Cụm phải VIẾT KHÔNG DẤU, thường, và KHỚP NGUYÊN CỤM (đệm khoảng trắng) — tránh cụm một chữ mơ
+#: hồ ("phan" nằm trong "phan tich", "da" nằm khắp nơi). Đổi cây PH thì soát lại các ID ở đây.
+PH_ALIAS: dict[tuple[str, str | None], tuple[str, ...]] = {
+    ("11020952", None): ("o to", "xe may", "xe dap", "moto", "phu tung xe", "lop xe", "dau nhot",
+                         "do choi xe", "phu kien xe"),
+    ("11021036", None): ("trang diem", "my pham", "son moi", "nuoc hoa", "make up", "makeup",
+                         "kem nen", "cushion", "mascara", "phan trang diem", "sac dep", "lam dep",
+                         "do trang diem", "son"),
+    ("11021197", None): ("bach hoa", "thuc pham", "do an", "do an vat", "banh keo", "gia vi",
+                         "do kho", "tap hoa", "nhu yeu pham", "do uong", "thuc pham kho"),
+    ("11021260", None): ("suc khoe", "cham soc ca nhan", "ve sinh ca nhan", "cham soc toc",
+                         "chong nang", "cham soc rang mieng", "thuc pham chuc nang", "vitamin",
+                         "tam goi", "duong the"),
+    ("11021260", "11021263"): ("cham soc da", "duong da", "skincare", "da mat", "kem duong",
+                               "serum", "toner", "sua rua mat", "cham soc da mat", "duong am"),
+    ("11021347", None): ("do choi", "mo hinh", "suu tam", "board game", "tro choi", "lego",
+                         "do choi tre em", "bup be"),
+    ("11021407", None): ("nha cua", "doi song", "noi that", "nha bep", "trang tri nha",
+                         "do dung nha bep", "chan ga goi", "do gia dung", "trang tri"),
+    ("11021587", None): ("thoi trang nam", "quan ao nam", "do nam", "ao nam", "quan nam",
+                         "ao so mi nam", "ao thun nam"),
+    ("11021651", None): ("giay nam", "dep nam", "giay dep nam", "sneaker nam", "sandal nam"),
+    ("11021670", None): ("tui nam", "vi nam", "balo nam", "phu kien nam", "that lung nam",
+                         "tui xach nam"),
+    ("11021712", None): ("dien thoai", "smartphone", "may tinh bang", "tablet", "gadget", "ipad",
+                         "dong ho thong minh", "dien thoai di dong"),
+    ("11021742", None): ("phu kien dien thoai", "op lung", "cap sac", "sac du phong", "cuong luc",
+                         "gia do dien thoai", "tai nghe"),
+    ("11021766", None): ("me va be", "me be", "tre em", "em be", "do so sinh", "bim", "ta",
+                         "sua bot", "do cho be", "do dung cho be", "do tre em"),
+    ("11021881", None): ("thu cung", "cho meo", "cham soc thu cung", "thuc an cho cho",
+                         "thuc an cho meo", "phu kien thu cung", "do cho thu cung", "pate"),
+    ("11021933", None): ("tui nu", "vi nu", "tui xach", "balo nu", "tui xach nu", "tui deo cheo"),
+    ("11021963", None): ("thoi trang nu", "quan ao nu", "do nu", "vay dam", "dam vay", "ao nu",
+                         "dam nu", "chan vay", "do bo nu", "ao thun nu"),
+    ("11022062", None): ("giay nu", "dep nu", "cao got", "giay dep nu", "sandal nu",
+                         "giay cao got"),
+    ("11022093", None): ("phu kien nu", "trang suc", "phu kien thoi trang", "kinh mat",
+                         "that lung nu", "phu kien toc", "vong tay", "hoa tai"),
+    ("11034482", None): ("dien gia dung", "may giat", "tu lanh", "noi com dien", "lo vi song",
+                         "quat dien", "may loc nuoc", "dieu hoa", "bep dien", "may hut bui"),
+    ("11044709", None): ("van phong pham", "so thich", "dung cu hoc tap", "but viet", "sach vo",
+                         "nhac cu", "dung cu ve", "do handmade"),
+    ("11044844", None): ("the thao", "du lich", "vali", "do the thao", "dung cu the thao",
+                         "cam trai", "phu kien the thao", "xe dap the thao"),
+}
+
+
+def _ph_alias_ung(cau_hoi: str, ph_mains: list[dict]) -> list[dict]:
+    """
+    Ngành PH mà câu hỏi TIẾNG VIỆT chạm tới qua `PH_ALIAS`. Trả list ứng viên như `nganh_lien_quan`.
+
+    Tên ngành lấy từ CÂY PH THẬT (`ph_mains`) chứ không chép cứng — để đổi tên trên sheet là tự
+    theo, và để không có ID nào trong bảng mà cây không còn (ID chết thì bỏ qua, không dựng rác).
+    """
+    if not ph_mains:
+        return []
+    q = f" {_fold(cau_hoi)} "
+    ten_main = {m["main_id"]: m["main_name"] for m in ph_mains}
+    ten_sub = {s["sub_id"]: s["sub_name"] for m in ph_mains for s in m["subs"]}
+    ra = []
+    for (mid, sid), cum in PH_ALIAS.items():
+        if not any(f" {c} " in q for c in cum):
+            continue
+        ten = ten_sub.get(sid) if sid else ten_main.get(mid)
+        if not ten:                                  # ID không còn trong cây PH → bỏ
+            continue
+        cap = 1 if sid else 0
+        ra.append({"main_id": mid, "sub_id": sid, "ten": ten, "cap": cap,
+                   "diem": (1.0, 2, cap), "san": ["shopee_ph"]})
+    return ra
+
+
 def nganh_lien_quan(cau_hoi: str, toi_da: int = 3) -> list[dict]:
     """
     Ngành mà câu hỏi nhắc tới — khớp tên ngành (lớn + con) với chữ trong câu hỏi.
 
-    Chỉ nhận diện được ngành gọi bằng tên trùng cây ngành: cây VN (dùng cho Shopee VN và 1688)
-    là tiếng Việt, cây PH là tiếng Anh — nên câu hỏi tiếng Việt thường khớp VN/1688, ít khớp PH.
-    PH vẫn hiện ở phần top toàn cảnh. Trả về mỗi ngành kèm sàn tìm thấy nó.
+    Cây VN (dùng cho Shopee VN và 1688) là tiếng Việt, cây PH là tiếng Anh. Câu hỏi tiếng Việt tự
+    khớp VN/1688; với PH thì bắc cầu qua `PH_ALIAS` (xem `_ph_alias_ung`) để "sắc đẹp", "chăm sóc
+    da"… vẫn ra ngành PH đúng. Trả về mỗi ngành kèm sàn tìm thấy nó.
 
     GIỮ DẤU KHI CÂU CÓ DẤU. Khớp trên bản bỏ dấu làm chập những chữ khác hẳn nghĩa: câu "dữ liệu
     cập nhật đến ngày nào" khớp trúng ngành "Đèn" (vì "đến"→"den") và ngành "Ô/Dù" (vì "dữ"→
@@ -898,8 +1005,11 @@ def nganh_lien_quan(cau_hoi: str, toi_da: int = 3) -> list[dict]:
     if not q:
         return []
     ung: dict[tuple, dict] = {}
+    ph_mains: list[dict] = []
     for san in SAN:
         mains, _ = _cay(san)
+        if san == "shopee_ph":
+            ph_mains = mains
         for m in mains:
             for cap, mid, sid, ten in ((0, m["main_id"], None, m["main_name"]),
                                        *[(1, m["main_id"], s["sub_id"], s["sub_name"]) for s in m["subs"]]):
@@ -924,8 +1034,43 @@ def nganh_lien_quan(cau_hoi: str, toi_da: int = 3) -> list[dict]:
                                      "diem": diem, "san": []}
                     if san not in ung[khoa]["san"]:
                         ung[khoa]["san"].append(san)
+
+    # CẦU VIỆT→PH: cây PH tiếng Anh nên câu tiếng Việt vừa duyệt hầu như không chạm PH. Bù bằng
+    # bảng đồng nghĩa tay. Trộn SAU vòng trên nên nếu một ngành PH đã khớp bằng tên tiếng Anh
+    # (người hỏi gõ "skincare") thì giữ điểm cao hơn giữa hai đường.
+    for c in _ph_alias_ung(cau_hoi, ph_mains):
+        khoa = (c["main_id"], c["sub_id"])
+        if khoa not in ung or c["diem"] > ung[khoa]["diem"]:
+            ung[khoa] = c
+        elif "shopee_ph" not in ung[khoa]["san"]:
+            ung[khoa]["san"].append("shopee_ph")
+
     xep = sorted(ung.values(), key=lambda x: x["diem"], reverse=True)
     return xep[:toi_da]
+
+
+#: Bảng kiểm CẦU VIỆT→PH — (câu hỏi tiếng Việt, main_id PH phải có mặt). Giữ cho `PH_ALIAS` không
+#: lặng lẽ hụt khi sửa cây hay sửa bảng: mỗi cách gọi quan trọng một dòng.
+MAU_NGANH_PH: tuple[tuple[str, str], ...] = (
+    ("chăm sóc da", "11021260"),
+    ("sắc đẹp", "11021036"),
+    ("mỹ phẩm trang điểm", "11021036"),
+    ("thú cưng", "11021881"),
+    ("đồ mẹ và bé", "11021766"),
+    ("thời trang nữ", "11021963"),
+    ("điện thoại", "11021712"),
+    ("thể thao du lịch", "11044844"),
+)
+
+
+def kiem_tra_nganh_ph() -> list[str]:
+    """Chạy `MAU_NGANH_PH`, trả các dòng SAI (rỗng = đúng hết). Cần DB (đọc cây PH thật)."""
+    sai = []
+    for cau, mid in MAU_NGANH_PH:
+        mids = {n["main_id"] for n in nganh_lien_quan(cau, 5) if "shopee_ph" in n["san"]}
+        if mid not in mids:
+            sai.append(f"{cau!r}: mong PH main {mid}, ra {sorted(mids)}")
+    return sai
 
 
 def top_theo_nganh(main_id: str, sub_id: str | None, sans: list[str], moi_san: int = 5,

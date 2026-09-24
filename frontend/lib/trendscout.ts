@@ -51,17 +51,21 @@ export const LENSES: Array<{
       { key: 'tang_toc_cua_so', label: 'Cửa sổ so sánh', unit: 'ngày' },
     ],
   },
-  {
-    key: 'steady',
-    icon: '💰',
-    label: 'Bán khoẻ ổn định',
-    note: 'Ngày tệ nhất vẫn bán được kha khá — hầu như không có ngày chết, và hiện vẫn chưa hạ nhiệt (TB 3 ngày gần nhất ≥ 80% TB 5 ngày). Cầu đã được chứng minh, nhập về không sợ ôm hàng. Xếp theo doanh thu sàn 5 ngày.',
-    knobs: [
-      { key: 'on_dinh_moc', label: 'Sàn tối thiểu', unit: 'sp/ngày' },
-      { key: 'on_dinh_giu_nhiet', label: 'TB 3 ngày ≥', unit: '% TB 5 ngày' },
-      { key: 'on_dinh_cua_so', label: 'Cửa sổ', unit: 'ngày' },
-    ],
-  },
+  // ĐÃ ẨN lăng kính 'Bán khoẻ ổn định' (steady) khỏi giao diện theo yêu cầu 22/09/2026 — cho
+  // CẢ Shopee VN, Shopee PH và 1688 (mảng LENSES dùng chung, không lọc theo sàn). Backend
+  // (scout.py) vẫn còn nhánh 'steady' nguyên vẹn; whyText/knob 'on_dinh_*' cũng giữ. Bỏ comment
+  // khối dưới để hiện lại chip này.
+  // {
+  //   key: 'steady',
+  //   icon: '💰',
+  //   label: 'Bán khoẻ ổn định',
+  //   note: 'Ngày tệ nhất vẫn bán được kha khá — hầu như không có ngày chết, và hiện vẫn chưa hạ nhiệt (TB 3 ngày gần nhất ≥ 80% TB 5 ngày). Cầu đã được chứng minh, nhập về không sợ ôm hàng. Xếp theo doanh thu sàn 5 ngày.',
+  //   knobs: [
+  //     { key: 'on_dinh_moc', label: 'Sàn tối thiểu', unit: 'sp/ngày' },
+  //     { key: 'on_dinh_giu_nhiet', label: 'TB 3 ngày ≥', unit: '% TB 5 ngày' },
+  //     { key: 'on_dinh_cua_so', label: 'Cửa sổ', unit: 'ngày' },
+  //   ],
+  // },
   {
     key: 'spike',
     icon: '⚡',
@@ -88,7 +92,7 @@ export const LENSES: Array<{
     key: 'new',
     icon: '🆕',
     label: 'Tân binh bán chạy',
-    note: 'Mới xuất hiện trong ngành không quá 21 ngày mà đã bán được từ 300 lượt trở lên. Xếp theo bán được bao nhiêu một ngày kể từ khi xuất hiện. Hàng cũ vừa mới leo vào top ngành bị loại bằng phép thử lũy kế ≈ lượt bán 30 ngày.',
+    note: 'Mới xuất hiện trong ngành không quá 7 ngày mà đã bán được từ 350 lượt trở lên. Xếp theo bán được bao nhiêu một ngày kể từ khi xuất hiện. Hàng cũ vừa mới leo vào top ngành bị loại bằng phép thử lũy kế ≈ lượt bán 30 ngày.',
     knobs: [
       { key: 'tan_binh_ngay', label: 'Xuất hiện không quá', unit: 'ngày' },
       { key: 'tan_binh_da_ban', label: 'Đã bán từ', unit: 'sp' },
@@ -223,9 +227,18 @@ export function money(n: number | null | undefined, currency: string | null | un
   return cur ? `${body} ${cur}` : body
 }
 
+/**
+ * Phần trăm theo kiểu QUỐC TẾ — "," ngăn nghìn, "." thập phân, luôn 2 chữ số: "+19,300.00%".
+ *
+ * Cố ý khác mọi số khác trên trang (vốn theo vi-VN). Chủ dự án chốt 18/09/2026: "+19.300%" kiểu
+ * Việt bị đọc nhầm thành 19,3% trong khi thật là mười chín NGHÌN phần trăm — ở đúng cột quyết
+ * định có nhập hàng hay không.
+ */
+const PCT = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
 export function pct(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return '—'
-  return `${n >= 0 ? '+' : ''}${FULL.format(n)}%`
+  return `${n >= 0 ? '+' : ''}${PCT.format(n)}%`
 }
 
 /** "2026-09-11" → "11/09". */

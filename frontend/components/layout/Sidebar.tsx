@@ -108,17 +108,20 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
       },
     ],
   },
-  {
-    label: 'Trợ giúp',
-    items: [
-      {
-        href: '/guide',
-        label: 'Hướng dẫn',
-        hint: 'Quy trình dùng và cách đọc số liệu',
-        icon: 'guide',
-      },
-    ],
-  },
+  // ĐÃ ẨN nhóm 'Trợ giúp' (mục 'Hướng dẫn' → /guide) theo yêu cầu 22/09/2026. Route /guide và
+  // trang của nó vẫn còn nguyên (truy cập thẳng bằng URL vẫn được), chỉ là không còn cửa vào
+  // trên sidebar. Bỏ comment khối dưới để hiện lại.
+  // {
+  //   label: 'Trợ giúp',
+  //   items: [
+  //     {
+  //       href: '/guide',
+  //       label: 'Hướng dẫn',
+  //       hint: 'Quy trình dùng và cách đọc số liệu',
+  //       icon: 'guide',
+  //     },
+  //   ],
+  // },
 ]
 
 /** Nhóm chỉ hiện với admin — trang quản lý user + thống kê. `/admin` là route Next thật. */
