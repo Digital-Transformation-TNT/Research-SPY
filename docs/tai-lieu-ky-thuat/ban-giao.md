@@ -333,8 +333,8 @@ Tool chính user đang dùng. Mở full tab từ popup (`extension/popup.*`).
 - FB Ads dùng ở ĐÂY là "chạy ngon" (thẻ quảng cáo đầy đủ), không phải ở tool extension.
 
 ### Docs
-- `docs/nghien-cuu-nguon-du-lieu.md` — research nguồn/giá provider (đọc để hiểu bối cảnh sàn).
-- `docs/ban-giao.md` — file này.
+- `docs/tai-lieu-ky-thuat/nghien-cuu-nguon-du-lieu.md` — research nguồn/giá provider (đọc để hiểu bối cảnh sàn).
+- `docs/tai-lieu-ky-thuat/ban-giao.md` — file này.
 
 ---
 

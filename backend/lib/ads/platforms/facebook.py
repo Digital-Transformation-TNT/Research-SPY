@@ -12,7 +12,7 @@ dụng với research sản phẩm thương mại. Ba đường lấy dữ liệ
      Facebook soft-block việc phát lại (HTTP 200 kèm 0 kết quả), nên nó đứng cuối.
 
 Thứ tự này ĐẢO so với bản trước, và đảo vì một phép đo chứ không phải vì gu — xem ghi chú
-trong `_read_library_page` và `docs/nguon-video-cho-san-pham.md`.
+trong `_read_library_page` và `docs/tai-lieu-ky-thuat/nguon-video-cho-san-pham.md`.
 
 Nếu Facebook đổi hình dạng dữ liệu, đây là file duy nhất cần sửa.
 """

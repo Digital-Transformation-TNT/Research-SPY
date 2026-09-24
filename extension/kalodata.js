@@ -7,7 +7,7 @@
  * đường relay đứt hẳn. `extension-kalodata/` vẫn giữ nguyên làm công cụ cào độc lập.
  *
  * Lõi dưới đây CHÉP từ `extension-kalodata/background.js` (kdSend / kdCrawl / kdNormalize) —
- * sửa một bên nhớ sửa bên kia. Đặc tả API ở `docs/kalodata-api.md`. Ba điều dễ sai nhất, đã đo:
+ * sửa một bên nhớ sửa bên kia. Đặc tả API ở `docs/tai-lieu-ky-thuat/kalodata-api.md`. Ba điều dễ sai nhất, đã đo:
  *
  *   keyword    sản phẩm đi bằng `query`, video đi bằng `title`. Nhầm khoá = 200 kèm danh sách
  *              RỖNG, không báo lỗi.
@@ -271,7 +271,7 @@ async function kdStatus() {
  *
  * `getVideoUrl` là GET (`?videoId=`), gửi POST là 404 câm. KHÔNG suy được từ id như ảnh cover
  * (đã thử `.mp4` cùng thư mục cover → 404). KHÔNG thuộc nhóm route bị trừ credit (chỉ các route
- * dạng queryList mới trừ) — xem `docs/kalodata-api.md`. `code 1053` = video đã gỡ/riêng tư.
+ * dạng queryList mới trừ) — xem `docs/tai-lieu-ky-thuat/kalodata-api.md`. `code 1053` = video đã gỡ/riêng tư.
  */
 async function kdVideoUrl(videoId) {
   const id = String(videoId || '').trim();
@@ -284,7 +284,7 @@ async function kdVideoUrl(videoId) {
 
 /**
  * Danh sách VIDEO ĐẨY DOANH SỐ mà Kalodata gắn thẳng vào một sản phẩm (`/product/enrich`).
- * Route detail, KHÔNG nằm trong nhóm bị trừ credit (xem `docs/kalodata-api.md`). Trả
+ * Route detail, KHÔNG nằm trong nhóm bị trừ credit (xem `docs/tai-lieu-ky-thuat/kalodata-api.md`). Trả
  * { videos: [], error }. Hình dạng từng video của enrich CHƯA xác minh chắc (mẫu tài liệu rỗng),
  * nên nơi gọi (`research.js`) tự chuẩn hoá `id`; ở đây chỉ trả nguyên `data.videos`.
  */

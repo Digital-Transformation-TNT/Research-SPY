@@ -315,7 +315,7 @@ const AMZ_CUR = { US: 'USD', GB: 'GBP', DE: 'EUR', FR: 'EUR', IT: 'EUR', ES: 'EU
 // Seller Center chỉ chạy được ở nước nào người dùng có tài khoản người bán, và chỉ trả "sản phẩm
 // tiềm năng" chứ không có doanh thu thật. Kalodata dùng MỘT phiên đăng nhập (kalodata.com trên
 // máy có extension, hoặc máy-thợ) cho cả 15 nước, và trả số bán + doanh thu theo ngày cho từng
-// sản phẩm lẫn từng video. Đặc tả: `docs/kalodata-api.md`; lõi gọi mạng: `extension/kalodata.js`.
+// sản phẩm lẫn từng video. Đặc tả: `docs/tai-lieu-ky-thuat/kalodata-api.md`; lõi gọi mạng: `extension/kalodata.js`.
 //
 // THỨ TỰ NƯỚC: VN, PH trước — xem ghi chú ở `PLATFORMS`. Nước đầu là nước chọn sẵn.
 const KD_REGIONS = ['VN', 'PH', 'TH', 'ID', 'MY', 'SG', 'US', 'GB', 'MX', 'BR', 'DE', 'FR', 'IT', 'ES', 'JP'];
@@ -1227,7 +1227,7 @@ async function fetchBackend(platform, keyword, region, count, countryOverride) {
 // Lõi gọi mạng nằm ở `extension/kalodata.js`; ở đây chỉ gửi lệnh, cache và chuẩn hoá. Mỗi sản
 // phẩm Kalodata trả sẵn số bán + doanh thu trong khoảng ngày lọc (30 ngày), rating, số creator,
 // hoa hồng, ngày lên sàn. Số liệu là ƯỚC LƯỢNG của Kalodata, không phải số TikTok công bố
-// (`docs/nghien-cuu-nguon-du-lieu.md` mục 5).
+// (`docs/tai-lieu-ky-thuat/nghien-cuu-nguon-du-lieu.md` mục 5).
 
 // MỖI TRANG `searchList` = MỘT LƯỢT CREDIT của gói (gói hiện tại: 10 lượt tìm/ngày). Nên ô "60 SP"
 // KHÔNG được hiểu thành 6 trang: trần 3 trang (30 SP) cho mỗi (từ khoá × nước). Cỡ trang cố định 10

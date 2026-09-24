@@ -4,7 +4,7 @@ Cào **sản phẩm** và **video** TikTok từ Kalodata theo region, bằng ch�
 
 Tách hẳn khỏi `extension/` (Research-SPY Fetcher): riêng manifest, riêng quyền, riêng tab.
 Nó chỉ xin đúng hai host — `www.kalodata.com` và `img.kalocdn.com` — nên cài kèm nhau cũng
-không ai đụng phiên đăng nhập của ai. Đặc tả API ở `../docs/kalodata-api.md`.
+không ai đụng phiên đăng nhập của ai. Đặc tả API ở `../docs/tai-lieu-ky-thuat/kalodata-api.md`.
 
 ## Cài (Chrome/Edge, chế độ dev)
 
@@ -158,4 +158,4 @@ trang đã lấy được.
 Đây là **API nội bộ**, không phải API công khai — Kalodata chỉ mở "full API access" ở gói
 Enterprise. Tự động hoá ở quy mô lớn vi phạm ToS và có thể bị khoá tài khoản. Số liệu GMV của
 Kalodata cũng là **ước lượng AI từ scrape**, không phải số thật từ TikTok Shop
-(xem `../docs/nghien-cuu-nguon-du-lieu.md` mục 5).
+(xem `../docs/tai-lieu-ky-thuat/nghien-cuu-nguon-du-lieu.md` mục 5).

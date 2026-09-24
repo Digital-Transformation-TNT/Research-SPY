@@ -34,8 +34,8 @@ file "soi gương" nhau**, sửa một bên mà quên bên kia thì không có g
 |---|---|
 | [`../../README.md`](../../README.md) | README gốc — **đã lệch một phần** (còn tả bốn mục `/ads /keywords /image /opportunity`). Chỗ nào lệch thì tin ② |
 | [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md) | thêm một nguồn dữ liệu mới, kèm ví dụ đầy đủ |
-| [`../ban-giao.md`](../ban-giao.md) | bản bàn giao **04/08/2026** — trạng thái & lộ trình, đã cũ một phần nhưng còn giá trị ở mục "chưa làm" |
-| [`../kalodata-api.md`](../kalodata-api.md) | đặc tả API Kalodata |
-| [`../nguon-du-lieu-tung-san.md`](../nguon-du-lieu-tung-san.md) · [`../gia-ban-co-that-khong.md`](../gia-ban-co-that-khong.md) | nhật ký nghiên cứu: từng sàn cho số gì, và giá có thật không |
+| [`../ban-giao.md`](../tai-lieu-ky-thuat/ban-giao.md) | bản bàn giao **04/08/2026** — trạng thái & lộ trình, đã cũ một phần nhưng còn giá trị ở mục "chưa làm" |
+| [`../kalodata-api.md`](../tai-lieu-ky-thuat/kalodata-api.md) | đặc tả API Kalodata |
+| [`../nguon-du-lieu-tung-san.md`](../tai-lieu-ky-thuat/nguon-du-lieu-tung-san.md) · [`../gia-ban-co-that-khong.md`](../tai-lieu-ky-thuat/gia-ban-co-that-khong.md) | nhật ký nghiên cứu: từng sàn cho số gì, và giá có thật không |
 | [`../../extension/README.md`](../../extension/README.md) · [`../../extension-kalodata/README.md`](../../extension-kalodata/README.md) | hai extension, cài và vận hành |
 | `backend/.env.example` | **tài liệu duy nhất mô tả từng biến môi trường** — đọc comment trong đó, đừng đoán |

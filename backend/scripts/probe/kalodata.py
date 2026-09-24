@@ -5,7 +5,7 @@ DÒ API NỘI BỘ KALODATA — tìm sản phẩm / video TikTok theo region.
     set KALODATA_COOKIE=...          (PowerShell: $env:KALODATA_COOKIE="...")
     python -m scripts.probe.kalodata --kind product --country VN --query "tai nghe bluetooth"
 
-Đặc tả đầy đủ ở `docs/kalodata-api.md`. Ba điều script này khai thác:
+Đặc tả đầy đủ ở `docs/tai-lieu-ky-thuat/kalodata-api.md`. Ba điều script này khai thác:
 
 1. Product dùng key `query`, video dùng `title` — cùng một endpoint `/{module}/searchList`.
 2. Tiền trả về là CHUỖI đã format ("₫3,56tr"). Số thô nằm ở `revenue_trend` (mảng theo ngày);

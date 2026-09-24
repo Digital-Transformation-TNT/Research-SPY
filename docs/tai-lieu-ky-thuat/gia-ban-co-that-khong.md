@@ -14,7 +14,7 @@
 | Sàn | Trường tool đang đọc | Có phải giá thật | Bằng chứng |
 |---|---|---|---|
 | **Etsy** | `price` (API v3) | ❌ **giá sàn** | Đo trực tiếp: **11/12 listing** trả về có `has_variations: true`. Listing 1657090788: API nói 6,70 GBP, trang bán ghi **"187.313₫+"** |
-| **TikTok Shop** | `recommend_price_low` | ❌ **giá sàn** | Chính tên trường. `docs/ban-giao.md:157` cũng ghi vậy |
+| **TikTok Shop** | `recommend_price_low` | ❌ **giá sàn** | Chính tên trường. `docs/tai-lieu-ky-thuat/ban-giao.md:157` cũng ghi vậy |
 | **Shopee** | `item_card_display_price.price` | ❌ (rất nhiều khả năng) | **CHƯA ĐO ĐƯỢC** — Shopee chặn IP máy chủ (`/verify/traffic`). Xem mục 3 |
 | **Amazon** | `.a-price .a-offscreen` đầu tiên | ⚠️ cận dưới khi thẻ có khoảng giá | Đo `amazon.com/s?k=men t shirt`: 2/48 thẻ có hai `.a-price`, code lấy cái đầu |
 | **Amazon — TIỀN TỆ** | gán cứng theo tên miền | ❌ **SAI HẲN** | Xem mục 2 |

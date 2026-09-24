@@ -213,4 +213,4 @@ cho tới khi gãy.
    để gọi endpoint nội bộ có thể bị khoá tài khoản.
 3. **Cookie hết hạn** theo phiên → cần cơ chế refresh nếu chạy nền.
 4. **Số liệu là ước lượng.** GMV/doanh số của Kalodata do AI ước lượng từ scrape, không phải
-   số thật từ TikTok Shop (xem `docs/nghien-cuu-nguon-du-lieu.md` mục 5).
+   số thật từ TikTok Shop (xem `docs/tai-lieu-ky-thuat/nghien-cuu-nguon-du-lieu.md` mục 5).

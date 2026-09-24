@@ -576,5 +576,5 @@ Trang Hub đầy số liệu nhưng số trông lạ
 
 * Cài đặt và đưa lên tên miền → **[1-cai-dat-va-deploy.md](1-cai-dat-va-deploy.md)**
 * Chức năng và logic → **[2-chuc-nang-va-logic.md](2-chuc-nang-va-logic.md)**
-* Đặc tả API Kalodata → [`docs/kalodata-api.md`](../kalodata-api.md)
-* Nguồn dữ liệu từng sàn, và giá có thật không → [`docs/nguon-du-lieu-tung-san.md`](../nguon-du-lieu-tung-san.md) · [`docs/gia-ban-co-that-khong.md`](../gia-ban-co-that-khong.md)
+* Đặc tả API Kalodata → [`docs/tai-lieu-ky-thuat/kalodata-api.md`](../tai-lieu-ky-thuat/kalodata-api.md)
+* Nguồn dữ liệu từng sàn, và giá có thật không → [`docs/tai-lieu-ky-thuat/nguon-du-lieu-tung-san.md`](../tai-lieu-ky-thuat/nguon-du-lieu-tung-san.md) · [`docs/tai-lieu-ky-thuat/gia-ban-co-that-khong.md`](../tai-lieu-ky-thuat/gia-ban-co-that-khong.md)
