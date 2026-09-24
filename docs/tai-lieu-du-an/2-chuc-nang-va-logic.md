@@ -711,7 +711,7 @@ Hướng dẫn đầy đủ kèm ví dụ: [`CONTRIBUTING.md`](../../CONTRIBUTIN
 
 ## 13. Đi tiếp
 
-* Cài đặt và deploy → **[1-cai-dat-va-deploy.md](1-cai-dat-va-deploy.md)**
+* Cài đặt và đưa lên tên miền → **[1-cai-dat-va-deploy.md](1-cai-dat-va-deploy.md)**
 * Tài khoản và xử lý sự cố → **[3-tai-khoan-va-su-co.md](3-tai-khoan-va-su-co.md)**
 * Nhật ký nghiên cứu từng nguồn (vì sao endpoint gọi được như vậy) → [`docs/`](..)
 * Lộ trình và việc còn dở (bản 04/08/2026, đã cũ một phần) → [`docs/ban-giao.md`](../ban-giao.md)

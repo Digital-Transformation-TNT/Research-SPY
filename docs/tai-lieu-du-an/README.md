@@ -7,7 +7,7 @@ Viết ngày **24/09/2026**, mọi con số trong đây đo trên chính máy pr
 
 | | Tài liệu | Đọc khi nào |
 |---|---|---|
-| ① | **[Cài đặt và deploy](1-cai-dat-va-deploy.md)** | dựng lại từ `git clone`, đưa ra tên miền, redeploy, sao lưu |
+| ① | **[Cài đặt và đưa lên tên miền](1-cai-dat-va-deploy.md)** | dựng lại từ `git clone`, Caddy + HTTPS, nạp lại sau khi sửa code, sao lưu |
 | ② | **[Chức năng và logic](2-chuc-nang-va-logic.md)** | cần hiểu app làm gì, function nào ở đâu, vì sao tính điểm như vậy |
 | ③ | **[Tài khoản và sự cố](3-tai-khoan-va-su-co.md)** | phải đăng nhập những gì, phiên sống bao lâu, hỏng thì xử sao |
 
@@ -17,6 +17,10 @@ Viết ngày **24/09/2026**, mọi con số trong đây đo trên chính máy pr
 (bảng mười tài khoản). Ba trang đó là toàn bộ bức tranh.
 
 **Phải dựng lại server từ đầu** → ① từ đầu đến cuối, rồi ③ §2–§7 để đăng nhập lại từng nguồn.
+
+**Vừa sửa code, cần nạp lại** → ① §5. Lưu ý `C:\AI-TNT-Research-SPY` **vừa là bản clone để
+sửa, vừa là thư mục ba service đang chạy** — không có khâu deploy, chỉ có build (nếu sửa
+frontend) rồi restart service.
 
 **Đang trực vận hành, tool báo lỗi** → ③ §10 (cây quyết định) → ③ §11 (bốn thứ KHÔNG phải sự
 cố, đừng đi sửa).

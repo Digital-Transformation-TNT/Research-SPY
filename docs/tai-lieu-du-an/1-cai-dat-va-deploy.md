@@ -1,4 +1,4 @@
-# Bàn giao ① — Cài đặt và deploy, từ `git clone` tới tên miền
+# Bàn giao ① — Cài đặt và đưa lên tên miền, từ `git clone` tới `https://tntecom.com/research/`
 
 > Trạng thái kiểm chứng: **24/09/2026**, đo trên chính máy production.
 > Bản đang chạy thật: `https://tntecom.com/research/` · VPS Windows `157.66.101.73`.
@@ -63,8 +63,8 @@ git checkout Titus
 ```
 
 > **Nhánh làm việc là `Titus`, không phải `main`.** `main` chỉ là bản mirror (fast-forward từ
-> `Titus`) để Dependabot soi nhánh mặc định. CI (`.github/workflows/ci.yml`) chỉ chạy trên
-> `Titus`, và auto-deploy nằm trong job `deploy` của chính file đó.
+> `Titus`) để Dependabot soi nhánh mặc định. Đồng bộ lại khi cần:
+> `git push origin Titus:main`.
 
 ### 2.1 File cấu hình — thứ DUY NHẤT không có trong git
 
@@ -188,7 +188,7 @@ Get-Content C:\Caddy\caddy.err.log -Tail 40
 ### 4.3 Hai luật cache trong Caddyfile — đừng xoá
 
 Đo 14/09/2026, mất gần một tiếng tưởng code chưa lên server: Next gắn
-`Cache-Control: s-maxage=31536000` (một năm) cho trang tĩnh, nên deploy xong người đã từng mở
+`Cache-Control: s-maxage=31536000` (một năm) cho trang tĩnh, nên build xong người đã từng mở
 trang vẫn thấy giao diện cũ cho tới khi tự bấm `Ctrl+Shift+R`. **F5 thường không đủ.**
 
 ```
@@ -219,36 +219,68 @@ Nhớ: `/api` ở gốc đã bị Research SPY chiếm, tool sau phải dùng `/
 
 ---
 
-## 5. Cập nhật code về sau (redeploy)
+## 5. Cập nhật code về sau
 
-### 5.1 Tự động — đường chính
+### 5.1 KHÔNG có khâu deploy — code chạy ngay tại chỗ
 
-Push lên `Titus` → CI xanh → job `deploy` trong `ci.yml` tự gọi `redeploy.ps1`. Runner là
-**self-hosted, cài trên chính VPS**, nên không cần SSH hay secret.
+`C:\AI-TNT-Research-SPY` **vừa là bản clone git để sửa, vừa là thư mục mà ba service đang
+chạy**. Không có máy build riêng, không có bước đẩy file từ nơi khác sang. Sửa file ở đây là
+sửa thẳng vào bản đang phục vụ người dùng.
 
-### 5.2 Bằng tay
+Hai hệ quả phải nắm:
+
+* **Không cần nghĩ tới "deploy".** Việc duy nhất còn lại là **nạp lại cái đang chạy** — §5.2.
+* **Cũng không có lưới an toàn.** Một file Python sai cú pháp nằm trên đĩa chưa gây gì, nhưng
+  đúng lần restart kế tiếp là backend không bật lên được. Kiểm trước khi restart — §7.1.
+
+### 5.2 Nạp lại sau khi sửa — tra bảng này
+
+| Sửa gì | Phải làm gì |
+|---|---|
+| file `.py` bất kỳ trong `backend/` | `Restart-Service ResearchSpyBackend` |
+| `backend/requirements.txt` | `python -m pip install -r requirements.txt` rồi restart backend |
+| file bất kỳ trong `frontend/` | `npm run build` **rồi** `Restart-Service ResearchSpyFrontend` |
+| `backend/.env.local` | `Restart-Service ResearchSpyBackend` (config đọc một lần lúc khởi động) |
+| `deploy/Caddyfile` | `caddy reload` — **không restart service**, xem §4.3 |
+| `extension/` hoặc `extension-kalodata/` | §5.3 — **không** liên quan gì tới ba service |
+
+```powershell
+# frontend: build TRƯỚC, restart SAU. Build gãy thì đừng restart — bản đang chạy vẫn tốt.
+cd C:\AI-TNT-Research-SPY\frontend
+npm run build
+if ($?) { Restart-Service ResearchSpyFrontend }
+```
+
+Ba điều cần nhớ khi restart:
+
+* **`ResearchSpyFrontend` restart là ĐỨT tab máy-thợ đang cào**; backend thì không. Tránh
+  restart frontend trong lúc vòng cào đang chạy (01:00–05:00 và 09:00–09:20).
+* Backend giữ **cache 15 phút + kho phiên trình duyệt trong RAM** → restart là xoá sạch chúng.
+  Đó là cái giá bình thường, nhưng đừng restart liên tục.
+* Sửa backend thì **restart**, đừng bật `--reload` — nó làm chết Playwright trên Windows (§6d).
+
+### 5.2.1 `deploy/redeploy.ps1` — chỉ dùng khi muốn ĐỒNG BỘ ĐÚNG BẰNG REMOTE
+
+Script còn trong repo và vẫn chạy được, nhưng nó **không dành cho lối làm việc trực tiếp trên
+server**:
+
+> ⚠️ Bước đầu tiên của nó là **`git reset --hard origin/Titus`** — **mọi sửa đổi chưa commit
+> trên máy này bị xoá sạch, không hỏi lại.**
+
+Chỉ dùng khi bạn *chủ đích* muốn ném bỏ thay đổi cục bộ và về đúng bằng nhánh trên GitHub. Khi
+đó nó làm nốt phần cơ học giúp bạn: `pip install` nếu `requirements.txt` đổi, `npm ci` +
+`next build` nếu có file `frontend/` đổi (**build gãy thì KHÔNG restart**), restart đúng service
+có phần đổi, rồi kiểm `/api/health`.
 
 ```powershell
 cd C:\AI-TNT-Research-SPY\deploy
 .\redeploy.ps1 -Root C:\AI-TNT-Research-SPY -Branch Titus
 ```
 
-Hoặc deploy một SHA cụ thể: Actions → *Deploy to VPS* → `workflow_dispatch`, điền `ref`.
+`.env.local` nằm trong `.gitignore` nên `reset --hard` không chạm tới — nhưng đó cũng có nghĩa
+**nó không được git sao lưu**, xem §8.
 
-`redeploy.ps1` làm đúng phần cần làm, không hơn:
-
-1. `git fetch` + **`git reset --hard origin/Titus`** → **máy deploy KHÔNG được có sửa đổi cục
-   bộ**, mọi thay đổi tay sẽ bị xoá sạch. Sửa gì thì sửa trong git.
-2. `pip install` **chỉ khi** `backend/requirements.txt` đổi.
-3. `npm ci`/`npm install` + `next build` **chỉ khi** có file `frontend/` đổi. **Build gãy thì
-   KHÔNG restart** — bản đang chạy được giữ nguyên.
-4. Restart **chỉ service nào có phần đổi**.
-5. Kiểm sống: `/api/health` phải `ok`, frontend phải trả HTTP.
-
-> `.env.local` nằm trong `.gitignore` nên `reset --hard` không chạm tới. Nhưng đó cũng có nghĩa
-> là **nó không được sao lưu bởi git** — xem §8.
-
-### 5.3 Sửa extension KHÔNG tự lên theo deploy
+### 5.3 Sửa extension KHÔNG tự có hiệu lực
 
 `extension/` và `extension-kalodata/` được **Load unpacked** vào trình duyệt máy-thợ. `git pull`
 đổi file trên đĩa nhưng Chrome vẫn chạy bản đã nạp. Sau mỗi lần sửa extension:
@@ -305,7 +337,7 @@ nguyên nhân. Sửa backend thì **restart service**, không bật reload.
 
 ---
 
-## 7. Chạy trên máy dev (không deploy)
+## 7. Chạy trên một máy khác (không phải server)
 
 ```powershell
 # cài một lần
@@ -319,24 +351,33 @@ cd frontend;  npm run dev                                  # http://localhost:30
 
 Hoặc nhấp đúp `start.bat` ở thư mục gốc (bật cả hai rồi mở trình duyệt).
 
-Trên máy dev **lịch cào đêm tắt** (không có `HUB_SCHEDULER`) — đúng như mong muốn. Muốn chạy
-thử một job: `POST /api/hub/scheduler/run?job=<tên>`.
+Trên máy dev **lịch cào đêm tắt** (không có `HUB_SCHEDULER`) — đúng như mong muốn. Muốn chạy thử
+một job: `POST /api/hub/scheduler/run?job=<tên>`.
 
-Kiểm tra trước khi push:
+### 7.1 Kiểm TRƯỚC KHI RESTART — quan trọng vì sửa thẳng trên server
+
+Vì không có khâu build trung gian nào chặn lỗi hộ (§5.1), hai lệnh đầu nên chạy **mỗi lần** sửa
+backend, trước khi restart:
 
 ```powershell
-cd backend
-python -m compileall -q .                    # cú pháp
-python -c "import app.main"                  # import graph
+cd C:\AI-TNT-Research-SPY\backend
+python -m compileall -q .                    # cú pháp — bắt lỗi gõ
+python -c "import app.main"                  # import graph — bắt lỗi import, thiếu thư viện
+```
+
+Hai lệnh đó chạy vài giây và là ranh giới giữa "restart xong vẫn chạy" và "backend không bật lên
+được". Nặng hơn, chạy khi sửa vào phần nguồn dữ liệu:
+
+```powershell
 python scripts\smoke\ads.py                  # đầu-cuối mục Sản phẩm
 python scripts\smoke\keywords.py             # đầu-cuối mục Từ khoá
 python scripts\smoke\ui.py                   # mở trình duyệt thật, click hết nút
 python scripts\audit\keyword_sources.py      # đối chiếu độc lập với nguồn gốc
-cd ..\frontend;  npm run typecheck;  npm run build
+cd ..\frontend;  npm run typecheck           # trước khi npm run build
 ```
 
-CI **cố ý không chạy smoke** — chúng cần Chrome + mạng ngoài nên đỏ vì môi trường chứ không
-phải vì code. Mục tiêu: mỗi lần CI đỏ là một lỗi thật.
+Nhóm `smoke/` cần Chrome + mạng ngoài, nên **đỏ vì môi trường cũng được** — đọc câu báo trước
+khi kết luận là lỗi code.
 
 ---
 
@@ -375,7 +416,7 @@ Get-Content C:\Caddy\caddy.err.log -Tail 40
 |---|---|---|
 | "Chưa kết nối được tầng dữ liệu" | backend Python chưa chạy — **không phải tool hỏng** | `Restart-Service ResearchSpyBackend` |
 | `tntecom.com` trả 404 kèm câu "chưa có gì ở địa chỉ này" | gõ thiếu `/research` — Caddy **cố ý** trả lời rõ | thêm `/research` |
-| Giao diện vẫn là bản cũ sau deploy | cache HTML | kiểm hai luật cache §4.3, rồi `Ctrl+Shift+R` |
+| Giao diện vẫn là bản cũ sau khi build + restart | cache HTML | kiểm hai luật cache §4.3, rồi `Ctrl+Shift+R` |
 | Chấm đỏ ở thanh trạng thái một nguồn | nguồn đó có vấn đề, có thể sàn đã đổi cấu trúc | sửa đúng `backend/lib/ads/platforms/<tên>.py`, **không file nào khác** |
 | 502 nhưng vài giây sau lại đúng | tầng nào đó cắt sớm hơn Next | `PROXY_TIMEOUT_MS` (300s) và `transport http` trong Caddyfile phải khớp nhau |
 | Sửa extension mà không thấy đổi | chưa Reload extension | §5.3 |

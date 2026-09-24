@@ -10,7 +10,7 @@
 
 ---
 
-## 0. Bảng tổng — mười thứ phải đăng nhập / cấu hình khi deploy
+## 0. Bảng tổng — mười thứ phải đăng nhập / cấu hình khi dựng máy
 
 | # | Tài khoản / khoá | Cần cho | Ở đâu | Phiên sống bao lâu | Ai làm lại được |
 |---|---|---|---|---|---|
@@ -274,7 +274,7 @@ Invoke-RestMethod http://127.0.0.1:8000/api/relay/status
 | Luật | Vì sao |
 |---|---|
 | **Restart `ResearchSpyFrontend` làm ĐỨT tab máy-thợ**; restart backend thì **không** | trang `/worker` được `next start` phục vụ |
-| **Sửa extension KHÔNG tự lên theo deploy** — phải **Reload** ở `chrome://extensions` rồi **F5 tab máy-thợ** | Chrome vẫn chạy bản đã nạp |
+| **Sửa extension KHÔNG tự có hiệu lực** — phải **Reload** ở `chrome://extensions` rồi **F5 tab máy-thợ** | Chrome vẫn chạy bản đã nạp |
 | **Đếm `ok`, đừng đếm dòng nhật ký** | số dòng log không bằng số lượt cào thành công |
 | **Hai vòng cào chạy SONG SONG được** (2 luồng, ~3h50 cho cả 403 ngành) | VN ‖ PH |
 | **Đừng đóng tab đang hiện trước** | người vận hành có thể đang giải slider ở đó |
@@ -574,7 +574,7 @@ Trang Hub đầy số liệu nhưng số trông lạ
 
 ## 13. Đi tiếp
 
-* Cài đặt và deploy → **[1-cai-dat-va-deploy.md](1-cai-dat-va-deploy.md)**
+* Cài đặt và đưa lên tên miền → **[1-cai-dat-va-deploy.md](1-cai-dat-va-deploy.md)**
 * Chức năng và logic → **[2-chuc-nang-va-logic.md](2-chuc-nang-va-logic.md)**
 * Đặc tả API Kalodata → [`docs/kalodata-api.md`](../kalodata-api.md)
 * Nguồn dữ liệu từng sàn, và giá có thật không → [`docs/nguon-du-lieu-tung-san.md`](../nguon-du-lieu-tung-san.md) · [`docs/gia-ban-co-that-khong.md`](../gia-ban-co-that-khong.md)
