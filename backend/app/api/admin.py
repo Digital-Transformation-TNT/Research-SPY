@@ -238,6 +238,17 @@ async def delete_user(user_id: str, request: Request) -> JSONResponse:
         return JSONResponse({"error": "Không thể xoá tài khoản owner."}, status_code=403)
     supa = supabase_or_none()
     res = supa.table("users").delete().eq("id", user_id).execute()
+    # Danh sách yêu thích nằm ở SQLite trên máy chủ, KHÔNG phải Supabase, nên không có
+    # `ON DELETE CASCADE` nào dọn giúp — phải gọi tay. Bỏ dòng này thì mỗi user bị xoá để lại
+    # một danh sách mồ côi không ai đọc được nữa. Xem `app/api/favorites.py`.
+    try:
+        from .favorites import xoa_theo_user
+
+        xoa_theo_user(str(user_id))
+    except Exception:  # noqa: BLE001
+        # Dọn kèm là việc phụ: user đã xoá xong rồi, hỏng chỗ này không được phép biến một
+        # thao tác đã thành công thành lỗi trên giao diện.
+        pass
     return JSONResponse({"ok": True, "deleted": len(res.data or [])})
 
 

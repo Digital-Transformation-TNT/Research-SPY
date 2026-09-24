@@ -248,6 +248,44 @@ CREATE TABLE IF NOT EXISTS crawl_categories (
     PRIMARY KEY (platform, market, code)
 );
 
+-- ══ SẢN PHẨM YÊU THÍCH — danh sách riêng của TỪNG NGƯỜI ══
+-- Bảng DUY NHẤT trong file này không thuộc về vòng cào: nó là dữ liệu người dùng tạo ra, để
+-- cùng chỗ vì đây là kho DB sẵn có trên máy chủ (quyết định 24/09/2026 — Supabase đòi chạy
+-- DDL bằng tay, còn máy này không cài PostgreSQL).
+--
+-- `user_id` là UUID của bảng `users` TRÊN SUPABASE, lưu dạng TEXT. KHÔNG có khoá ngoại nào ép
+-- được từ đây sang đó, nên xoá user ở trang Quản trị KHÔNG tự dọn danh sách của họ — việc dọn
+-- do `app/api/admin.py` gọi tay khi xoá. Ai sửa luồng xoá user phải giữ lời gọi ấy.
+--
+-- KHOÁ CHÍNH LÀ (user_id, platform, region, item_id), không phải `id`: cùng một `item_id` tồn
+-- tại song song ở Shopee VN và Shopee PH, thiếu `region` thì lưu sản phẩm bên này sẽ ghi đè
+-- sản phẩm bên kia. `region` để '' (không để NULL) cho sàn không chia nước như 1688 — trong
+-- ràng buộc UNIQUE thì NULL không bằng NULL, tức NULL sẽ cho phép lưu trùng vô hạn.
+--
+-- Các cột name/image/link/price là ẢNH CHỤP lúc bấm lưu, không phải khoá ngoại sang kho hàng:
+-- sàn gỡ sản phẩm thì người dùng vẫn phải thấy được thứ họ đã lưu.
+CREATE TABLE IF NOT EXISTS favorite_product (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     TEXT NOT NULL,
+    platform    TEXT NOT NULL,
+    region      TEXT NOT NULL DEFAULT '',
+    item_id     TEXT NOT NULL,
+    name        TEXT NOT NULL DEFAULT '',
+    image       TEXT,
+    link        TEXT,
+    price       REAL,
+    currency    TEXT,
+    shop        TEXT,
+    meta        TEXT NOT NULL DEFAULT '{}',   -- JSON: điểm, số bán, rating… mỗi sàn một hình dạng
+    note        TEXT,
+    -- ẨN ≠ XOÁ. Ẩn giữ nguyên dòng, chỉ không hiện mặc định; xoá là DELETE thật.
+    hidden      INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL,
+    UNIQUE (user_id, platform, region, item_id)
+);
+-- Danh sách của một người, mới lưu lên đầu — đúng truy vấn mà `GET /api/favorites` chạy.
+CREATE INDEX IF NOT EXISTS idx_fav_user ON favorite_product(user_id, created_at DESC);
+
 -- AI học hành vi: log thao tác người dùng để cá nhân hóa đề xuất
 CREATE TABLE IF NOT EXISTS events (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

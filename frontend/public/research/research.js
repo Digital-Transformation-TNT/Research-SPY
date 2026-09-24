@@ -1013,6 +1013,29 @@ function sendFetch(requests) {
   return new Promise((resolve) => chrome.runtime.sendMessage({ type: 'RS_FETCH', requests }, (r) => resolve((r && r.responses) || [])));
 }
 
+// Thông báo lỗi Shopee THEO NƯỚC — nêu rõ cờ + tên nước + domain, và (nếu biết) là CHƯA ĐĂNG
+// NHẬP hay BỊ CHẶN. Vì phiên Shopee theo TỪNG tên miền: đăng nhập shopee.vn không có tác dụng ở
+// shopee.co.th, nên mỗi nước ngoài VN/PH phải đăng nhập RIÊNG trên máy-thợ. Đây chính là gốc của
+// "cùng một nước, client này ra hàng client kia không" — nói thẳng ra để người dùng biết đường xử.
+function shopeeNotice(region, kind, n) {
+  const flag = FLAG[region] || '', country = COUNTRY[region] || region;
+  const domain = DOMAIN[region] || `shopee (${region})`;
+  const dau = `Shopee ${flag} ${country}`.trim();
+  const chuaDangNhap = loginStatus[`shopee:${region}`] === false;
+  // Nhắc cách xử chỉ cho nước NGOÀI VN/PH — hai nước này đã set sẵn, thêm câu này chỉ tổ rối.
+  const nhac = (region === 'VN' || region === 'PH') ? ''
+    : ` (VN và PH đã đăng nhập sẵn; mỗi nước khác cần đăng nhập RIÊNG trên máy-thợ vì phiên Shopee tách theo từng nước).`;
+  if (kind === 'reshape') return `${dau}: có ${n} item thô nhưng parse ra 0 — Shopee vừa đổi cấu trúc dữ liệu.`;
+  if (kind === 'no_tab') return `${dau}: chưa mở được tab ${domain} trên máy-thợ — mở ${domain}, đăng nhập tài khoản ${country} rồi bấm lại.${nhac}`;
+  if (kind === 'blocked') return chuaDangNhap
+    ? `${dau}: máy-thợ chưa đăng nhập ${domain} — đăng nhập tài khoản ${country} rồi thử lại.${nhac}`
+    : `${dau}: Shopee tạm chặn hoặc phiên ${domain} hết hạn — kiểm tra đăng nhập rồi thử lại sau ít phút.${nhac}`;
+  // 'empty'
+  return chuaDangNhap
+    ? `${dau}: máy-thợ chưa đăng nhập ${domain} nên chưa lấy được sản phẩm — đăng nhập tài khoản ${country} rồi thử lại.${nhac}`
+    : `${dau}: chưa lấy được sản phẩm — kiểm tra đăng nhập ${domain} rồi thử lại.${nhac}`;
+}
+
 // Lấy sản phẩm Shopee cho MỘT từ khoá. Trả {products, blocked}.
 // CÁCH NHANH (mặc định): fetch same-origin search_items NGAY TRONG tab shopee đã đăng nhập
 // (RS_FETCH → fetchInTab). Tab chỉ ở trang chính `https://{domain}/`, KHÔNG điều hướng tới /search —
@@ -1029,9 +1052,10 @@ async function fetchKeyword(keyword, region, count) {
     const res = await sendFetch([{ url, method: 'GET', headers: { 'x-api-source': 'pc' }, tag: 'shopee' }]);
     const r = res && res[0];
     if (!r) break;
-    // Không mở được tab đăng nhập → không phải 403, báo rõ để user mở shopee.vn.
+    // Không mở được tab đăng nhập → không phải 403, báo rõ đúng NƯỚC (trước đây luôn bảo "mở
+    // shopee.vn" kể cả khi đang tìm Thái Lan/Indonesia — sai domain, người dùng làm theo cũng vô ích).
     if (/^NO_TAB|^INJECT_FAIL/.test(String(r.text || ''))) {
-      return { products: [], blocked: true, notice: 'Shopee: chưa mở được tab shopee — mở shopee.vn (đăng nhập) rồi bấm lại.' };
+      return { products: [], blocked: true, notice: shopeeNotice(region, 'no_tab') };
     }
     if (r.status === 403 || r.status === 401) { hardBlock = true; break; } // siết anti-bot → thử cách điều hướng
     let data; try { data = JSON.parse(r.text); } catch { continue; }
@@ -1057,8 +1081,8 @@ async function fetchKeyword(keyword, region, count) {
     if (nav.products.length || nav.blocked) return nav;
   }
   const notice = rawItemCount > 0
-    ? `Shopee: có ${rawItemCount} item thô nhưng parse ra 0 — Shopee vừa đổi cấu trúc dữ liệu.`
-    : `Shopee: chưa lấy được sản phẩm — kiểm tra đăng nhập ${DOMAIN[region] || 'shopee.vn'} rồi thử lại.`;
+    ? shopeeNotice(region, 'reshape', rawItemCount)
+    : shopeeNotice(region, 'empty');
   return { products: [], blocked: false, notice };
 }
 
@@ -1067,8 +1091,8 @@ async function fetchKeyword(keyword, region, count) {
 async function fetchKeywordNav(keyword, region, count) {
   const domain = DOMAIN[region];
   const res = await new Promise((r) => chrome.runtime.sendMessage({ type: 'RS_SHOPEE', keyword, domain }, (x) => r(x)));
-  if (!res || !res.ok) return { products: [], blocked: false, notice: 'Shopee: không lấy được dữ liệu — thử lại.' };
-  if (res.blocked) return { products: [], blocked: true, notice: `Shopee: ${res.error || 'bị chặn / chưa đăng nhập'}` };
+  if (!res || !res.ok) return { products: [], blocked: false, notice: shopeeNotice(region, 'empty') };
+  if (res.blocked) return { products: [], blocked: true, notice: shopeeNotice(region, 'blocked') };
   const videoMap = {};
   for (const v of (res.videoItems || [])) videoMap[String(v.itemid)] = v.url;
   const seen = new Set();
@@ -1093,8 +1117,8 @@ async function fetchKeywordNav(keyword, region, count) {
   let notice;
   if (!products.length) {
     notice = rawItemCount > 0
-      ? `Shopee: có ${rawItemCount} item thô nhưng parse ra 0 — Shopee vừa đổi cấu trúc dữ liệu.`
-      : (res.error || 'Shopee: chưa lấy được sản phẩm — thử lại (để tab shopee tự cuộn, đừng rời).');
+      ? shopeeNotice(region, 'reshape', rawItemCount)
+      : shopeeNotice(region, 'empty');
   }
   return { products, blocked: false, notice };
 }
@@ -1614,11 +1638,16 @@ async function research() {
   // — xem ghi chú ở đó để biết bản trước đã bỏ sót gì.
   $('go').disabled = true;
   const wantTranslate = $('autoTranslate') && $('autoTranslate').checked;
+  // TikTok Shop (Kalodata) BẮT BUỘC dịch theo nước, KHÔNG phụ thuộc ô "Tự dịch". Lý do: Kalodata
+  // khớp sản phẩm theo CHỮ trong tiêu đề, nên gõ "tai nghe" khi đã chọn PH vẫn trả về hàng tiêu đề
+  // tiếng Việt, giá ₫ — đo 22/09/2026 ngay trên web Kalodata (không phải lỗi extension). Phải dịch
+  // sang ngôn ngữ nước ("earphones" cho PH) mới ra đúng hàng nước đó. Các sàn khác vẫn theo ô "Tự dịch".
+  const phaiDich = (pf) => pf === 'tiktok' || wantTranslate;
   const marketOf = (pf, region) => (region && region !== '_' ? region : (PLATFORMS[pf].searchMarket || ''));
-  const regionSet = [...new Set(combos.map((c) => marketOf(c.pf, c.region)).filter(Boolean))];
+  const regionSet = [...new Set(combos.filter((c) => phaiDich(c.pf)).map((c) => marketOf(c.pf, c.region)).filter(Boolean))];
   const trans = {}; // kw gốc -> { region: từ khoá đã dịch }
   let translatedAny = false;
-  if (wantTranslate && regionSet.length) {
+  if (regionSet.length) {
     setStatus('Đang dịch từ khoá theo ngôn ngữ sàn…');
     for (const kw of keywords) {
       trans[kw] = await translateForRegions(kw, regionSet);
@@ -1630,7 +1659,8 @@ async function research() {
   for (const { pf, region } of combos) {
     for (const kw of keywords) {
       const thiTruong = marketOf(pf, region);
-      const searchKw = (thiTruong && trans[kw] && trans[kw][thiTruong]) ? trans[kw][thiTruong] : kw;
+      // Chỉ thay bằng bản dịch cho sàn PHẢI dịch; sàn khác khi tắt ô "Tự dịch" thì giữ keyword gốc.
+      const searchKw = (phaiDich(pf) && thiTruong && trans[kw] && trans[kw][thiTruong]) ? trans[kw][thiTruong] : kw;
       jobs.push({ pf, region, kw: searchKw, kwLabel: kw });
     }
   }
@@ -1778,7 +1808,8 @@ function productTd(p, phu) {
 }
 
 function actionTd(p) {
-  return `<td><button class="sim cost" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-price="${giaDung(p) != null ? giaDung(p) : ''}" data-cur="${esc(curOf(p))}">💰 Giá vốn</button> ` +
+  return `<td>${favBtnHtml(p)} ` +
+    `<button class="sim cost" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-price="${giaDung(p) != null ? giaDung(p) : ''}" data-cur="${esc(curOf(p))}">💰 Giá vốn</button> ` +
     `<button class="sim vid" data-img="${esc(rawImg(p.image))}" data-name="${esc(p.name)}" data-region="${esc(p.region || '')}" data-pid="${p.platform === 'TikTok Shop' ? esc(p.itemid || '') : ''}">🎬 Video</button></td>`;
 }
 
@@ -1901,6 +1932,192 @@ $('rows').addEventListener('mousemove', (e) => { if (zoom.style.display === 'blo
 $('rows').addEventListener('mouseout', (e) => { if (e.target.closest('img.thumb')) zoom.style.display = 'none'; });
 
 // ---- Click trong bảng: "Giá vốn" (tìm bằng ảnh trên 1688) hoặc "Video" (modal video khớp ảnh) ----
+/* ===================== SẢN PHẨM YÊU THÍCH =====================
+ *
+ * Danh sách riêng của từng người, nằm ở Supabase (`favorite_product`) qua `/api/favorites`.
+ * Ở trang này chỉ giữ TẬP KHOÁ đã lưu (`favKeys`) chứ không giữ cả bản ghi: bảng kết quả vẽ
+ * lại liên tục và chỉ cần trả lời đúng một câu — "cái này lưu chưa".
+ *
+ * KHOÁ = 'sàn|nước|mã'. Phải có NƯỚC: cùng một `itemid` tồn tại song song ở Shopee VN và
+ * Shopee PH, thiếu nó thì lưu sản phẩm bên này sẽ làm sáng tim của sản phẩm bên kia. Khớp
+ * đúng ràng buộc UNIQUE của bảng — xem docs/supabase-migration-favorites.sql.
+ */
+const favKeys = new Set();
+
+function favKeyOf(p) { return `${p.platform || ''}|${p.region || ''}|${p.itemid || ''}`; }
+
+function favCount() {
+  const el = $('favCount');
+  if (el) el.textContent = favKeys.size ? `· ${favKeys.size}` : '';
+}
+
+/* Tim RỖNG/ĐẶC chứ không chỉ đổi màu — xem ghi chú `button.fav` trong index.html. */
+function favBtnHtml(p) {
+  const on = favKeys.has(favKeyOf(p));
+  // data-key CHỨ KHÔNG PHẢI data-id: `productById` tra theo mỗi `itemid`, mà một lượt search
+  // nhiều nước có thể trả hai dòng cùng `itemid` ở hai sàn/nước khác nhau — khi đó bấm tim
+  // dòng này sẽ lưu dòng kia. Khoá đầy đủ 'sàn|nước|mã' là thứ duy nhất chỉ đúng một dòng.
+  return `<button class="sim fav${on ? ' on' : ''}" data-key="${esc(favKeyOf(p))}" ` +
+    `title="${on ? 'Bỏ khỏi danh sách yêu thích' : 'Lưu vào danh sách yêu thích của bạn'}">${on ? '❤' : '🤍'}</button>`;
+}
+
+/* Tải tập khoá đã lưu. CHƯA ĐĂNG NHẬP thì im lặng bỏ qua: trang đã chặn login nên chuyện này
+ * chỉ xảy ra ở rìa, và một thông báo lỗi đỏ ở đây không giúp được gì. */
+async function favLoadKeys() {
+  try {
+    if (!localStorage.getItem('rs_token')) return;
+    const r = await window.rsAuthFetch('/api/favorites');
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    favKeys.clear();
+    (j.keys || []).forEach((k) => favKeys.add(k));
+    favCount();
+  } catch (e) { /* danh sách phụ — hỏng thì trang vẫn chạy, chỉ là tim chưa tô */ }
+}
+
+/* Bấm tim: đã lưu thì bỏ lưu, chưa thì lưu. CHỐT TRẠNG THÁI TỪ `favKeys` chứ không từ class
+ * của nút — nút được vẽ lại mỗi lần `render()`, còn `favKeys` là nguồn sự thật duy nhất. */
+async function favToggle(btn, p) {
+  const key = favKeyOf(p);
+  const dangCo = favKeys.has(key);
+  btn.disabled = true;
+  try {
+    let r;
+    if (dangCo) {
+      const q = new URLSearchParams({ platform: p.platform || '', region: p.region || '', item_id: String(p.itemid || '') });
+      r = await window.rsAuthFetch(`/api/favorites?${q}`, { method: 'DELETE' });
+    } else {
+      r = await window.rsAuthFetch('/api/favorites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          platform: p.platform || '', region: p.region || '', item_id: String(p.itemid || ''),
+          name: p.name || '', image: p.image || null, link: p.link || null,
+          price: giaDung(p), currency: curOf(p), shop: p.shop || null,
+          // Ảnh chụp các số đo tại thời điểm lưu — sàn gỡ sản phẩm thì đây là thứ còn lại.
+          meta: {
+            score: p.score ? p.score.total : null,
+            monthly: p.monthly != null ? p.monthly : null,
+            sold: p.sold != null ? p.sold : null,
+            rating: p.rating != null ? p.rating : null,
+            keyword: p.keyword || '',
+          },
+        }),
+      });
+    }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    if (dangCo) favKeys.delete(key); else favKeys.add(key);
+    btn.classList.toggle('on', !dangCo);
+    btn.textContent = dangCo ? '🤍' : '❤';
+    btn.title = dangCo ? 'Lưu vào danh sách yêu thích của bạn' : 'Bỏ khỏi danh sách yêu thích';
+    favCount();
+    rsTrackAds(dangCo ? 'favorite_remove' : 'favorite_add', { name: p.name || '', platform: p.platform || '' });
+  } catch (e) {
+    setStatus('Không lưu được yêu thích: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ===== CỬA SỔ YÊU THÍCH ===== */
+let favItems = [];
+
+function favMoneyHtml(it) {
+  const v = it.price == null ? null : Number(it.price);
+  if (v == null || !isFinite(v)) return '';
+  return `<span class="price">${fmtPrice(v, it.currency || 'VND')}</span> · `;
+}
+
+function favItemHtml(it) {
+  const phu = [it.platform, it.region, it.shop].filter(Boolean).join(' · ');
+  const ngay = it.created_at ? String(it.created_at).slice(0, 10).split('-').reverse().join('/') : '';
+  return `<div class="favitem${it.hidden ? ' hid' : ''}" data-id="${it.id}">` +
+    `<img src="${esc(it.image || '')}" loading="lazy" alt=""${noRef(it.image || '')} />` +
+    `<div class="fmain">` +
+      `<a class="fname" href="${esc(it.link || '#')}" target="_blank" rel="noreferrer">${esc(it.name || '(không tên)')}</a>` +
+      `<div class="fmeta">${favMoneyHtml(it)}${esc(phu)}${ngay ? ' · lưu ' + ngay : ''}${it.hidden ? ' · <b>đã ẩn</b>' : ''}</div>` +
+    `</div>` +
+    `<div class="facts">` +
+      `<button class="sim favhide" data-id="${it.id}" data-to="${it.hidden ? '0' : '1'}">${it.hidden ? '↩ Bỏ ẩn' : '🙈 Ẩn'}</button>` +
+      `<button class="sim favdel" data-id="${it.id}">🗑 Xoá</button>` +
+    `</div></div>`;
+}
+
+function setFavStatus(msg, kind) {
+  const bar = $('favStatus');
+  $('favStatusText').textContent = msg || '';
+  bar.className = 'status' + (kind ? ' ' + kind : '');
+  bar.hidden = !msg;
+}
+
+async function favLoadList() {
+  const an = $('favShowHidden').checked ? 1 : 0;
+  $('favList').innerHTML = '<p class="favempty">Đang tải…</p>';
+  setFavStatus('');
+  try {
+    const r = await window.rsAuthFetch(`/api/favorites?an=${an}`);
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    favItems = j.items || [];
+    // `keys` về kèm CẢ mục đã ẩn, nên tiện thể đồng bộ luôn tim ngoài bảng: xoá ở đây rồi
+    // quay ra bảng mà tim vẫn đỏ thì cú bấm sau là LƯU LẠI, không phải bỏ lưu như người dùng
+    // tưởng.
+    favKeys.clear();
+    (j.keys || []).forEach((k) => favKeys.add(k));
+    favCount();
+    if (rows.length) render();
+    $('favList').innerHTML = favItems.length
+      ? favItems.map(favItemHtml).join('')
+      : `<p class="favempty">Chưa lưu sản phẩm nào.${an ? '' : ' Mục đã ẩn không hiện ở đây — tick ô bên trên để xem.'}</p>`;
+  } catch (e) {
+    $('favList').innerHTML = '';
+    setFavStatus('Không đọc được danh sách: ' + e.message, 'err');
+  }
+}
+
+function openFavModal() {
+  $('favModal').classList.add('on');
+  rsTrackAds('feature_open', { feature: 'favorites' });
+  void favLoadList();
+}
+function closeFavModal() { $('favModal').classList.remove('on'); }
+
+$('favOpen').addEventListener('click', openFavModal);
+$('favClose').addEventListener('click', closeFavModal);
+$('favModal').addEventListener('click', (e) => { if (e.target === $('favModal')) closeFavModal(); });
+$('favShowHidden').addEventListener('change', () => void favLoadList());
+
+$('favList').addEventListener('click', async (e) => {
+  const an = e.target.closest('button.favhide');
+  const xoa = e.target.closest('button.favdel');
+  const btn = an || xoa;
+  if (!btn) return;
+  const id = btn.dataset.id;
+  btn.disabled = true;
+  try {
+    let r;
+    if (an) {
+      r = await window.rsAuthFetch(`/api/favorites/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hidden: btn.dataset.to === '1' }),
+      });
+    } else {
+      // XOÁ LÀ MẤT HẲN, khác với ẩn — hỏi một câu trước. Ẩn thì không hỏi: nó quay lại được.
+      const it = favItems.find((x) => String(x.id) === String(id));
+      if (!confirm(`Xoá hẳn "${(it && it.name) || 'mục này'}" khỏi danh sách yêu thích?`)) { btn.disabled = false; return; }
+      r = await window.rsAuthFetch(`/api/favorites/${id}`, { method: 'DELETE' });
+    }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    await favLoadList();
+  } catch (err) {
+    btn.disabled = false;
+    setFavStatus('Không thực hiện được: ' + err.message, 'err');
+  }
+});
+
 $('rows').addEventListener('click', (e) => {
   // Bấm ra sàn = kết quả cuối của task Ads (đo độ sâu research). Thẻ <a> vẫn tự mở tab bình
   // thường; ở đây chỉ ghi thêm một event. Đặt TRƯỚC các nhánh `return` bên dưới.
@@ -1909,6 +2126,12 @@ $('rows').addEventListener('click', (e) => {
   const vidLink = e.target.closest('a.hasvid');
   if (vidLink) rsTrackAds('video_open', { link: vidLink.getAttribute('href') || '' });
 
+  const fav = e.target.closest('button.fav');
+  if (fav) {
+    const p = rows.find((x) => favKeyOf(x) === fav.dataset.key);
+    if (p) void favToggle(fav, p);
+    return;
+  }
   const cost = e.target.closest('button.cost');
   if (cost) {
     const sell = cost.dataset.price !== '' && cost.dataset.price != null ? Number(cost.dataset.price) : null;
@@ -2309,6 +2532,10 @@ const _kw = new URLSearchParams(location.search).get('kw');
 if (_kw) $('kw').value = _kw;
 // Xác định extension/relay TRƯỚC, rồi mới kiểm tra đăng nhập (để chạy đúng đường). KHÔNG tự research.
 detectMode().then(refreshLogin);
+// Tập khoá yêu thích nạp SONG SONG, không nối vào chuỗi trên: nó không liên quan gì tới
+// extension hay phiên đăng nhập sàn, và một lượt đọc Supabase chậm không được phép giữ chân
+// việc dò extension.
+void favLoadKeys();
 
 // ===== TAB CONTENT (Facebook Ads) + TAB TÌM BẰNG ẢNH =====
 // ===== MODAL VIDEO — "video quảng cáo khớp ẢNH sản phẩm" cho một dòng ở tab Sản phẩm =====
