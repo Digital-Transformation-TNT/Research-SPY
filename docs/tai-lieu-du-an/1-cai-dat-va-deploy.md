@@ -429,4 +429,4 @@ Get-Content C:\Caddy\caddy.err.log -Tail 40
 * Chức năng, function, logic từng mục → **[2-chuc-nang-va-logic.md](2-chuc-nang-va-logic.md)**
 * Tài khoản phải đăng nhập, sống bao lâu, hỏng thì xử sao → **[3-tai-khoan-va-su-co.md](3-tai-khoan-va-su-co.md)**
 * Thêm một nguồn dữ liệu mới → [`CONTRIBUTING.md`](../../CONTRIBUTING.md)
-* Nhật ký nghiên cứu nguồn (vì sao từng endpoint gọi được như vậy) → [`docs/`](..)
+* Nhật ký nghiên cứu nguồn (vì sao từng endpoint gọi được như vậy) → [`docs/tai-lieu-ky-thuat/`](../tai-lieu-ky-thuat/)

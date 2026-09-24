@@ -204,7 +204,9 @@ extension/                   # ===== EXTENSION CHROME (MV3) =====
 └── popup.*                  # tự test một sàn, không cần web app
 
 gtrends/                     # gói Google Trends TÁCH RỜI — copy sang dự án khác được
-docs/                        # ghi chép nghiên cứu nguồn dữ liệu, không phải phần mềm chạy
+docs/                        # KHÔNG phải phần mềm chạy — hai loại tài liệu:
+├── tai-lieu-du-an/          #   bàn giao: cài đặt & deploy, chức năng, tài khoản
+└── tai-lieu-ky-thuat/       #   nhật ký nghiên cứu nguồn, thiết kế, schema Supabase
 ```
 
 ### Quy tắc phụ thuộc
