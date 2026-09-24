@@ -25,6 +25,8 @@ không lỗi lần nào, với khoảng cách 700ms giữa các lượt.
 
 from __future__ import annotations
 
+import asyncio
+import time
 from dataclasses import dataclass, field
 
 from lib.core.http import sleep
@@ -426,10 +428,26 @@ async def expand_with_provider(
     if provider.batches_terms:
         return await _expand_batched(provider, terms, ctx)
 
+    # Ngân sách cho PHẦN THÊM — xem `KeywordProvider.bonus_budget_s_for`. Đồng hồ bắt đầu chạy
+    # lúc cụm đầu trả về, vì đó là lúc biết chắc đường ra đang sống.
+    bonus_s = provider.bonus_budget_s_for(country)
+    bonus_het: float | None = None
+
     for term in terms:
         try:
-            results = await provider.fetch_suggestions(term, ctx)
+            if bonus_het is None:
+                results = await provider.fetch_suggestions(term, ctx)
+            else:
+                con_lai = bonus_het - time.monotonic()
+                if con_lai <= 1:
+                    break
+                try:
+                    results = await asyncio.wait_for(provider.fetch_suggestions(term, ctx), con_lai)
+                except Exception:
+                    break  # phần thêm hỏng hay hết giờ: giữ những gì đã có, KHÔNG báo lỗi
             calls += 1
+            if bonus_s is not None and bonus_het is None:
+                bonus_het = time.monotonic() + bonus_s
             for index, entry in enumerate(results):
                 raw = (entry.keyword or "").strip()
                 if raw:

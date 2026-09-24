@@ -316,8 +316,9 @@ async def cho_co_proxy(nuoc: str, han_s: float = CHO_POOL_S) -> list[str]:
     16/09/2026 ngay trên máy chủ: vòng 10:56 tìm được 3 proxy, vòng 10:59 tìm được 0 và xoá
     sạch pool; một lượt tìm rơi vào đúng khe 11:00 nhận lỗi, dù ba phút trước hệ thống có hàng.
 
-    Chờ được vì `max_terms_for` đã ghìm nước dùng pool miễn phí xuống MỘT lượt gọi: tổng thời
-    gian một lượt tìm PH vẫn là chờ-rồi-gọi-một-lần, chứ không phải chờ rồi gọi mười hai lần.
+    Chờ được vì `max_terms_for` đã ghìm nước dùng pool miễn phí xuống MỘT lượt gọi chính (cộng
+    phần thêm có trần giờ cứng `tiktok.BONUS_BUDGET_S`): tổng thời gian một lượt tìm PH vẫn là
+    chờ-rồi-gọi-một-lần, chứ không phải chờ rồi gọi mười hai lần.
     """
     nuoc = nuoc.upper()
     if (co := pool(nuoc)):

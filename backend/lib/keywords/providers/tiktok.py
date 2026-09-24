@@ -135,6 +135,12 @@ def _proxy_ring(country: str) -> list[str]:
     return ring[start:] + ring[:start]
 
 
+#: Số cụm hỏi THÊM sau từ gốc khi đi proxy miễn phí, và tổng thời gian cho phần thêm đó.
+#: 45 giây ≈ hai lượt ~20 giây — đủ cho 2 cụm nếu proxy nhanh, 1 cụm nếu chậm, 0 nếu nó vừa chết.
+BONUS_TERMS = 2
+BONUS_BUDGET_S = 45.0
+
+
 class TikTok(KeywordProvider):
     id = "tiktok"
     label = "TikTok"
@@ -155,9 +161,13 @@ class TikTok(KeywordProvider):
     #: nói ngược lại là để giao diện giải thích sai cho người dùng.
     geo_targeted = bool(PROXY_BY_MARKET or proxy_free.NUOC_BAT)
 
+    def _di_proxy_free(self, country: str) -> bool:
+        c = country.upper()
+        return c in proxy_free.NUOC_BAT and c not in PROXY_BY_MARKET
+
     def max_terms_for(self, country: str) -> int | None:
         """
-        Nước đi PROXY MIỄN PHÍ chỉ được hỏi MỘT cụm — chính từ gốc người dùng gõ.
+        Nước đi PROXY MIỄN PHÍ: MỘT cụm chính (từ gốc) + tối đa `BONUS_TERMS` cụm thêm.
 
         Không phải để tiết kiệm, mà vì mức 12 cụm KHÔNG BAO GIỜ chạy xong qua proxy miễn phí. Đo
         16/09/2026: một lượt gọi mất ~20 giây, 12 lượt là ~4 phút, trong khi proxy miễn phí sống
@@ -168,11 +178,20 @@ class TikTok(KeywordProvider):
         gõ (khoảng 8–10 cụm) chứ không phải bảng long-tail như GB/US. Đó là lựa chọn có ý thức —
         một bảng ngắn có thật hơn là một bảng dài không bao giờ tải xong.
 
+        Cụm THÊM (18/09/2026, chủ dự án yêu cầu): proxy vừa trả lời cụm gốc là proxy đang sống,
+        nên tận dụng nó hỏi thêm 1–2 cụm kế trong `build_terms` (vd "… onhand", "best …") để bảng
+        dài ra chút. Phần thêm chỉ chạy trong `BONUS_BUDGET_S` giây kể từ lúc cụm gốc về, hỏng
+        hay hết giờ thì dừng lặng lẽ — xem `bonus_budget_s_for`. Không nâng nhiều hơn: mỗi cụm
+        là thêm ~20 giây proxy phải sống, và mục tiêu là không làm chết proxy giữa chừng.
+
         Nước có proxy KHAI TAY (trả tiền) không đụng tới nhánh này: chúng vẫn chạy đủ 12 cụm.
         """
-        if country.upper() in proxy_free.NUOC_BAT and country.upper() not in PROXY_BY_MARKET:
-            return 1
+        if self._di_proxy_free(country):
+            return 1 + BONUS_TERMS
         return self.max_terms
+
+    def bonus_budget_s_for(self, country: str) -> float | None:
+        return BONUS_BUDGET_S if self._di_proxy_free(country) else None
 
     async def fetch_suggestions(self, term: str, ctx: SearchContext) -> list[Suggestion]:
         country = ctx.country.upper()

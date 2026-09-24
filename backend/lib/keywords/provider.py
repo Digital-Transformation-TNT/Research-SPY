@@ -145,6 +145,18 @@ class KeywordProvider(ABC):
         `providers/tiktok.py`.
         """
         return self.max_terms
+
+    def bonus_budget_s_for(self, country: str) -> float | None:
+        """
+        Ngân sách giây cho các cụm SAU cụm đầu, khi người dùng chọn `country`. `None` = không áp.
+
+        Khi có ngân sách, cụm đầu là PHẦN CHÍNH còn các cụm sau là PHẦN THÊM: chỉ hỏi khi cụm
+        đầu đã về, mỗi lượt bị cắt ngang nếu vượt phần ngân sách còn lại, và hỏng hay hết giờ
+        thì dừng LẶNG LẼ — kết quả của cụm đầu vẫn nguyên, không kèm lỗi. Sinh ra cho TikTok qua
+        proxy miễn phí: proxy vừa trả lời xong là proxy đang sống, tận dụng nó thêm vài chục
+        giây, nhưng không để phần thêm kéo chết cả lượt tìm. Xem `providers/tiktok.py`.
+        """
+        return None
     #: Nguồn muốn nhận CẢ DANH SÁCH cụm trong một lời gọi thay vì từng cụm một.
     #:
     #: Bật cờ này thì `expand_with_provider` gọi `fetch_suggestions_batch` đúng một lần và
