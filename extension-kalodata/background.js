@@ -32,6 +32,11 @@ const KD_IMG = 'https://img.kalocdn.com';
 
 // Rút từ bundle `production/assets/index-*.js`. Gửi mã ngoài danh sách này thì API trả rỗng.
 const KD_REGIONS = ['US', 'GB', 'ID', 'VN', 'TH', 'MY', 'PH', 'SG', 'MX', 'DE', 'FR', 'IT', 'ES', 'JP', 'BR'];
+// Tiền tệ theo nước cho header `currency`. Thiếu → USD.
+const KD_CUR = {
+  US: 'USD', GB: 'GBP', ID: 'IDR', VN: 'VND', TH: 'THB', MY: 'MYR', PH: 'PHP', SG: 'SGD',
+  MX: 'MXN', DE: 'EUR', FR: 'EUR', IT: 'EUR', ES: 'EUR', JP: 'JPY', BR: 'BRL',
+};
 
 const KD_PAGE_GAP_MS = 900;   // nghỉ giữa hai trang — vừa lịch sự vừa đỡ bị chặn
 const KD_MAX_PAGES = 50;      // trần cứng, chặn lỗi gõ `pages: 9999` đốt sạch credit
@@ -166,7 +171,16 @@ function kdImage(kind, id) {
  */
 async function kdSend(path, method, body) {
   const payload = body == null ? undefined : JSON.stringify(body);
-  const headers = body == null ? {} : { 'Content-Type': 'application/json' };
+  // NƯỚC ĐI BẰNG HEADER, không phải body (đo 22/09/2026): chọn PH thì mọi request mang header
+  // `country: PH` (+ currency, language); country trong body bị Kalodata bỏ qua nên gửi body không
+  // là ra data VN. Lấy nước từ body.country; thiếu → VN.
+  const co = (body && body.country ? String(body.country) : 'VN').toUpperCase();
+  const headers = {
+    ...(body == null ? {} : { 'Content-Type': 'application/json' }),
+    country: co,
+    currency: KD_CUR[co] || 'USD',
+    language: 'en-US',
+  };
 
   const readJson = (status, text) => {
     if (!text) return { fail: 'rỗng (HTTP ' + status + ')' };
@@ -189,9 +203,10 @@ async function kdSend(path, method, body) {
     const r = await fetch(KD_BASE + path, { method, headers, body: payload, credentials: 'include' });
     const got = readJson(r.status, await r.text());
     if (!got.fail) return { items: got.data || [], data: got.data, via: 'sw' };
-    if (got.fail !== 'auth' && r.status !== 401 && r.status !== 403) {
-      return { items: [], error: got.fail, paywall: got.paywall, via: 'sw' };
-    }
+    if (got.paywall) return { items: [], error: got.fail, paywall: true, via: 'sw' };
+    // Mọi lỗi SW khác (kể cả 554/rỗng khi có header country) → LÙI SANG ĐƯỜNG TAB same-origin.
+    // Kalodata chỉ nhận header country/currency/language khi request đi từ chính trang kalodata.com
+    // (đo 22/09: same-origin 200, cross-origin 554).
   } catch (e) {
     // Nuốt và rơi xuống đường tab: lỗi ở đây gần như luôn là cookie/CORS, mà tab thì không dính.
   }

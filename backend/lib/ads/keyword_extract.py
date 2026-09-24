@@ -79,7 +79,9 @@ def _parse_pair(text: str, title: str) -> tuple[str, str]:
 #: region → ngôn ngữ đích để Gemini viết từ khoá/hashtag. Thiếu region → English (an toàn toàn cầu).
 _REGION_LANG = {
     "VN": "Vietnamese", "TH": "Thai", "ID": "Indonesian", "MY": "Malay",
-    "PH": "Filipino (Tagalog)", "SG": "English", "TW": "Traditional Chinese",
+    # PH gõ tiếng ANH khi mua sắm online (đo 22/09/2026: TikTok Shop PH tìm bằng English ra đúng
+    # hàng PH, còn Tagalog/tiếng Việt ra lẫn hàng Việt). Không dùng "Filipino (Tagalog)".
+    "PH": "English", "SG": "English", "TW": "Traditional Chinese",
     "US": "English", "GB": "English", "BR": "Brazilian Portuguese",
     "MX": "Spanish", "CO": "Spanish", "CL": "Spanish",
     "CN": "Simplified Chinese",  # Douyin
