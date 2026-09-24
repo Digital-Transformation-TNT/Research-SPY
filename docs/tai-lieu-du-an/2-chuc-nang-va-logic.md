@@ -300,7 +300,7 @@ không thấy được từ trong iframe.
 |---|---|---|
 | `facebook` | **server** (Playwright) | `FB_COOKIE` |
 | `tiktok` | **server** | proxy theo nước |
-| `tiktokvideo` | **server** (Bing) | `prefer_bundled=True` — xem doc ① §6 |
+| `tiktokvideo` | **server** (Bing) | `prefer_bundled=True` — xem doc ① §10 |
 | `douyinvideo` | **server** | hay đòi verify (滑块) |
 | `youtube` | **server** (API chính thức) | `YOUTUBE_API_KEY` |
 | `etsy` | **server** (API chính thức) | `ETSY_KEYSTRING` + `ETSY_SHARED_SECRET` |

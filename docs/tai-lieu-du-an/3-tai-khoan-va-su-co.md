@@ -200,7 +200,7 @@ có sẵn, kết luận "đã đăng nhập" ngay, và **bạn không bao giờ 
 
 Google **phân biệt được hai bản** và trả về rỗng cho bản đi kèm — im lặng, HTTP 200, không lỗi.
 Phép đo này ngốn trọn một ngày đi tìm nguyên nhân ở phiên đăng nhập, ở tài khoản và ở giới hạn
-tần suất. Nên **Chrome phải được cài trên VPS** (xem doc ① §1).
+tần suất. Nên **Chrome phải được cài trên VPS** (xem doc ① §2).
 
 ### 2.10 Cache lỗi CỐ Ý ngắn
 
@@ -215,7 +215,7 @@ cache lỗi bảy ngày sẽ **biến một lần đăng nhập lại thành m�
 | "Google Trends hiện màn hình mời đăng nhập — phiên đã hết hạn" | phiên hết hạn | `python -m scripts.auth.google_login` |
 | Chạy script mà **không thấy màn hình đăng nhập** | Google đã thu hồi, cookie cũ vẫn nằm đó | thêm `--fresh` |
 | Có 3 file phiên mà vẫn cạn như một | ba file cùng một tài khoản | `pool_status` xem cột trùng lặp, đăng nhập lại bằng hồ sơ riêng |
-| Trends rỗng **chỉ trên VPS**, máy dev thì tốt | thiếu Chrome thật, đang chạy Chromium đi kèm | cài Chrome (doc ① §1) |
+| Trends rỗng **chỉ trên VPS**, máy dev thì tốt | thiếu Chrome thật, đang chạy Chromium đi kèm | cài Chrome (doc ① §2) |
 
 ---
 
@@ -301,7 +301,7 @@ hai cơ chế này.
 | "Shopee trả 403 — extension chưa đăng nhập Shopee hoặc phiên đã hết hạn" | đúng như câu báo | đăng nhập lại tab Shopee trên máy-thợ |
 | Nguồn Shopee **trống** mà không báo gì | chưa cài extension, hoặc `all_frames: true` bị mất | trang Sản phẩm **báo rõ ra** chứ không lặng lẽ bỏ trống — nếu nó báo "chưa cài extension" dù đã cài thì kiểm `all_frames` trong `manifest.json` |
 | Vòng cào đêm hụt trang 2 nhiều ngành | có job khác mở Chromium riêng chạy chồng | đo 10/09: chạy chồng **hụt 29%** vs chạy một mình **hụt 2%**. Đừng thêm job vào khung 01:00–05:00 |
-| Trend Signal Hub không có dữ liệu ngày mới | `sigcat` không chạy | kiểm `luong_dang_chay` (doc ① §3.1) |
+| Trend Signal Hub không có dữ liệu ngày mới | `sigcat` không chạy | kiểm `luong_dang_chay` (doc ① §5.1) |
 
 ### Cảnh báo khi đọc số Shopee
 
@@ -492,7 +492,7 @@ trên máy và sẽ đụng nhau.
 | **Mỗi ngày (sáng)** | xem mail cảnh báo captcha 1688; nhìn tab máy-thợ còn xanh không | hộp thư `aiteam.tnt@gmail.com` + máy-thợ |
 | **Mỗi ngày (sau 10:00)** | `sig1688` chạy xong chưa | `/api/hub/scheduler/status` → `last_run.sig1688` |
 | **Mỗi tuần** | `pool_status` — hồ Google còn mấy phiên, có trùng lặp không | `python -m scripts.auth.pool_status` |
-| **Mỗi tuần** | sao lưu `hub_data.db` bằng `VACUUM INTO` | doc ① §8 |
+| **Mỗi tuần** | sao lưu `hub_data.db` bằng `VACUUM INTO` | doc ① §12 |
 | **Mỗi tuần** | đăng nhập lại Taobao trên máy-thợ (phiên ngắn nhất) | máy-thợ |
 | **Mỗi tháng** | đăng nhập lại Shopee VN/PH + 1688 cho chắc | máy-thợ |
 | **Mỗi tháng** | `/api/ads/health` — nguồn nào đang đỏ | PowerShell |
@@ -523,13 +523,13 @@ Một nguồn TRỐNG mà không báo lỗi          ← nguy hiểm nhất
       · Kalodata trả mảng rỗng    → sai khoá keyword hoặc thiếu header country.  §7
 
 Trend Signal Hub số không đổi nhiều ngày
-    → lịch không chạy.  Kiểm luong_dang_chay (doc ① §3.1)
+    → lịch không chạy.  Kiểm luong_dang_chay (doc ① §5.1)
 
 1688 hỏng hàng loạt cùng lúc
     → slider Baxia.  Kéo slider trên máy-thợ.  §5
 
 Sửa code rồi mà vẫn sai y như cũ
-    → extension chưa Reload, hoặc cache HTML.  doc ① §5.3 + §4.3
+    → extension chưa Reload, hoặc cache HTML.  doc ① §9.3 + §6.3
 
 Trang Hub đầy số liệu nhưng số trông lạ
     → có thể đang là DỮ LIỆU MẪU nhúng cứng.  Gọi /api/hub/health xem status.

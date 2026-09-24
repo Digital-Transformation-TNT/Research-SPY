@@ -7,7 +7,7 @@ Viết ngày **24/09/2026**, mọi con số trong đây đo trên chính máy pr
 
 | | Tài liệu | Đọc khi nào |
 |---|---|---|
-| ① | **[Cài đặt và đưa lên tên miền](1-cai-dat-va-deploy.md)** | dựng lại từ `git clone`, Caddy + HTTPS, nạp lại sau khi sửa code, sao lưu |
+| ① | **[Cài đặt và đưa lên tên miền](1-cai-dat-va-deploy.md)** | dựng lại từ `git clone` tới lúc cả công ty dùng được. Mỗi bước gắn nhãn 🤖 **AI làm** / 👤 **chỉ người làm được** |
 | ② | **[Chức năng và logic](2-chuc-nang-va-logic.md)** | cần hiểu app làm gì, function nào ở đâu, vì sao tính điểm như vậy |
 | ③ | **[Tài khoản và sự cố](3-tai-khoan-va-su-co.md)** | phải đăng nhập những gì, phiên sống bao lâu, hỏng thì xử sao |
 
@@ -17,8 +17,17 @@ Viết ngày **24/09/2026**, mọi con số trong đây đo trên chính máy pr
 (bảng mười tài khoản). Ba trang đó là toàn bộ bức tranh.
 
 **Phải dựng lại server từ đầu** → ① từ đầu đến cuối, rồi ③ §2–§7 để đăng nhập lại từng nguồn.
+Đọc **① §1 trước tiên**: nó tách rõ việc nào giao cho Claude Code và việc nào **chỉ người làm
+được** (tạo Supabase, chạy SQL, lấy khoá API, trỏ DNS, đăng nhập Google, dựng máy-thợ). Nhiều
+việc trong nhóm sau cần xin quyền hoặc mất tiền — biết sớm thì đỡ tắc giữa đường.
 
-**Vừa sửa code, cần nạp lại** → ① §5. Lưu ý `C:\AI-TNT-Research-SPY` **vừa là bản clone để
+**Cài xong rồi mà nguồn vẫn trống** → ① §7 (đăng nhập Google + dựng máy-thợ). Đây là phần hay bị
+bỏ quên nhất: ba service `Running` **không** có nghĩa là có dữ liệu.
+
+**Mở cho cả công ty dùng** → ① §8: thông báo địa chỉ, duyệt user, ba giới hạn phải nói trước, và
+ai trực hằng ngày. Kèm checklist đánh dấu ở **① §14**.
+
+**Vừa sửa code, cần nạp lại** → ① §9. Lưu ý `C:\AI-TNT-Research-SPY` **vừa là bản clone để
 sửa, vừa là thư mục ba service đang chạy** — không có khâu deploy, chỉ có build (nếu sửa
 frontend) rồi restart service.
 
