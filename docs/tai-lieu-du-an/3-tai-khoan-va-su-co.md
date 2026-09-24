@@ -126,10 +126,17 @@ một biến là tài khoản Google**: tài khoản đang dùng trả bảng r�
 **Hệ quả:** xoay tài khoản là cách chia tải hợp lý; **proxy dân cư thì vô ích** vì IP đã được
 chứng minh không phải biến số.
 
-### 2.5 Thêm tài khoản vào hồ — VIỆC NÊN LÀM NGAY
+### 2.5 Thêm tài khoản vào hồ
 
-> ⚠️ **Đo 24/09/2026: hồ hiện chỉ có MỘT file `google.json`.** Tức là mục Keyword đang sống
-> bằng một tài khoản duy nhất, và một bình rất nhỏ. **Khuyến nghị: thêm 2–3 tài khoản.**
+**Nên có 2–3 tài khoản trong hồ, đừng để một.** Bình chứa bám theo tài khoản và rất nhỏ (§2.4),
+nên một tài khoản duy nhất nghĩa là mục Keyword trả bảng rỗng mỗi khi bình cạn — mà nó cạn im
+lặng, không báo lỗi. Đếm bằng:
+
+```powershell
+Get-ChildItem C:\AI-TNT-Research-SPY\backend\.auth\google*.json | Measure-Object | % Count
+```
+
+Thêm tài khoản:
 
 ```powershell
 cd C:\AI-TNT-Research-SPY\backend
@@ -346,9 +353,15 @@ Gmail cần **"Mật khẩu ứng dụng"** (App Password), không phải mật 
 thì ngăn bằng dấu phẩy. **Thiếu `SMTP_USER`/`SMTP_PASS` thì KHÔNG gửi được và chỉ ghi log** —
 không làm hỏng vòng cào, nhưng cũng **không ai biết 1688 đang chờ**.
 
-> Kiểm 24/09/2026: `SMTP_USER` + `SMTP_PASS` **đã cấu hình** trên production, `ALERT_EMAIL =
-> aiteam.tnt@gmail.com`. `SMTP_FROM` để trống → mặc định bằng `SMTP_USER`. Nếu người nhận đổi
-> thì sửa `ALERT_EMAIL` rồi restart backend.
+`SMTP_FROM` để trống thì mặc định bằng `SMTP_USER`. `ALERT_EMAIL` để trống thì mặc định
+`aiteam.tnt@gmail.com` (hằng `ALERT_EMAIL_MAC_DINH` trong `hub/canh_bao.py`) — đổi người nhận là
+sửa biến đó rồi restart backend.
+
+Muốn biết máy đang gửi từ đâu và gửi cho ai mà không lộ mật khẩu:
+
+```powershell
+Select-String -Path C:\AI-TNT-Research-SPY\backend\.env.local -Pattern '^(SMTP_USER|SMTP_FROM|ALERT_EMAIL)='
+```
 
 ### 5.4 Khi nhận mail "1688 dính CAPTCHA"
 

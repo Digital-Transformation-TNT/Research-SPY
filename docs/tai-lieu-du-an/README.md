@@ -24,18 +24,6 @@ cố, đừng đi sửa).
 **Sắp sửa code** → ② §1 (quy tắc phụ thuộc) và ② §12 (quy ước). Đặc biệt đọc ② §1.1: **ba cặp
 file "soi gương" nhau**, sửa một bên mà quên bên kia thì không có gì tự bắt được.
 
-## Ba việc nên làm sớm
-
-Phát hiện khi soát máy production 24/09/2026 — không cái nào đang gây lỗi, cả ba đều **hỏng
-lặng lẽ**:
-
-1. **Hồ phiên Google chỉ có MỘT tài khoản.** Bình chứa của Trends bám theo tài khoản và rất
-   nhỏ → mục Keyword dễ trả bảng rỗng. Thêm 2–3 tài khoản: ③ §2.5.
-2. **`PLAYWRIGHT_BROWSERS_PATH` đã bị ghi đè mất** khi thêm `HUB_SCHEDULER=1` (nssm *thay thế*
-   cả danh sách chứ không cộng thêm) → `C:\ms-playwright` không tồn tại, nguồn video TikTok qua
-   Bing **mất phân trang** mà không báo gì: ① §3.1 và ① §6.
-3. **`RELAY_WORKER_TOKEN` chưa đặt** → `/api/relay/next` và `/result` mở cho bất kỳ ai: ③ §12.
-
 ## Tài liệu liên quan trong repo
 
 | Đường dẫn | Là gì |

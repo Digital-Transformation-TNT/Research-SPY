@@ -106,9 +106,9 @@ requirements.txt` → `playwright install chromium` → `npm install` + `npm run
 
 ### 3.1 Hai biến môi trường của service PHẢI đặt bằng tay sau đó
 
-`nssm set ... AppEnvironmentExtra` **THAY THẾ** cả danh sách chứ không cộng thêm. Production
-hiện chỉ có `HUB_SCHEDULER=1`, tức là `PLAYWRIGHT_BROWSERS_PATH` mà `vps-setup.ps1` đặt **đã
-bị ghi đè mất** — đặt cả hai trong MỘT lệnh:
+`nssm set ... AppEnvironmentExtra` **THAY THẾ** cả danh sách chứ không cộng thêm. Nghĩa là đặt
+`HUB_SCHEDULER` một mình sẽ **xoá mất** `PLAYWRIGHT_BROWSERS_PATH` mà `vps-setup.ps1` đã đặt, và
+ngược lại. Luôn đặt cả hai trong **MỘT lệnh**:
 
 ```powershell
 cd C:\AI-TNT-Research-SPY\deploy
@@ -284,9 +284,18 @@ Nên `lib/ads/platforms/tiktokvideo.py` xin `prefer_bundled=True`.
 
 **(c) Thiếu bản nào thì `browser.py` tự đổi sang bản kia** thay vì chết. Nghĩa là **thiếu
 Chromium đi kèm KHÔNG gây lỗi** — nó chỉ làm nguồn video TikTok qua Bing mất phân trang, im
-lặng. Đo trên production 24/09/2026: `C:\ms-playwright` **không tồn tại**, Chromium nằm trong
-`%LOCALAPPDATA%` của Administrator, và service chạy LocalSystem → đúng tình trạng này. Cách sửa
-ở §3.1.
+lặng, không một dòng log nào.
+
+Nên đây là thứ **phải tự đi kiểm chứ không đợi nó báo**. Hai điều kiện đủ, thiếu một là rơi vào
+tình trạng trên:
+
+```powershell
+Test-Path C:\ms-playwright                     # thư mục dùng chung phải tồn tại
+# và AppEnvironmentExtra của ResearchSpyBackend phải có PLAYWRIGHT_BROWSERS_PATH — xem §3.1
+```
+
+`Test-Path` trả `False` nghĩa là `playwright install` đã cất Chromium vào `%LOCALAPPDATA%` của
+người chạy lệnh, còn service (LocalSystem) không thấy nó. Cách sửa ở §3.1.
 
 **(d) KHÔNG dùng `--reload` hay `--workers` trên Windows.** Cả hai bật `use_subprocess`, uvicorn
 khi đó chuyển sang `WindowsSelectorEventLoopPolicy`, loop ấy không sinh được tiến trình con →
