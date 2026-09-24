@@ -428,24 +428,75 @@ def _run_failed(meta: dict) -> bool:
     return (meta or {}).get("status") == "error"
 
 
+#: Số dòng mỗi lượt đọc. PostgREST của Supabase chặn cứng ở 1000 dòng/response (`db-max-rows`),
+#: nên `.limit(100000)` KHÔNG nống được trần — trước đây mọi con số đều tính trên 1000 event đầu
+#: tiên và cắt lặng lẽ (22 người thay vì 46, ngày hôm nay mất sạch). Phải phân trang bằng
+#: `.range()` thì mới đọc đủ.
+_PAGE = 1000
+
+#: Trần an toàn cho một lần tính KPI, khớp mốc trong ghi chú STATS đầu file: trên mức này thì
+#: chuyển sang materialized view chứ không kéo thêm trang.
+_MAX_EVENTS = 100000
+
+
 def _events_between(supa, start: int, end: int) -> list[dict]:
-    """Đọc event trong khoảng [start, end) tính bằng unix giây. Supabase lọc theo ISO string."""
+    """
+    Đọc TOÀN BỘ event trong khoảng [start, end) tính bằng unix giây (Supabase lọc theo ISO string).
+
+    Phân trang bằng `.range()`: một response tối đa 1000 dòng dù `limit` có đặt bao nhiêu đi nữa.
+    Sắp theo `ts` để mỗi trang nối tiếp trang trước một cách ổn định.
+    """
     from datetime import datetime, timezone
 
     s = datetime.fromtimestamp(start, tz=timezone.utc).isoformat()
     e = datetime.fromtimestamp(end, tz=timezone.utc).isoformat()
-    # ĐẶT `limit` RÕ RÀNG: PostgREST mặc định cắt ở 1000 dòng, và cắt LẶNG LẼ — thiếu event thì
-    # mọi con số nhỏ đi mà không có dấu hiệu gì. Trần 100k khớp mốc trong ghi chú STATS đầu file
-    # (trên mức đó thì chuyển sang materialized view chứ không nống trần).
-    r = (
-        supa.table("analytics_event")
-        .select("user_id, event_type, meta, ts")
-        .gte("ts", s)
-        .lt("ts", e)
-        .limit(100000)
-        .execute()
-    )
-    return r.data or []
+    rows: list[dict] = []
+    off = 0
+    while off < _MAX_EVENTS:
+        r = (
+            supa.table("analytics_event")
+            .select("user_id, event_type, meta, ts")
+            .gte("ts", s)
+            .lt("ts", e)
+            .order("ts")
+            .range(off, off + _PAGE - 1)
+            .execute()
+        )
+        page = r.data or []
+        rows += page
+        if len(page) < _PAGE:
+            break
+        off += _PAGE
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# KỲ THỐNG KÊ — hôm nay / hôm qua / 7 ngày / 30 ngày
+# ---------------------------------------------------------------------------
+
+#: Giờ Việt Nam. "Hôm nay"/"hôm qua" phải cắt theo NGÀY LỊCH của người xem, không phải theo UTC:
+#: 0h–7h sáng VN vẫn là ngày hôm trước nếu tính bằng UTC, và bảng sẽ trống một cách khó hiểu.
+_GIO_VN = 7 * 3600
+
+
+def _period_range(period: str) -> tuple[int, int, int, int, float]:
+    """
+    Trả (đầu_kỳ, cuối_kỳ, đầu_kỳ_trước, cuối_kỳ_trước, số_ngày) — tất cả unix giây.
+
+    - 'today'     → từ 0h hôm nay (giờ VN) đến bây giờ; kỳ trước = cả ngày hôm qua.
+    - 'yesterday' → trọn ngày hôm qua (giờ VN); kỳ trước = ngày kia.
+    - 'week'      → 7 ngày gần nhất (cửa sổ trượt); kỳ trước = 7 ngày liền trước.
+    - 'month'     → 30 ngày gần nhất; kỳ trước = 30 ngày liền trước.
+    """
+    now = int(time.time())
+    if period in ("today", "yesterday"):
+        # Mốc 0h hôm nay theo giờ VN, quy về unix giây.
+        dau_hom_nay = ((now + _GIO_VN) // 86400) * 86400 - _GIO_VN
+        if period == "today":
+            return dau_hom_nay, now, dau_hom_nay - 86400, dau_hom_nay, 1
+        return dau_hom_nay - 86400, dau_hom_nay, dau_hom_nay - 2 * 86400, dau_hom_nay - 86400, 1
+    days = 30 if period == "month" else 7
+    return now - days * 86400, now, now - 2 * days * 86400, now - days * 86400, days
 
 
 @router.get("/stats")
@@ -453,7 +504,8 @@ async def stats(request: Request, period: str = "week") -> JSONResponse:
     """
     Tính 5 KPI tự động cho kỳ này + kỳ trước để so sánh xu hướng.
 
-    period: 'week' (7 ngày) | 'month' (30 ngày)
+    period: 'today' (từ 0h hôm nay) | 'yesterday' (trọn ngày hôm qua) | 'week' (7 ngày) |
+            'month' (30 ngày)
     """
     _, err = _require_admin(request)
     if err is not None:
@@ -461,10 +513,7 @@ async def stats(request: Request, period: str = "week") -> JSONResponse:
     if not db_ready():
         return _db_missing()
 
-    days = 30 if period == "month" else 7
-    now = int(time.time())
-    curr_start = now - days * 86400
-    prev_start = now - 2 * days * 86400
+    curr_start, curr_end, prev_start, prev_end, days = _period_range(period)
     supa = supabase_or_none()
 
     def _kpi(events: list[dict]) -> dict:
@@ -491,8 +540,8 @@ async def stats(request: Request, period: str = "week") -> JSONResponse:
             "avg_time_sec": avg_time_sec,
         }
 
-    curr = _kpi(_events_between(supa, curr_start, now))
-    prev = _kpi(_events_between(supa, prev_start, curr_start))
+    curr = _kpi(_events_between(supa, curr_start, curr_end))
+    prev = _kpi(_events_between(supa, prev_start, prev_end))
 
     def _trend(c, p):
         if c is None or p is None:
@@ -632,7 +681,7 @@ async def stats_by_user(request: Request, period: str = "week") -> JSONResponse:
     """
     Bổ mọi chỉ số theo từng nhân sự + theo từng tool cho kỳ này.
 
-    period: 'week' (7 ngày) | 'month' (30 ngày)
+    period: 'today' | 'yesterday' | 'week' (7 ngày) | 'month' (30 ngày)
 
     Trả:
       { period, period_days,
@@ -647,10 +696,9 @@ async def stats_by_user(request: Request, period: str = "week") -> JSONResponse:
     if not db_ready():
         return _db_missing()
 
-    days = 30 if period == "month" else 7
-    now = int(time.time())
+    start, end, _, _, days = _period_range(period)
     supa = supabase_or_none()
-    events = _events_between(supa, now - days * 86400, now)
+    events = _events_between(supa, start, end)
 
     agg = _aggregate_by_user(events)
     per_user = agg["per_user"]
@@ -782,11 +830,11 @@ async def user_activity(request: Request, user_id: str, period: str = "week", li
     if not db_ready():
         return _db_missing()
 
-    days = 30 if period == "month" else 7
-    now = int(time.time())
+    s_ts, e_ts, _, _, days = _period_range(period)
     from datetime import datetime, timezone
 
-    start = datetime.fromtimestamp(now - days * 86400, tz=timezone.utc).isoformat()
+    start = datetime.fromtimestamp(s_ts, tz=timezone.utc).isoformat()
+    end = datetime.fromtimestamp(e_ts, tz=timezone.utc).isoformat()
     supa = supabase_or_none()
     try:
         r = (
@@ -794,8 +842,11 @@ async def user_activity(request: Request, user_id: str, period: str = "week", li
             .select("event_type, meta, ts")
             .eq("user_id", user_id)
             .gte("ts", start)
+            .lt("ts", end)
             .order("ts", desc=True)
-            .limit(max(1, min(limit, 2000)))
+            # PostgREST chặn cứng ở 1000 dòng/response, nên đây là trần thật dù xin cao hơn.
+            # Timeline chỉ cần các phiên gần nhất (sắp mới→cũ) nên không phân trang.
+            .limit(max(1, min(limit, _PAGE)))
             .execute()
         )
     except Exception as e:
@@ -846,5 +897,5 @@ async def user_activity(request: Request, user_id: str, period: str = "week", li
         "user_id": user_id,
         "period": period,
         "sessions": out,
-        "truncated": len(rows) >= max(1, min(limit, 2000)),
+        "truncated": len(rows) >= max(1, min(limit, _PAGE)),
     })

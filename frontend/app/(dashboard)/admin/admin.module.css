@@ -249,6 +249,9 @@
 }
 .periodPicker button:last-child {
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+/* Nhóm 4 nút dính nhau: bỏ viền trái từ nút thứ hai trở đi, nếu không mỗi khe hở thành 2px. */
+.periodPicker button + button {
   border-left: none;
 }
 .periodOn {

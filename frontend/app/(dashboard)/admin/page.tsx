@@ -17,7 +17,7 @@ import s from './admin.module.css'
  *   POST   /api/admin/users            → tạo tay (duyệt sẵn)
  *   PATCH  /api/admin/users/:id        → { role } | { is_active } | { status }
  *   DELETE /api/admin/users/:id
- *   GET    /api/admin/stats?period=week|month → { current, previous, trends }
+ *   GET    /api/admin/stats?period=today|yesterday|week|month → { current, previous, trends }
  */
 
 const AUTH_KEYS = ['rs_token', 'rs_email', 'rs_display', 'rs_role', 'rs_user_id', 'rs_username']
@@ -35,6 +35,33 @@ type User = {
   last_login_at?: string
 }
 type Stats = { current: any; previous: any; trends: any }
+
+//: Kỳ thống kê. 'today' = từ 0h hôm nay (giờ VN), 'yesterday' = trọn ngày hôm qua, 'week'/'month'
+//: = cửa sổ trượt 7/30 ngày. Backend cắt ngày theo giờ VN nên "hôm nay" đúng với người xem.
+type Period = 'today' | 'yesterday' | 'week' | 'month'
+
+const PERIOD_LABELS: Record<Period, string> = {
+  today: 'Hôm nay',
+  yesterday: 'Hôm qua',
+  week: '7 ngày',
+  month: '30 ngày',
+}
+
+//: Nhãn thẻ KPI người dùng đổi theo kỳ — "Weekly Active Users" mà đang xem hôm nay thì sai nghĩa.
+const WAU_LABELS: Record<Period, string> = {
+  today: 'Người dùng hôm nay',
+  yesterday: 'Người dùng hôm qua',
+  week: 'Người dùng 7 ngày (WAU)',
+  month: 'Người dùng 30 ngày',
+}
+
+//: Kỳ liền trước để so sánh, khớp `_period_range` ở backend.
+const PREV_LABELS: Record<Period, string> = {
+  today: 'hôm qua',
+  yesterday: 'hôm kia',
+  week: 'kỳ trước',
+  month: 'kỳ trước',
+}
 
 type UserStat = {
   user_id: string
@@ -178,12 +205,12 @@ function WhoCell({ u }: { u: User }) {
 }
 
 /** Delta kỳ trước cho một KPI. invert = KPI mà giảm là tốt (đảo màu mũi tên, số vẫn thật). */
-function Delta({ curr, prev, trend, invert }: { curr: any; prev: any; trend?: string; invert?: boolean }) {
+function Delta({ curr, prev, trend, invert, prevLabel }: { curr: any; prev: any; trend?: string; invert?: boolean; prevLabel?: string }) {
   if (curr == null || prev == null) return null
   const arrow = trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→'
   const cls = trend === 'flat' || !trend ? '' : invert ? (trend === 'down' ? s.up : s.down) : trend === 'up' ? s.up : s.down
   const delta = prev === 0 ? '' : ` (${(((curr - prev) / prev) * 100).toFixed(0)}%)`
-  return <div className={`${s.kpiDelta} ${cls}`}>{arrow} kỳ trước: {fmtCompact(prev)}{delta}</div>
+  return <div className={`${s.kpiDelta} ${cls}`}>{arrow} {prevLabel || 'kỳ trước'}: {fmtCompact(prev)}{delta}</div>
 }
 
 /** Dòng thời gian hoạt động của một người — hiện khi bấm mở một dòng ở bảng theo nhân sự. */
@@ -238,7 +265,7 @@ export default function AdminPage() {
   const [addStatus, setAddStatus] = useState<{ text: string; kind: 'err' | 'ok' } | null>(null)
   const [form, setForm] = useState({ email: '', name: '', pos: '', bu: '', role: 'user' })
 
-  const [period, setPeriod] = useState<'week' | 'month'>('week')
+  const [period, setPeriod] = useState<Period>('today')
   const [stats, setStats] = useState<Stats | null>(null)
   const [statsErr, setStatsErr] = useState('')
   const [statsLoading, setStatsLoading] = useState(false)
@@ -273,7 +300,7 @@ export default function AdminPage() {
     }
   }, [])
 
-  const loadStats = useCallback(async (p: 'week' | 'month') => {
+  const loadStats = useCallback(async (p: Period) => {
     setStatsLoading(true)
     setStatsErr('')
     try {
@@ -290,7 +317,7 @@ export default function AdminPage() {
   }, [])
 
   //: Bảng theo nhân sự + theo tool. Tách khỏi `loadStats` để một cái hỏng không kéo cái kia.
-  const loadByUser = useCallback(async (p: 'week' | 'month') => {
+  const loadByUser = useCallback(async (p: Period) => {
     setByUserErr('')
     try {
       const r = await api(`/api/admin/stats-by-user?period=${p}`)
@@ -618,8 +645,11 @@ Lý do (owner sẽ đọc):`,
       {tab === 'stats' && (
         <>
           <div className={s.periodPicker}>
-            <button className={period === 'week' ? s.periodOn : ''} onClick={() => setPeriod('week')}>7 ngày</button>
-            <button className={period === 'month' ? s.periodOn : ''} onClick={() => setPeriod('month')}>30 ngày</button>
+            {(['today', 'yesterday', 'week', 'month'] as Period[]).map((p) => (
+              <button key={p} className={period === p ? s.periodOn : ''} onClick={() => setPeriod(p)}>
+                {PERIOD_LABELS[p]}
+              </button>
+            ))}
           </div>
 
           <div className={s.kpiGrid}>
@@ -630,24 +660,24 @@ Lý do (owner sẽ đọc):`,
             ) : stats ? (
               <>
                 <div className={s.kpiCard}>
-                  <div className={s.kpiLabel}>Weekly Active Users</div>
+                  <div className={s.kpiLabel}>{WAU_LABELS[period]}</div>
                   <div className={s.kpiValue}>{fmtCompact(stats.current.wau)}</div>
-                  <Delta curr={stats.current.wau} prev={stats.previous.wau} trend={stats.trends?.wau} />
+                  <Delta curr={stats.current.wau} prev={stats.previous.wau} trend={stats.trends?.wau} prevLabel={PREV_LABELS[period]} />
                 </div>
                 <div className={s.kpiCard}>
                   <div className={s.kpiLabel}>Task Success Rate</div>
                   <div className={s.kpiValue}>{stats.current.task_success_rate ?? '—'}%</div>
-                  <Delta curr={stats.current.task_success_rate} prev={stats.previous.task_success_rate} trend={stats.trends?.task_success_rate} />
+                  <Delta curr={stats.current.task_success_rate} prev={stats.previous.task_success_rate} trend={stats.trends?.task_success_rate} prevLabel={PREV_LABELS[period]} />
                 </div>
                 <div className={s.kpiCard}>
                   <div className={s.kpiLabel}>Thời gian TB / task</div>
                   <div className={s.kpiValue}>{fmtDur(stats.current.avg_time_sec)}</div>
-                  <Delta curr={stats.current.avg_time_sec} prev={stats.previous.avg_time_sec} trend={stats.trends?.avg_time_sec} invert />
+                  <Delta curr={stats.current.avg_time_sec} prev={stats.previous.avg_time_sec} trend={stats.trends?.avg_time_sec} invert prevLabel={PREV_LABELS[period]} />
                 </div>
                 <div className={s.kpiCard}>
                   <div className={s.kpiLabel}>Số lượt chạy</div>
                   <div className={s.kpiValue}>{fmtCompact(stats.current.search_count)}</div>
-                  <div className={s.kpiDelta}>kỳ trước: {fmtCompact(stats.previous.search_count)}</div>
+                  <div className={s.kpiDelta}>{PREV_LABELS[period]}: {fmtCompact(stats.previous.search_count)}</div>
                 </div>
               </>
             ) : null}
