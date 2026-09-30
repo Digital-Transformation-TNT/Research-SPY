@@ -1,0 +1,1123 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Logic TREND·SCOUT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@600;700&display=swap">
+<style>
+/* Cung he thong voi one-shot-ai-logic.html — doc hai file lien tiep phai thay cung mot bo tai lieu. */
+:root{
+  --bg:#f3f5f6; --surface:#ffffff; --surface-2:#eaeef0;
+  --ink:#131e26; --muted:#5d6f7b; --line:#d6dee2; --line-2:#c2ced4;
+  --kho:#0d6a68;
+  --ai:#a9531b;
+  --stop:#a02b2b;
+  --ok:#2c7349;
+  --sans:"IBM Plex Sans",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --serif:"IBM Plex Serif",Georgia,serif;
+  --mono:"IBM Plex Mono","Cascadia Mono",Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e1418; --surface:#161f25; --surface-2:#1d282e;
+  --ink:#e4ecf0; --muted:#94a6b1; --line:#26333a; --line-2:#334450;
+  --kho:#4fc2b4; --ai:#e29558; --stop:#e07a72; --ok:#6cc78f;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0e1418; --surface:#161f25; --surface-2:#1d282e;
+  --ink:#e4ecf0; --muted:#94a6b1; --line:#26333a; --line-2:#334450;
+  --kho:#4fc2b4; --ai:#e29558; --stop:#e07a72; --ok:#6cc78f;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.65 var(--sans)}
+.wrap{max-width:980px;margin:0 auto;padding-inline:20px;padding-block:0 96px}
+
+header.top{padding-block:56px 36px;border-bottom:2px solid var(--ink)}
+header.top .kicker{font:600 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--kho)}
+header.top h1{font:700 clamp(32px,6vw,52px)/1.05 var(--serif);margin:14px 0 0;text-wrap:balance;letter-spacing:-.015em}
+header.top p.lede{margin:16px 0 0;max-width:62ch;color:var(--muted);font-size:17px}
+header.top .meta{margin-top:22px;font:500 12px/1.6 var(--mono);color:var(--muted)}
+
+nav.toc{margin-block:28px 8px;padding:18px 20px;background:var(--surface);border:1px solid var(--line);border-radius:4px}
+nav.toc h2{font:600 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 12px}
+nav.toc ol{margin:0;padding:0;list-style:none;display:grid;gap:6px 26px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+nav.toc a{color:var(--ink);text-decoration:none;font-size:14px;display:flex;gap:10px}
+nav.toc a:hover{color:var(--kho);text-decoration:underline}
+nav.toc .n{font:600 12px/1.6 var(--mono);color:var(--kho);min-width:22px}
+
+section{padding-block:44px 8px;border-top:1px solid var(--line);margin-top:36px}
+h2.sec{font:700 clamp(22px,3.4vw,30px)/1.2 var(--serif);margin:0 0 6px;text-wrap:balance;letter-spacing:-.01em}
+h2.sec .num{font:600 13px/1 var(--mono);color:var(--kho);display:block;margin-bottom:10px;letter-spacing:.1em}
+h3{font:600 18px/1.35 var(--sans);margin:34px 0 8px;text-wrap:balance}
+h4{font:600 14px/1.4 var(--mono);margin:24px 0 6px;color:var(--ink)}
+p{margin:10px 0;max-width:68ch}
+.sub{color:var(--muted);max-width:68ch;margin-top:0}
+ul,ol.body{margin:10px 0;padding-left:22px;max-width:68ch}
+li{margin:5px 0}
+code{font:500 .88em/1.4 var(--mono);background:var(--surface-2);padding:.1em .34em;border-radius:3px;overflow-wrap:anywhere}
+a{color:var(--kho)}
+strong{font-weight:600}
+mark{background:rgba(169,83,27,.18);color:inherit;padding:.05em .2em;border-radius:2px}
+
+.note{margin:16px 0;padding:14px 16px;border-left:3px solid var(--line-2);background:var(--surface);border-radius:0 4px 4px 0}
+.note.why{border-left-color:var(--kho)}
+.note.trap{border-left-color:var(--stop)}
+.note.ai{border-left-color:var(--ai)}
+.note p{margin:6px 0;max-width:64ch}
+.note p:first-child{margin-top:0}
+.note p:last-child{margin-bottom:0}
+.note ul{margin:6px 0}
+.note .tag{font:600 10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;display:block;margin-bottom:8px}
+.note.why .tag{color:var(--kho)} .note.trap .tag{color:var(--stop)} .note.ai .tag{color:var(--ai)}
+
+.tw{overflow-x:auto;margin:18px 0;border:1px solid var(--line);border-radius:4px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:13.5px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+thead th{background:var(--surface-2);font:600 11px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+td code{background:transparent;padding:0}
+.numc{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+pre{overflow-x:auto;margin:14px 0;padding:14px 16px;background:var(--surface);border:1px solid var(--line);border-radius:4px;font:400 12.5px/1.6 var(--mono);color:var(--ink)}
+pre .c{color:var(--muted)}
+
+figure{margin:24px 0}
+figure .fbox{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:18px 14px}
+figure svg{display:block;width:100%;height:auto;min-width:430px;max-width:100%}
+figcaption{margin-top:8px;font-size:12.5px;color:var(--muted);max-width:68ch}
+svg .bx{fill:var(--surface);stroke:var(--line-2);stroke-width:1.2}
+svg .bx2{fill:var(--surface-2);stroke:var(--line-2);stroke-width:1.2}
+svg .bx-kho{fill:rgba(13,106,104,.10);stroke:var(--kho);stroke-width:1.3}
+svg .bx-ai{fill:rgba(169,83,27,.11);stroke:var(--ai);stroke-width:1.3}
+svg .bx-stop{fill:rgba(160,43,43,.09);stroke:var(--stop);stroke-width:1.3}
+svg .t{fill:var(--ink);font:500 12.5px var(--sans)}
+svg .tb{fill:var(--ink);font:600 12.5px var(--sans)}
+svg .tm{fill:var(--muted);font:400 11px var(--sans)}
+svg .tc{fill:var(--ink);font:500 11px var(--mono)}
+svg .tk{fill:var(--kho);font:600 11px var(--mono)}
+svg .ts{fill:var(--stop);font:600 11px var(--mono)}
+svg .ta{fill:var(--ai);font:600 11px var(--mono)}
+svg .ln{stroke:var(--line-2);stroke-width:1.4;fill:none}
+svg .ln-k{stroke:var(--kho);stroke-width:1.4;fill:none}
+svg .ln-s{stroke:var(--stop);stroke-width:1.4;fill:none}
+svg .ln-d{stroke:var(--line-2);stroke-width:1.2;fill:none;stroke-dasharray:4 3}
+svg .ar{fill:var(--line-2)} svg .ar-k{fill:var(--kho)} svg .ar-s{fill:var(--stop)}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+.chip{font:500 12px/1 var(--mono);padding:6px 10px;border:1px solid var(--line-2);border-radius:999px;color:var(--muted);background:var(--surface)}
+.chip.k{border-color:var(--kho);color:var(--kho)}
+.chip.a{border-color:var(--ai);color:var(--ai)}
+.chip.s{border-color:var(--stop);color:var(--stop)}
+
+details.qa{border:1px solid var(--line);border-radius:4px;background:var(--surface);margin:10px 0}
+details.qa>summary{cursor:pointer;padding:13px 16px;font-weight:600;font-size:14.5px;list-style:none;display:flex;gap:10px;align-items:flex-start}
+details.qa>summary::-webkit-details-marker{display:none}
+details.qa>summary::before{content:"?";font:600 13px/1.4 var(--mono);color:var(--kho);flex:0 0 auto}
+details.qa[open]>summary{border-bottom:1px solid var(--line)}
+details.qa .a{padding:12px 16px 14px}
+details.qa .a p{margin:8px 0}
+details.qa .a p:first-child{margin-top:0}
+details.qa summary:focus-visible{outline:2px solid var(--kho);outline-offset:-2px}
+
+footer.end{margin-top:56px;padding-top:24px;border-top:2px solid var(--ink);color:var(--muted);font-size:13px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="kicker">Research SPY &middot; Trend Signal Hub</div>
+  <h1>Logic TREND·SCOUT</h1>
+  <p class="lede">Từ trang niêm yết của sàn tới sáu lăng kính trên màn hình: dữ liệu được cào bằng cơ chế nào, vì sao cơ chế đó không bị sàn chặn như bot, và mỗi con số trên thẻ sản phẩm được tính ra sao.</p>
+  <div class="meta">Đọc thẳng từ mã nguồn nhánh Titus &middot; 29/09/2026</div>
+</header>
+
+<nav class="toc">
+  <h2>Nội dung</h2>
+  <ol>
+    <li><a href="#s0"><span class="n">00</span><span>Bản đồ một trang</span></a></li>
+    <li><a href="#s1"><span class="n">01</span><span>Cào cái gì — cây ngành quyết định</span></a></li>
+    <li><a href="#s2"><span class="n">02</span><span>Năm tầng của một lượt cào</span></a></li>
+    <li><a href="#s3"><span class="n">03</span><span>Chống bị nhận là bot — nguyên lý</span></a></li>
+    <li><a href="#s4"><span class="n">04</span><span>Bốn kỹ thuật scrape cụ thể</span></a></li>
+    <li><a href="#s5"><span class="n">05</span><span>Ba loại tường và cách xử từng loại</span></a></li>
+    <li><a href="#s6"><span class="n">06</span><span>Tự bắn vào chân — lỗi giống hệt bị chặn</span></a></li>
+    <li><a href="#s7"><span class="n">07</span><span>Ghi vào kho</span></a></li>
+    <li><a href="#s8"><span class="n">08</span><span>Từ snapshot thành chuỗi bán/ngày</span></a></li>
+    <li><a href="#s9"><span class="n">09</span><span>Sáu lăng kính, công thức đầy đủ</span></a></li>
+    <li><a href="#s10"><span class="n">10</span><span>Toplist và lọc hàng ảo</span></a></li>
+    <li><a href="#s11"><span class="n">11</span><span>Bảng hằng số</span></a></li>
+    <li><a href="#s12"><span class="n">12</span><span>Bẫy đã trả giá</span></a></li>
+    <li><a href="#s13"><span class="n">13</span><span>Hỏi đáp phỏng vấn</span></a></li>
+  </ol>
+</nav>
+
+<!-- ══════════════════ 00 ══════════════════ -->
+<section id="s0">
+<h2 class="sec"><span class="num">00</span>Bản đồ một trang</h2>
+<p class="sub">TREND·SCOUT là mục <strong>Top sản phẩm</strong> của Trend Signal Hub. Hai màn hình: <strong>Toplist</strong> (xếp hạng toàn sàn) và <strong>Khám phá</strong> (một ngành × một lăng kính). Ba sàn thật: Shopee VN, Shopee PH, 1688.</p>
+
+<div class="chips">
+  <span class="chip k">3 sàn</span>
+  <span class="chip">403 ngành con + 44 ngành lớn</span>
+  <span class="chip">6 lăng kính</span>
+  <span class="chip a">cửa sổ 5 ngày</span>
+  <span class="chip s">cào bằng Chrome thật, không bằng HTTP</span>
+</div>
+
+<figure>
+<div class="fbox">
+<svg viewBox="0 0 580 636" role="img" aria-label="Bản đồ tổng quan TREND·SCOUT">
+  <defs>
+    <marker id="b1" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar"/></marker>
+    <marker id="b1k" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar-k"/></marker>
+  </defs>
+
+  <rect x="10" y="8" width="560" height="60" rx="5" class="bx2"/>
+  <text x="26" y="29" class="tb">① CÀO CÁI GÌ — cây ngành do NGƯỜI chọn, không phải cây của sàn</text>
+  <text x="26" y="48" class="tm">Google Sheet &rarr; shopee_categories (206 vn + 197 ph ngành con, 44 ngành lớn)</text>
+  <text x="26" y="64" class="tm">1688: 205 cụm từ khoá tiếng Trung ánh xạ về ngành con Shopee VN (map_1688)</text>
+  <path d="M290 70 L290 90" class="ln" marker-end="url(#b1)"/>
+
+  <rect x="10" y="92" width="560" height="60" rx="5" class="bx-ai"/>
+  <text x="26" y="113" class="tb">② CÀO BẰNG GÌ — mượn Chrome thật đã đăng nhập, không gọi HTTP từ server</text>
+  <text x="26" y="132" class="tm">scheduler &rarr; market_snapshot &rarr; relay &rarr; trang máy-thợ &rarr; extension &rarr; tab sàn</text>
+  <text x="26" y="148" class="tm">fetch chạy TRONG tab của sàn nên là same-origin, mang đúng cookie và ngữ cảnh trang</text>
+  <path d="M290 154 L290 174" class="ln" marker-end="url(#b1)"/>
+
+  <rect x="10" y="176" width="560" height="60" rx="5" class="bx-kho"/>
+  <text x="26" y="197" class="tb">③ GHI GÌ — listings_snapshot, append-only</text>
+  <text x="26" y="216" class="tm">1 dòng = 1 listing × 1 ngày × 1 mã ngành &middot; trùng thì IGNORE, giữ lần chụp đầu</text>
+  <text x="26" y="232" class="tm">mỗi ngành ghi thêm một dòng crawl_log, KỂ CẢ khi hỏng</text>
+  <path d="M290 238 L290 258" class="ln-k" marker-end="url(#b1k)"/>
+
+  <rect x="10" y="260" width="560" height="78" rx="5" class="bx"/>
+  <text x="26" y="281" class="tb">④ TÍNH GÌ — scout.py biến các mốc ngày thành chuỗi bán/ngày</text>
+  <text x="26" y="300" class="tm">hiệu lũy kế giữa hai lần quét, chia đều cho số ngày giữa chúng</text>
+  <text x="26" y="317" class="tm">ba chốt chặn loại bước rác: bộ đếm lùi &middot; lũy kế đứng &middot; bộ đếm nhảy</text>
+  <text x="26" y="333" class="tm">1688 đi đường khác: sold_monthly ÷ 30, vì lũy kế của nó làm tròn theo bậc</text>
+  <path d="M290 340 L290 360" class="ln" marker-end="url(#b1)"/>
+
+  <rect x="10" y="362" width="560" height="62" rx="5" class="bx"/>
+  <text x="26" y="383" class="tb">⑤ SÁU LĂNG KÍNH — tính RIÊNG cho từng ngành, cửa sổ 5 ngày</text>
+  <text x="26" y="402" class="tm">Bán chạy &middot; 🔥 Tăng tốc &middot; ⚡ Đột biến &middot; 💰 Ổn định &middot; 🎯 Khe hở &middot; 🆕 Tân binh</text>
+  <text x="26" y="418" class="tm">cần ≥ 2 lần quét; riêng Tân binh xét TRƯỚC cửa đó vì nó không so hai kỳ</text>
+
+  <path d="M170 424 L170 452" class="ln" marker-end="url(#b1)"/>
+  <path d="M410 424 L410 452" class="ln" marker-end="url(#b1)"/>
+
+  <rect x="10" y="454" width="270" height="70" rx="5" class="bx-kho"/>
+  <text x="145" y="475" class="tb" text-anchor="middle">Màn hình TOPLIST</text>
+  <text x="145" y="493" class="tm" text-anchor="middle">xếp hạng toàn sàn, chỉ cần 1 ngày</text>
+  <text x="145" y="509" class="tm" text-anchor="middle">bán chạy hoặc doanh số 30 ngày</text>
+
+  <rect x="300" y="454" width="270" height="70" rx="5" class="bx-kho"/>
+  <text x="435" y="475" class="tb" text-anchor="middle">Màn hình KHÁM PHÁ</text>
+  <text x="435" y="493" class="tm" text-anchor="middle">một ngành × một lăng kính</text>
+  <text x="435" y="509" class="tm" text-anchor="middle">cộng trang Tuỳ chỉnh các mức</text>
+
+  <rect x="10" y="546" width="560" height="82" rx="5" class="bx2"/>
+  <text x="26" y="568" class="tk">Ba câu chốt của cả hệ</text>
+  <text x="26" y="588" class="tm">1 &middot; Không giả mạo trình duyệt — MƯỢN một trình duyệt thật đã đăng nhập sẵn.</text>
+  <text x="26" y="605" class="tm">2 &middot; Sự VẮNG MẶT cũng là dữ liệu: rớt khỏi top thì ngày đó không có dòng, không cần cột "out".</text>
+  <text x="26" y="622" class="tm">3 &middot; Hai thang đo khác nhau thì không trộn vào một bảng xếp hạng.</text>
+</svg>
+</div>
+<figcaption>Năm chặng. Chặng ② là phần khó nhất về kỹ thuật, chặng ④ là phần khó nhất về số liệu.</figcaption>
+</figure>
+</section>
+
+<!-- ══════════════════ 01 ══════════════════ -->
+<section id="s1">
+<h2 class="sec"><span class="num">01</span>Cào cái gì — cây ngành quyết định</h2>
+<p class="sub">Trước khi nói chuyện cào thế nào, phải rõ cào <em>cái gì</em>. Đây là quyết định kinh doanh, không phải kỹ thuật.</p>
+
+<h3>Cây ngành không phải cây của sàn</h3>
+<div class="note why"><span class="tag">Phân biệt hai bảng</span>
+<p><code>hub/ingestion/categories.py</code> hỏi Shopee xem sàn <strong>đang có</strong> những ngành nào (24–25 ngành cấp 1). <code>hub/ingestion/shopee_categories.py</code> đọc xem <strong>người ta đã chọn làm</strong> những ngành nào — một Google Sheet của chủ dự án.</p>
+<p>Sheet <strong>luôn là tập con</strong>, và phần bị bỏ đi là một quyết định kinh doanh chứ không phải dữ liệu thiếu. Đừng &ldquo;sửa&rdquo; bằng cách bù thêm ngành từ cây của sàn.</p></div>
+
+<p>Sheet là <strong>mục tiêu đang di chuyển</strong>. Đo trong hai tiếng ngày 10/09/2026: vn 207&rarr;206 dòng, ph 241&rarr;197 dòng, và cột &ldquo;No.&rdquo; được đánh số lại giữa chừng. Hai hệ quả nằm thẳng trong code:</p>
+<ul>
+<li>Ngành biến mất khỏi sheet được đánh dấu <code>active=0</code>, <strong>không xoá</strong>. Xoá là mất luôn cầu nối tới những dòng <code>listings_snapshot</code> đã cào theo ngành đó — bảng lịch sử sẽ trỏ vào hư vô.</li>
+<li>Cột &ldquo;No.&rdquo; <strong>không</strong> làm khoá, chỉ chép vào <code>sheet_row</code> để đối chiếu khi cãi nhau về số liệu. Khoá thật là <code>sub_id</code>, thứ duy nhất Shopee đảm bảo không đổi.</li>
+</ul>
+<p>Và mã ngành là <strong>riêng từng nước</strong>: một <code>catid</code> của vn không có quan hệ gì với <code>catid</code> của ph, nên <code>market</code> nằm trong khoá chính.</p>
+
+<h3>Hai tầng cào riêng, không cộng dồn</h3>
+<div class="tw"><table>
+<thead><tr><th>Tầng</th><th>Số ngành</th><th>Đường dẫn Shopee</th><th>Thời gian</th></tr></thead>
+<tbody>
+<tr><td><code>tang="lon"</code> — ngành cấp 1</td><td class="numc">44 (vn + ph)</td><td><code>/&lt;slug&gt;-cat.&lt;main_id&gt;</code></td><td class="numc">~25 phút</td></tr>
+<tr><td><code>tang="con"</code> — ngành con</td><td class="numc">403 (206 vn + 197 ph)</td><td><code>/&lt;slug&gt;-cat.&lt;main_id&gt;.&lt;sub_id&gt;</code></td><td class="numc">hơn 3 tiếng</td></tr>
+</tbody></table></div>
+<div class="note why"><span class="tag">Vì sao không gộp ngành con thành ngành lớn</span>
+<p>Top 100 của &ldquo;Thời Trang Nam&rdquo; <strong>không bằng</strong> gộp top 100 của 15 ngành con rồi xếp lại. Shopee xếp hạng trong phạm vi từng danh mục, nên một sản phẩm hạng 40 ở &ldquo;Áo&rdquo; có thể là hạng 3 của cả ngành cha, còn hàng bán chạy nhất ngành cha có thể nằm ở một ngành con ta <em>không</em> cào.</p>
+<p>Mã ngành lớn là <code>main_id</code>, không trùng bất kỳ <code>sub_id</code> nào, nên hai tầng sống chung trong <code>listings_snapshot</code> mà không đè nhau (<code>category_code</code> nằm trong khoá chính).</p></div>
+<p>Ngành lớn cào từ 14/09/2026. Với dữ liệu cũ hơn ngày đó, <code>_ma_nganh</code> rơi về gộp ngành con và <strong>nói rõ</strong> bằng cờ <code>nguon = "gop_nganh_con"</code> thay vì im lặng.</p>
+
+<h3>1688: ngành hàng là một cụm từ khoá</h3>
+<p>Menu của 1688 trỏ thẳng tới <code>offer_search.htm?keywords=&lt;tên&gt;</code> — sàn này coi danh mục là một lượt tìm. Nên <code>map_1688.py</code> ánh xạ mỗi <code>sub_id</code> Shopee VN sang một cụm <strong>tiếng Trung</strong>, và ở đó &ldquo;mã ngành&rdquo; với &ldquo;từ khoá tìm&rdquo; là cùng một chuỗi.</p>
+<ul>
+<li><strong>Phải là tiếng Trung</strong>, và đây không phải chuyện thẩm mỹ: tiêu đề sản phẩm trên 1688 toàn tiếng Trung, ném <code>laptop backpack</code> vào ô tìm cho ra rất ít hàng — mà vẫn <code>SUCCESS</code>, vẫn có kết quả, chỉ là nghèo.</li>
+<li>Chọn cụm theo cách người mua sỉ Trung Quốc <strong>thật sự gõ</strong>, không dịch từng chữ: &ldquo;Áo Ba Lỗ&rdquo; là <code>背心</code> chứ không phải <code>三孔衬衫</code>.</li>
+<li>Ngành &ldquo;Khác&rdquo;/&ldquo;Others&rdquo; <strong>cố ý bỏ</strong>: Shopee dùng nó làm sọt chứa phần dư, dịch ra được <code>其他</code>, tìm trên 1688 ra đủ thứ không liên quan.</li>
+<li>Một cụm tiếng Trung phục vụ được nhiều ngành Shopee (&ldquo;Giày Thể Thao&rdquo; và &ldquo;Sneakers&rdquo; đều về <code>运动鞋</code>) — khoá chính gộp chúng thành một dòng, một lượt cào.</li>
+</ul>
+</section>
+
+<!-- ══════════════════ 02 ══════════════════ -->
+<section id="s2">
+<h2 class="sec"><span class="num">02</span>Năm tầng của một lượt cào</h2>
+<p class="sub">Một ngành Shopee được chụp xong phải đi qua năm tầng, mỗi tầng ở một tiến trình khác nhau — và hai trong số đó nằm trên một máy tính khác.</p>
+
+<figure>
+<div class="fbox">
+<svg viewBox="0 0 580 566" role="img" aria-label="Năm tầng của một lượt cào">
+  <defs>
+    <marker id="b2" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar"/></marker>
+    <marker id="b2k" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar-k"/></marker>
+  </defs>
+
+  <rect x="10" y="8" width="560" height="60" rx="5" class="bx"/>
+  <text x="26" y="28" class="tk">TẦNG 1 &middot; tiến trình backend</text>
+  <text x="26" y="46" class="tb">scheduler.py — 01:00 sigcat &middot; 06:00 dondep &middot; 09:00 sig1688</text>
+  <text x="26" y="61" class="tm">mỗi job một luồng riêng, một khoá riêng; job đang chạy thì lượt gọi sau bị bỏ qua</text>
+  <path d="M290 68 L290 84" class="ln" marker-end="url(#b2)"/>
+
+  <rect x="10" y="86" width="560" height="60" rx="5" class="bx"/>
+  <text x="26" y="106" class="tk">TẦNG 2 &middot; tiến trình backend</text>
+  <text x="26" y="124" class="tb">market_snapshot.py — vòng lặp theo ngành, một ngành một job</text>
+  <text x="26" y="139" class="tm">bỏ qua ngành đã ok trong ngày &middot; nghỉ 4s giữa hai lượt 1688 &middot; bóc JSON thành dòng</text>
+  <path d="M290 146 L290 166" class="ln" marker-end="url(#b2)"/>
+
+  <rect x="10" y="168" width="560" height="60" rx="5" class="bx"/>
+  <text x="26" y="188" class="tk">TẦNG 3 &middot; tiến trình backend, hàng đợi trong RAM</text>
+  <text x="26" y="206" class="tb">worker_relay.py — asyncio.Queue + dict job đang bay</text>
+  <text x="26" y="221" class="tm">ALLOWED_TYPES là ranh giới an ninh; hạn chờ tra theo LOẠI job, không dùng số chung</text>
+  <path d="M290 228 L290 248" class="ln" marker-end="url(#b2)"/>
+  <text x="300" y="242" class="ts">vượt qua mạng →</text>
+
+  <rect x="10" y="250" width="560" height="64" rx="5" class="bx-ai"/>
+  <text x="26" y="270" class="ta">TẦNG 4 &middot; MÁY KHÁC — một tab Chrome đang mở</text>
+  <text x="26" y="288" class="tb">trang /research/worker/index.html — long-poll /api/relay/next</text>
+  <text x="26" y="303" class="tm">mặc định 2 luồng (?lanes=), mỗi luồng một vòng lặp độc lập</text>
+  <text x="26" y="318" class="tm">nói chuyện với extension bằng window.postMessage, không phải bằng HTTP</text>
+  <path d="M290 314 L290 334" class="ln" marker-end="url(#b2)"/>
+
+  <rect x="10" y="336" width="560" height="64" rx="5" class="bx-ai"/>
+  <text x="26" y="356" class="ta">TẦNG 5 &middot; cùng máy đó — service worker của extension</text>
+  <text x="26" y="374" class="tb">background.js — mở/điều hướng tab sàn, tiêm script, chộp response</text>
+  <text x="26" y="389" class="tm">một tab cho mỗi tên miền (ensureTab), dọn tab rảnh bằng chrome.alarms mỗi phút</text>
+  <text x="26" y="404" class="tm">KHÔNG tự gọi mạng từ service worker — xem mục 03</text>
+  <path d="M290 400 L290 420" class="ln-k" marker-end="url(#b2k)"/>
+
+  <rect x="10" y="422" width="560" height="44" rx="5" class="bx-kho"/>
+  <text x="290" y="443" class="tb" text-anchor="middle">Tab thật của shopee.vn / shopee.ph / h5api.m.1688.com</text>
+  <text x="290" y="459" class="tm" text-anchor="middle">đã đăng nhập, cookie của hồ sơ Chrome đó</text>
+
+  <rect x="10" y="488" width="560" height="70" rx="5" class="bx2"/>
+  <text x="26" y="509" class="tk">Vì sao phải dài dòng thế</text>
+  <text x="26" y="529" class="tm">Backend chạy trên VPS không có trình duyệt nào đăng nhập. Sàn chỉ trả dữ liệu đầy đủ cho</text>
+  <text x="26" y="545" class="tm">một phiên thật. Nên backend không đi lấy dữ liệu — nó SAI VIỆC cho một trình duyệt thật</text>
+  <text x="26" y="561" class="tm">đang mở ở nơi khác, và chờ kết quả gửi ngược về.</text>
+</svg>
+</div>
+<figcaption>Ranh giới giữa tầng 3 và tầng 4 là ranh giới máy. Mọi hạn giờ, mọi câu báo lỗi đều phải tính cho ranh giới đó.</figcaption>
+</figure>
+
+<h3>Trang máy-thợ hoạt động thế nào</h3>
+<ol class="body">
+<li><strong>Bắt tay với extension</strong> bằng <code>window.postMessage</code> (<code>PING</code>/<code>PONG</code>, hạn 2,5 giây). Chưa thấy extension thì hỏi lại mỗi 3 giây, không nhận job.</li>
+<li><strong>Long-poll</strong> <code>GET /api/relay/next</code>. Backend giữ kết nối tối đa 25 giây rồi trả rỗng để trang hỏi lại — đủ ngắn để bắt job mới nhanh, đủ dài để không quay vòng tốn CPU.</li>
+<li><strong>Chạy job</strong> bằng <code>rsCall</code> với ngân sách tra theo loại (<code>JOB_TIMEOUT_MS</code>).</li>
+<li><strong>POST kết quả</strong> về <code>/api/relay/result</code>.</li>
+</ol>
+
+<div class="note trap"><span class="tag">Hai chi tiết nhỏ mà thiếu là hỏng im lặng</span>
+<p><strong>Không được trả <code>null</code> khi hết giờ.</strong> <code>null</code> đã có sẵn một nghĩa mà nửa tầng <code>lib</code> đang dựa vào: &ldquo;extension chưa nạp loại job này, vào <code>chrome://extensions</code> bấm Reload&rdquo;. Trang hết giờ chờ extension là chuyện khác hẳn, nên nó gắn cờ <code>__workerError</code>.</p>
+<p><strong>Cầu nối chết thì phải ngừng nhận job.</strong> Sau khi Reload extension, <code>chrome.runtime</code> trong tab ném &ldquo;context invalidated&rdquo;, nhưng phần long-poll chỉ dùng <code>fetch</code> nên vẫn khoẻ — trang sẽ <em>hút sạch hàng đợi</em> rồi trả lỗi cho từng job, và một máy-thợ khoẻ ở đâu đó không bao giờ giành được job nào. Trang tự tải lại tối đa 2 lần rồi dừng hẳn.</p></div>
+
+<h3>Hai luồng song song, và bất biến giữ cho nó an toàn</h3>
+<p>Trang mở mặc định <strong>2 luồng</strong>. Extension dùng <code>ensureTab(host)</code> nên mỗi tên miền chỉ có một tab; hai job <strong>cùng tên miền</strong> chạy song song sẽ giành nhau đúng một tab và làm hỏng cả hai.</p>
+<div class="note why"><span class="tag">Bất biến</span>
+<p>Mỗi vòng cào (<code>vn</code>, <code>ph</code>, <code>1688</code>) bắn job <strong>một-cái-một</strong> và chờ xong mới bắn tiếp. Nên tại mọi thời điểm hàng đợi có <strong>nhiều nhất một job cho mỗi nguồn</strong>, và N luồng luôn nhặt được N tên miền khác nhau.</p>
+<p>Hệ quả phải nhớ: ai bắn nhiều job của <em>cùng</em> một nguồn cùng lúc thì bất biến này gãy, và lúc đó phải khoá theo tên miền ở chính extension.</p>
+<p>Mặc định là 2 chứ không phải 1 cũng có lý do vận hành: nếu mặc định 1 thì một lần mở tab thiếu <code>?lanes=2</code> sẽ âm thầm kéo vòng cào đêm từ 3h50 lên hơn 7 tiếng, vượt qua giờ làm việc, mà không có gì báo.</p></div>
+
+<h3>Thang hạn giờ lồng nhau</h3>
+<p>Đây là thứ dễ làm sai nhất và hậu quả luôn là &ldquo;báo lỗi chỉ sai chỗ&rdquo;.</p>
+
+<figure>
+<div class="fbox">
+<svg viewBox="0 0 580 262" role="img" aria-label="Thang hạn giờ lồng nhau của đường Shopee">
+  <rect x="10" y="10" width="560" height="200" rx="6" class="bx-stop"/>
+  <text x="24" y="30" class="ts">backend &middot; SUBMIT_TIMEOUTS["RS_SHOPEE"] = 180s</text>
+
+  <rect x="34" y="42" width="512" height="156" rx="6" class="bx-ai"/>
+  <text x="48" y="62" class="ta">trang máy-thợ &middot; JOB_TIMEOUT_MS.RS_SHOPEE = 160s</text>
+
+  <rect x="58" y="74" width="464" height="112" rx="6" class="bx"/>
+  <text x="72" y="94" class="tk">extension &middot; shopeeCategory ≈ 129s</text>
+
+  <rect x="82" y="106" width="196" height="38" rx="5" class="bx2"/>
+  <text x="180" y="129" class="tm" text-anchor="middle">trang 1 — chộp tối đa 60s</text>
+  <rect x="302" y="106" width="196" height="38" rx="5" class="bx2"/>
+  <text x="400" y="129" class="tm" text-anchor="middle">trang 2 — chộp tối đa 60s</text>
+  <rect x="82" y="150" width="416" height="30" rx="5" class="bx2"/>
+  <text x="290" y="170" class="tm" text-anchor="middle">+ tối đa 9s đợi thanh &ldquo;Bán chạy&rdquo; (chỉ trang đầu)</text>
+
+  <text x="24" y="232" class="tb">Nguyên tắc: bên bỏ cuộc TRƯỚC luôn phải là bên biết vì sao mình bỏ cuộc.</text>
+  <text x="24" y="252" class="tm">Đảo thứ tự thì backend cắt ngang và nuốt mất câu chẩn đoán mà extension vừa soạn ra.</text>
+</svg>
+</div>
+<figcaption>Cùng nguyên tắc cho các đường khác: 1688 ~100s &lt; 120s &lt; 140s; Temu 150s &lt; 165s &lt; 180s; ảnh 88s &lt; 100s.</figcaption>
+</figure>
+
+<div class="note trap"><span class="tag">Con số 60s là của MÁY CHẠY, không phải của Shopee</span>
+<p>22 giây đủ trên máy cá nhân nhưng thiếu trên VPS. Đo 10/09/2026 trên máy production: 4 vCPU, 8 GB RAM mà chỉ còn trống 1,3 GB, riêng Chrome đã ngốn 3,2 GB qua 17 tiến trình. Trang Shopee là SPA nặng; ở mức tài nguyên đó nó dựng ì ạch và <code>search_items</code> bắn ra muộn hơn hẳn.</p>
+<p>Đây là kiểu hỏng <strong>dễ chẩn nhầm nhất</strong>: một danh mục chạy được lúc máy còn rảnh rồi thôi hẳn khi Chrome phình ra, mà lý do ghi lại là &ldquo;trang đã rời khỏi URL&rdquo; — trông y hệt Shopee đổi đường dẫn hoặc chặn bot. Đã đuổi theo ba giả thuyết về URL trước khi nhận ra.</p></div>
+
+<h3>&ldquo;Thợ offline&rdquo; — một báo động giả từng giết cả đêm cào</h3>
+<p><code>worker_online()</code> có <strong>hai vế</strong>: vừa hỏi/trả job trong 40 giây, <strong>hoặc</strong> đang cầm một job chưa quá hạn của nó.</p>
+<div class="note trap"><span class="tag">Vế thứ hai là bản vá</span>
+<p>Luồng máy-thợ đang <em>chạy</em> job thì không gọi <code>/next</code>, mà một ngành Shopee chạy 40–80 giây — dài hơn <code>WORKER_TTL_S</code>. Khi cả hai luồng cùng bận, backend không nghe tin gì quá 40 giây và kết luận &ldquo;chưa có máy-thợ nào online&rdquo; dù trang vẫn chạy đều.</p>
+<p>Đêm 14/09/2026, lượt cào trúng đúng một khoảnh khắc như thế lúc 04:52 và ghi <code>error</code> cho <strong>297 ngành còn lại trong 10 giây</strong> — trong khi nhật ký truy cập cho thấy trang thợ vẫn hỏi job 548 lần thành công tới tận sáng.</p></div>
+
+<h3>Một lỗi đồng bộ đáng nhớ: future sai vòng sự kiện</h3>
+<p>Lịch đêm chạy mỗi job bằng <code>asyncio.run()</code> trong luồng riêng, nên future của job thuộc vòng của luồng lịch, còn <code>deliver_result</code> gọi <code>set_result</code> từ vòng của uvicorn — xuyên luồng, không an toàn và <strong>không đánh thức</strong> bên đang chờ.</p>
+<p>Bên chờ chỉ tỉnh khi <code>wait_for</code> hết hạn, thấy future đã có kết quả, rồi <strong>trả về như thành công</strong>. Đo đêm 14/09/2026: 150/150 ngành Shopee &ldquo;ok&rdquo; đều mất <em>đúng</em> 180 giây (= hạn <code>RS_SHOPEE</code>), so với trung vị 86 giây khi chạy tay qua HTTP hôm 10/09. Lượt đêm chậm gấp đôi mà không một dòng lỗi nào nói ra.</p>
+<p>Chữa bằng cách chuyển lời gọi sang đúng vòng của server: <code>asyncio.run_coroutine_threadsafe(..., _server_loop)</code>.</p>
+</section>
+
+<!-- ══════════════════ 03 ══════════════════ -->
+<section id="s3">
+<h2 class="sec"><span class="num">03</span>Chống bị nhận là bot — nguyên lý</h2>
+<p class="sub">Câu trả lời ngắn: <strong>không chống.</strong> Hệ thống không cố tỏ ra giống trình duyệt thật — nó <em>là</em> một trình duyệt thật, của một người thật, đã đăng nhập thật.</p>
+
+<figure>
+<div class="fbox">
+<svg viewBox="0 0 580 318" role="img" aria-label="So sánh fetch từ service worker và fetch trong tab sàn">
+  <defs>
+    <marker id="b3s" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar-s"/></marker>
+    <marker id="b3k" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar-k"/></marker>
+  </defs>
+
+  <text x="14" y="18" class="ts">CÁCH SAI — đã đo, Shopee trả 403</text>
+  <rect x="10" y="26" width="200" height="52" rx="5" class="bx-stop"/>
+  <text x="110" y="46" class="tb" text-anchor="middle">service worker</text>
+  <text x="110" y="63" class="tc" text-anchor="middle">chrome-extension://</text>
+  <path d="M212 52 L350 52" class="ln-s" marker-end="url(#b3s)"/>
+  <text x="222" y="44" class="tm">fetch() — CROSS-ORIGIN</text>
+  <text x="222" y="70" class="tm">không mang ngữ cảnh</text>
+  <rect x="352" y="26" width="218" height="52" rx="5" class="bx2"/>
+  <text x="461" y="46" class="tb" text-anchor="middle">shopee.vn</text>
+  <text x="461" y="64" class="ts" text-anchor="middle">403 — dù đã đăng nhập</text>
+
+  <text x="14" y="112" class="tk">CÁCH ĐÚNG — request đến TỪ chính trang shopee.vn</text>
+  <rect x="10" y="120" width="170" height="64" rx="5" class="bx"/>
+  <text x="95" y="140" class="tb" text-anchor="middle">service worker</text>
+  <text x="95" y="158" class="tm" text-anchor="middle">chỉ điều phối,</text>
+  <text x="95" y="173" class="tm" text-anchor="middle">KHÔNG gọi mạng</text>
+  <path d="M182 152 L246 152" class="ln-k" marker-end="url(#b3k)"/>
+  <text x="188" y="144" class="tc">executeScript</text>
+  <text x="188" y="172" class="tc">world: 'MAIN'</text>
+
+  <rect x="248" y="112" width="322" height="80" rx="5" class="bx-kho"/>
+  <text x="264" y="132" class="tb">Tab thật đang mở shopee.vn</text>
+  <text x="264" y="151" class="tm">mã tiêm vào chạy TRONG ngữ cảnh trang</text>
+  <text x="264" y="167" class="tm">fetch(..., credentials: 'include') là SAME-ORIGIN</text>
+  <text x="264" y="184" class="tm">mang đủ cookie, referer, fingerprint của trang</text>
+  <path d="M409 192 L409 214" class="ln-k" marker-end="url(#b3k)"/>
+  <rect x="248" y="216" width="322" height="38" rx="5" class="bx2"/>
+  <text x="409" y="240" class="tk" text-anchor="middle">200 — y như chính Shopee tự gọi</text>
+
+  <rect x="10" y="274" width="560" height="38" rx="5" class="bx2"/>
+  <text x="26" y="296" class="tm">Hệ quả an ninh đi kèm: cookie KHÔNG bao giờ rời trình duyệt đó. Backend nhận về JSON,</text>
+  <text x="26" y="311" class="tm">không bao giờ nhận cookie hay token của người vận hành.</text>
+</svg>
+</div>
+<figcaption>Bài học đo được, ghi ngay đầu <code>background.js</code>: fetch thẳng từ service worker là cross-origin nên Shopee trả 403 dù đã đăng nhập — request không đến từ trang shopee.vn.</figcaption>
+</figure>
+
+<h3>Ba mức leo thang, chọn mức rẻ nhất còn dùng được</h3>
+<div class="tw"><table>
+<thead><tr><th>Mức</th><th>Cách lấy</th><th>Dùng cho</th><th>Vì sao không dùng cho phần còn lại</th></tr></thead>
+<tbody>
+<tr><td class="numc">1</td><td>HTTP thẳng từ VPS</td><td>Shopee autocomplete, Amazon, Taobao/1688 gợi ý, DuckDuckGo, Bing</td><td>Endpoint công khai, không đòi chữ ký</td></tr>
+<tr><td class="numc">2</td><td>Playwright headless trên VPS</td><td>(gần như đã bỏ)</td><td>Không bị chặn thẳng, nhưng <strong>bị phục vụ bản nghèo</strong>: Google Trends trả 23 dòng không có cột &ldquo;Thay đổi&rdquo;, Chrome thật ra 50 dòng đủ cột. Facebook thì soft-block cả headless lẫn headed, trả 200 kèm 0 kết quả</td></tr>
+<tr><td class="numc">3</td><td>Extension trong Chrome thật đã đăng nhập</td><td>Shopee, 1688, Taobao, Temu, TikTok, Douyin, Facebook Ad Library, Google Trends, Kalodata</td><td>Đây là mức đắt nhất — cần một máy luôn bật — nên chỉ dùng khi hai mức trên đã đo là không được</td></tr>
+</tbody></table></div>
+
+<div class="note why"><span class="tag">Hai kiểu &ldquo;bị chặn&rdquo; rất khác nhau</span>
+<p><strong>Chặn cứng</strong>: 403, 429, redirect sang trang đăng nhập, slider xác minh. Nhìn thấy được, báo lỗi được.</p>
+<p><strong>Phục vụ bản nghèo</strong>: HTTP 200, cấu trúc đúng, chỉ là <em>ít dữ liệu hơn</em> hoặc <em>thiếu trường</em>. Temu trả 500/403 cho request không có <code>anti-content</code>; Google trả 200 kèm một trang chuyển hướng bằng JS ~93KB không có thẻ <code>&lt;h3&gt;</code> nào; 1688 ở chế độ xuyên biên giới trả tên tiếng Anh và một cấu trúc <strong>không có trường số bán nào</strong> — mà vẫn <code>SUCCESS</code>, vẫn đủ 60 sản phẩm.</p>
+<p>Kiểu thứ hai nguy hiểm hơn nhiều: không có lỗi nào để bắt, và cách duy nhất phát hiện là <strong>so với Chrome thật</strong>.</p></div>
+
+<h3>Ranh giới an ninh của relay</h3>
+<p><code>ALLOWED_TYPES</code> trong <code>worker_relay.py</code> là danh sách trắng cứng các loại job. Ghi chú trong code nói rõ: <em>&ldquo;là ranh giới an ninh, không phải quy ước đặt tên&rdquo;</em> — thiếu nó thì ai gọi được relay cũng sai khiến được trình duyệt-thợ gọi mạng tới nơi tuỳ ý. Có thêm token tuỳ chọn <code>RELAY_WORKER_TOKEN</code> cho <code>/next</code> và <code>/result</code>.</p>
+</section>
+
+<!-- ══════════════════ 04 ══════════════════ -->
+<section id="s4">
+<h2 class="sec"><span class="num">04</span>Bốn kỹ thuật scrape cụ thể</h2>
+
+<h3>Kỹ thuật 1 — chạy fetch trong tab của sàn</h3>
+<p>Đã mô tả ở mục 03. Hai chi tiết vận hành đi kèm:</p>
+<ul>
+<li><strong>Tab pool</strong>: <code>ensureTab(host)</code> tìm theo ba nguồn, theo thứ tự — tab của chính extension, rồi tab của sàn mà <em>người dùng</em> đang tự mở, cuối cùng mới mở tab mới. Tab mượn của người dùng <strong>không</strong> được ghi vào kho vì nó không phải của ta, không được hạ nhiệt hay đóng.</li>
+<li><strong>Dọn tab</strong>: <code>chrome.alarms</code> mỗi phút đóng tab đã rảnh quá hạn. Phải dùng <code>alarms</code> chứ không <code>setInterval</code> — service worker MV3 bị treo giữa chừng và hẹn giờ chết theo. Tab đang <strong>hiện trước</strong> thì bỏ qua: đó chính là tab người vận hành đang ngồi giải slider.</li>
+<li><strong>Cờ bận</strong>: <code>busySlots</code> giữ trong RAM. Thiếu nó thì người dọn sẽ đóng đúng cái tab job đang dùng dở — một lỗi chỉ hiện ra ở những lượt tìm dài, tức đúng những lượt đắt nhất.</li>
+</ul>
+
+<h3>Kỹ thuật 2 — ký sinh request của chính trang</h3>
+<p>Với những sàn mà request <strong>phải có chữ ký</strong> do JS của trang sinh runtime, không thể tự dựng request. Giải pháp: để <em>chính trang</em> gọi, rồi chộp lấy response.</p>
+
+<figure>
+<div class="fbox">
+<svg viewBox="0 0 580 330" role="img" aria-label="Cơ chế ký sinh request bằng page-hook">
+  <defs>
+    <marker id="b4" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar"/></marker>
+    <marker id="b4k" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar-k"/></marker>
+  </defs>
+
+  <rect x="10" y="10" width="560" height="46" rx="5" class="bx"/>
+  <text x="26" y="30" class="tb">① page-hook.js cài từ document_start, world MAIN</text>
+  <text x="26" y="47" class="tm">bọc window.fetch và XMLHttpRequest TRƯỚC khi trang kịp gọi lần đầu</text>
+  <path d="M290 56 L290 76" class="ln" marker-end="url(#b4)"/>
+
+  <rect x="10" y="78" width="560" height="46" rx="5" class="bx"/>
+  <text x="26" y="98" class="tb">② extension điều hướng tab tới URL tìm kiếm</text>
+  <text x="26" y="115" class="tm">chrome.tabs.update(tabId, {url, active: false}) — không cướp focus của người dùng</text>
+  <path d="M290 124 L290 144" class="ln" marker-end="url(#b4)"/>
+
+  <rect x="10" y="146" width="560" height="52" rx="5" class="bx-ai"/>
+  <text x="26" y="166" class="tb">③ TRANG TỰ GỌI API CỦA CHÍNH NÓ — và tự ký</text>
+  <text x="26" y="184" class="tm">Taobao: mtop sign + cookie x5sec (Baxia) &middot; Temu: token anti-content</text>
+  <text x="26" y="199" class="tm">Shopee: search_items có chữ ký chống bot riêng — ta không đụng vào cái nào cả</text>
+  <path d="M290 198 L290 218" class="ln-k" marker-end="url(#b4k)"/>
+
+  <rect x="10" y="220" width="560" height="56" rx="5" class="bx-kho"/>
+  <text x="26" y="238" class="tb">④ Hook chộp response, cất vào window.__rsCap</text>
+  <text x="26" y="255" class="tm">chỉ giữ URL khớp NEEDLES &middot; bộ đệm 40 phần tử, mới nhất ở cuối</text>
+  <text x="26" y="271" class="tm">song song: window.__rsSeen ghi MỌI URL đi qua (không kèm body) để chẩn đoán</text>
+  <path d="M290 276 L290 292" class="ln-k" marker-end="url(#b4k)"/>
+
+  <rect x="10" y="294" width="560" height="32" rx="5" class="bx2"/>
+  <text x="290" y="315" class="tm" text-anchor="middle">⑤ background đọc __rsCap ra bằng executeScript rồi gửi về backend</text>
+</svg>
+</div>
+<figcaption>Không reimplement chữ ký nào. Chữ ký xoay liên tục và không bền; response thì luôn là response.</figcaption>
+</figure>
+
+<p>Bộ lọc trong <code>push()</code> có ba luật, mỗi luật là một lần bộ đệm 40 phần tử từng bị đẩy trôi:</p>
+<ul>
+<li>Facebook bắn rất nhiều <code>/api/graphql</code> (filter options, đếm&hellip;) &rarr; chỉ giữ response <strong>có</strong> <code>ad_archive_id</code>.</li>
+<li>Google Trends bắn 4 widget mỗi lần tải trang &rarr; chỉ giữ widget <code>relatedsearches</code>.</li>
+<li>Trang Trends mới bắn một RPC nặng 4,5 MB &rarr; bỏ response dài hơn 1,5 MB. Giữ nó là bắt relay chở 4,5 MB qua mạng mỗi lượt, trong khi bảng cần đọc chỉ vài chục KB.</li>
+</ul>
+
+<div class="note why"><span class="tag">Sổ tên __rsSeen — rẻ tới mức bật thường trực được</span>
+<p>Khi một nguồn hết giờ tay không, <code>__rsCap</code> rỗng nên không ai biết trang đã gọi những gì — mà đó chính là lúc cần biết nhất: sàn đổi tên API thì <code>NEEDLES</code> hết khớp, và triệu chứng <strong>y hệt</strong> &ldquo;sàn không trả kết quả&rdquo;. Sổ này chỉ giữ chuỗi URL, cắt còn 160 ký tự, tối đa 60 mục.</p></div>
+
+<h3>Kỹ thuật 3 — tự ký, khi ký được (1688)</h3>
+<p>1688 là ngoại lệ: chữ ký mtop <em>có thể</em> tự dựng, nên không cần ký sinh.</p>
+<pre>sign = md5( _m_h5_tk_token + <span class="c">'&amp;'</span> + timestamp + <span class="c">'&amp;'</span> + appKey + <span class="c">'&amp;'</span> + data )</pre>
+<ul>
+<li>Token lấy từ cookie <code>_m_h5_tk</code> — <strong>phải đọc same-origin</strong>, nên tab được đưa về <code>h5api.m.1688.com</code> trước.</li>
+<li>Chọn <code>h5api.m.1688.com</code> vì nó <strong>không redirect login</strong>, khác <code>www</code> và <code>s.1688.com</code>.</li>
+<li>Thử tối đa <strong>3 lần</strong>: lần đầu có thể <code>FAIL_SYS_TOKEN</code> (token rỗng hoặc hết hạn) nhưng server <strong>set lại cookie</strong> <code>_m_h5_tk</code> &rarr; lần sau ký đúng. Đây là nhịp chuẩn của mtop.</li>
+<li><code>sortType = va_rmdarkgmv30rt</code> (GMV 30 ngày giảm dần) chứ không phải <code>booked</code>: sort <code>booked</code> trả <code>bookedCount</code> toàn <strong>0</strong>, sort này mới có số bán thật cộng chuỗi <code>已售…件</code>.</li>
+</ul>
+
+<h3>Kỹ thuật 4 — nhịp người, không nhịp máy</h3>
+<div class="tw"><table>
+<thead><tr><th>Biện pháp</th><th>Con số</th><th>Đo được gì</th></tr></thead>
+<tbody>
+<tr><td>Nghỉ giữa hai lượt 1688</td><td class="numc">4 giây</td><td>Cào liền mạch = ~50 request/phút, và 30 ngành đầu đã dính <code>FAIL_SYS_USER_VALIDATE</code>. 4 giây đưa về ~12 request/phút; 205 ngành vẫn chỉ mất ~18 phút</td></tr>
+<tr><td>Jitter giữa các request trong một batch</td><td class="numc">400–900 ms ngẫu nhiên</td><td><code>fetchInTab</code> chèn <code>400 + random(500)</code> ms giữa mỗi cặp request</td></tr>
+<tr><td>Một tab cho mỗi tên miền</td><td class="numc">—</td><td>Không đẻ tab mới cho mỗi lượt; tab được dùng lại và điều hướng</td></tr>
+<tr><td>Điều hướng ngầm</td><td class="numc"><code>active: false</code></td><td>Không cướp focus, người vận hành vẫn dùng máy bình thường</td></tr>
+<tr><td>Cào theo top ngành, không cào tràn lan</td><td class="numc">60–100 listing/ngành</td><td>Trang đầu Shopee là 60 mục; sâu hơn thì đuôi gần như không bao giờ lọt Top 10</td></tr>
+</tbody></table></div>
+<div class="note why"><span class="tag">Điểm đáng nói nhất</span>
+<p>Không có dòng nào trong hệ này giả mạo User-Agent, xoay proxy, hay vá fingerprint cho Shopee/1688. Thứ duy nhất được điều chỉnh là <strong>nhịp</strong> và <strong>đường đi</strong> — vì phiên thật thì không cần nguỵ trang.</p>
+<p>Ngoại lệ duy nhất là TikTok, nơi có <code>TIKTOK_PROXY_&lt;CC&gt;</code> để hỏi gợi ý theo từng nước; đó là chuyện <em>đổi vị trí địa lý</em>, không phải chuyện né bot.</p></div>
+</section>
+
+<!-- ══════════════════ 05 ══════════════════ -->
+<section id="s5">
+<h2 class="sec"><span class="num">05</span>Ba loại tường và cách xử từng loại</h2>
+<p class="sub">Bị chặn là chuyện bình thường, không phải sự cố. Điều quyết định một đêm cào sống hay chết là <strong>phản ứng</strong> đúng với từng loại tường.</p>
+
+<h3>Tường 1 — Shopee đòi đăng nhập</h3>
+<h4>Phát hiện</h4>
+<p>Mã tiêm trong tab đọc hai dấu hiệu, và chỉ cần một:</p>
+<pre><span class="c">/\/(buyer\/)?login|\/verify/i</span>.test(location.href)
+<span class="c">||  /verify|captcha|robot|xác minh/i</span>.test(document.body.innerText.slice(0, 300))</pre>
+<p>Trả về <code>{ blocked: true, reason: 'login' }</code> và <strong>đưa tab ra trước</strong> để người vận hành thấy.</p>
+
+<h4>Phản ứng, ba tầng</h4>
+<ol class="body">
+<li><strong>Extension</strong>: dừng ngay, <strong>không</strong> chộp tiếp trang 2.</li>
+<li><strong>Backend, mức một ngành</strong>: ném <code>SanDoiDangNhap</code> và <strong>không thử lượt thứ hai</strong>. Lượt hai chỉ nhân đôi thời gian chờ (~40 &rarr; ~80 giây mỗi ngành) mà không đổi được kết quả — trang đăng nhập không tự đi.</li>
+<li><strong>Backend, mức cả lượt</strong>: đếm số ngành <strong>liên tiếp</strong> gặp tường; <code>DUNG_SAU_DANG_NHAP = 3</code> thì dừng cả lượt của sàn đó.</li>
+</ol>
+<div class="note why"><span class="tag">Vì sao ba chứ không phải một</span>
+<p>Một lần đơn lẻ có thể là trang xác minh thoáng qua; ba lần liền thì là tường thật. Và tường thật <strong>không tự biến mất giữa hai ngành</strong> — thử tiếp chỉ đốt thời gian, rồi lượt vá làm lại đúng danh sách lỗi đó thêm một lần nữa.</p>
+<p>Sáng 15/09/2026 Shopee PH đòi đăng nhập từ 07:12. Không có chốt này, vòng cào đi tiếp qua từng ngành còn lại, mỗi ngành chờ ~80 giây rồi lỗi — và vì vòng lịch từng chạy tuần tự nên nó đốt luôn giờ của <code>sig1688</code>.</p></div>
+<div class="note trap"><span class="tag">Câu báo lỗi phải dựng ở backend, không ở extension</span>
+<p>Extension viết cứng &ldquo;mở shopee.vn&rdquo;, nên sáng 15/09 <code>crawl_log</code> bảo người đọc mở <em>shopee.vn</em> trong khi sàn đang chặn là <em>Shopee PH</em>. Backend dựng lại câu này bằng <code>domain</code> thật — và quan trọng hơn: sửa extension thì phải Reload thủ công trong Chrome máy-thợ, còn backend thì đúng ngay từ lần restart.</p></div>
+
+<h3>Tường 2 — 1688 bắt kéo slider (Baxia)</h3>
+<h4>Phát hiện</h4>
+<p>mtop trả <code>ret[0]</code> chứa <code>FAIL_SYS_USER_VALIDATE</code>. Backend nhận diện bằng <code>_la_captcha</code>: khớp <code>VALIDATE|punish|bắt xác minh</code>.</p>
+
+<h4>Phản ứng</h4>
+<ol class="body">
+<li><strong>Extension</strong> mở <code>openVerifyTab('verify:1688', url)</code> với <strong>đúng địa chỉ</strong> mà mtop trả về ở <code>data.url</code>, <code>active: true</code> có chủ đích — mở lén ở tab nền thì không ai biết mà giải. Một tab xác minh cho mỗi sàn, dùng lại thay vì mở thêm: giải một lần là đủ cho cả máy vì cookie <code>x5sec</code> theo hồ sơ Chrome.</li>
+<li><strong>Backend</strong> gửi <strong>một</strong> mail cảnh báo, rồi <strong>chờ tối đa 60 phút</strong>, thử lại <em>đúng ngành đang dở</em> mỗi <strong>120 giây</strong>.</li>
+</ol>
+<div class="note why"><span class="tag">Vì sao chờ chứ không dừng hẳn</span>
+<p>Sáng 18/09/2026 slider bật giữa chừng và 182/205 ngành hỏng liền một mạch — vòng cào cứ đi tiếp, mỗi ngành một lỗi, trong khi slider đã bật thì ngành nào sau đó cũng hỏng cho tới khi có người kéo. Đi tiếp là vô ích; dừng hẳn thì phải chạy lại tay. Chờ kèm báo mail thì người trực kéo xong là vòng cào <strong>tự chạy nốt</strong>.</p>
+<p>Nhịp 2 phút chứ không dày hơn: mỗi lần thử lại, extension mở lại tab xác minh với địa chỉ mới — thử dày quá thì tab bị nạp lại đúng lúc người ta đang kéo.</p></div>
+<div class="note trap"><span class="tag">Chi tiết đã sửa: mở đúng chỗ để giải</span>
+<p>Khi mtop <strong>không</strong> trả <code>data.url</code>, dòng cũ rơi về trang chủ 1688 — nơi không có slider nào cả. Người vận hành mở ra, thấy một trang bình thường, tưởng đã giải xong, và lần cào sau vẫn chặn y hệt. Câu báo lỗi cũ lại giấu cả mã gốc lẫn địa chỉ, nên không cách nào phân biệt <em>&ldquo;giải sai chỗ&rdquo;</em> với <em>&ldquo;giải rồi vẫn bị chặn&rdquo;</em> — hai lỗi chữa bằng hai cách khác hẳn.</p>
+<p>Nay <code>trace</code> chở cả <code>ret</code> (mã gốc của sàn) lẫn <code>verifyUrl</code>, và câu báo lỗi nói thẳng khi không có địa chỉ thật.</p></div>
+<p>Đây cũng chính là lý do <code>sig1688</code> chạy <strong>09:00</strong> chứ không phải nửa đêm: cookie <code>x5sec</code> hết hiệu lực sau vài giờ, nên một lượt cào lúc 00:00 không ai canh sẽ hỏng sạch cả 205 ngành. Đánh đổi đã chấp nhận: dữ liệu 1688 trễ hơn Shopee 8 tiếng — được, vì nó là nguồn tra <strong>giá vốn</strong>, không phải nguồn của bảng xếp hạng.</p>
+
+<h3>Tường 3 — bị phục vụ bản nghèo (không báo lỗi gì)</h3>
+<div class="tw"><table>
+<thead><tr><th>Nơi</th><th>Triệu chứng</th><th>Cách phát hiện</th></tr></thead>
+<tbody>
+<tr><td>1688 chế độ xuyên biên giới</td><td><code>SUCCESS</code>, đủ 60 sản phẩm, tên tiếng Anh, <strong>không có trường số bán nào</strong></td><td>Bắt buộc dùng tên ngành tiếng Trung. Ai đổi ngôn ngữ tài khoản là vòng cào im lặng ghi 0 dòng mỗi đêm</td></tr>
+<tr><td>Google Trends qua Playwright</td><td>200, 23 dòng, không có bảng &ldquo;đang tăng&rdquo;, không có cột &ldquo;Thay đổi&rdquo;</td><td>Chrome thật ra 50 dòng đủ cột — chỉ so mới biết</td></tr>
+<tr><td>Google search từ VPS</td><td>200 kèm trang chuyển hướng bằng JS ~93KB, <strong>không một thẻ <code>&lt;h3&gt;</code></strong>, cho mọi truy vấn</td><td>Đếm số kết quả bóc được</td></tr>
+<tr><td>Facebook Ad Library</td><td>200 kèm 0 kết quả, cả headless lẫn headed</td><td>Chrome thật của máy-thợ ra &gt;50k</td></tr>
+<tr><td>mtop 1688 phiên hạ quyền</td><td><code>SUCCESS</code> nhưng <code>data.data.OFFER.items</code> rỗng</td><td>Code khai ra <strong>hình dạng thật</strong>: liệt kê khoá của <code>OFFER</code>, mảng nào dài bao nhiêu</td></tr>
+</tbody></table></div>
+<div class="note why"><span class="tag">Luật chung rút ra</span>
+<p>Rỗng mà không báo gì là kiểu hỏng tệ nhất, vì nó có nhiều nguyên nhân không phân biệt được từ ngoài: từ khoá thật sự không có hàng, sàn đổi hình dạng phản hồi, hay phiên bị hạ quyền. Nên mọi nhánh &ldquo;0 dòng&rdquo; trong hệ này đều <strong>khai ra hình dạng thật</strong>: <code>trace["mau"]</code> (một sản phẩm mẫu), <code>trace["mau_keys"]</code> (danh sách khoá), <code>trace["shape"]</code> (cấu trúc khi bóc hụt), <code>trace["ret"]</code> và <code>trace["verifyUrl"]</code>.</p>
+<p>&ldquo;60 sản phẩm, 0 dòng ghi&rdquo; đọc y hệt &ldquo;sàn không có hàng&rdquo;, trong khi hai chuyện đó cách nhau rất xa — một cái là sàn rỗng, một cái là ta bóc hụt trường.</p></div>
+</section>
+
+<!-- ══════════════════ 06 ══════════════════ -->
+<section id="s6">
+<h2 class="sec"><span class="num">06</span>Tự bắn vào chân — lỗi trông giống hệt bị chặn</h2>
+<p class="sub">Phần lớn thời gian gỡ lỗi của hệ này không tiêu cho việc né bot, mà cho những lỗi <em>của chính mình</em> có triệu chứng y hệt bị chặn.</p>
+
+<h3>Nhiễm chéo từ khoá — nguy hiểm nhất</h3>
+<p><code>executeScript</code> có thể chạy trúng <strong>tài liệu cũ</strong> khi <code>tabs.update</code> chưa commit xong. Lúc đó <code>__rsCap</code> còn nguyên <code>search_items</code> của lần trước, vòng lặp thấy có <code>texts</code> nên thoát ngay và trả kết quả của <strong>từ khoá trước</strong> kèm cờ thành công.</p>
+<div class="note trap"><span class="tag">Đã xảy ra thật</span>
+<p>Một mẻ 10 từ khoá bị tráo chéo mà <strong>không lớp nào phía sau nghi ngờ gì</strong>.</p></div>
+<p>Chữa bằng cách chỉ nhận JSON của đúng thứ đang hỏi, đọc từ <strong>chính URL của response</strong>:</p>
+<ul>
+<li>So <code>keyword=</code> / <code>match_id</code> / <code>catid</code> trong URL của JSON với thứ đang hỏi, sau khi <code>decodeURIComponent</code> và chuẩn hoá khoảng trắng.</li>
+<li>Với đường danh mục, <strong>phải kèm đúng offset</strong>: hai trang của cùng một danh mục mang <strong>cùng</strong> <code>match_id</code>, nên riêng nó không phân biệt được trang 1 với trang 2. Shopee đánh offset bằng <code>newest=0 / 60 / 120</code> — đó mới là thứ khác nhau. Thiếu điều kiện này thì lượt chụp trang 2 nhận lại response của trang 1 còn sót, và cả danh mục dừng ở 60 mục thay vì 100.</li>
+<li><strong>Không</strong> chặn thêm bằng &ldquo;đang đứng đúng trang&rdquo;: Shopee đá một số truy vấn sang trang danh mục (URL không còn <code>keyword=</code>), chặn hai lớp làm hụt 6/10 từ khoá.</li>
+<li>Khi có JSON của từ khoá <em>khác</em> mà không có của mình, code báo ra luôn (<code>nOther</code>, <code>capKw</code>) để lần sau khỏi phải đoán.</li>
+</ul>
+
+<h3>Bấm nhầm thanh sắp xếp của trang cũ</h3>
+<p><code>?sortBy=sales</code> thường tự chọn đúng tab &ldquo;Bán chạy&rdquo;, nhưng khi không ăn thì trang trả về danh sách &ldquo;Phổ biến&rdquo; — hỏng <strong>không nhìn ra được</strong> ở phía sau: vẫn đủ 60 sản phẩm, vẫn có <code>sold_count</code>, chỉ thứ tự là của một bảng xếp hạng khác. Mà <code>rank</code> của ta <em>chính là</em> thứ tự ấy.</p>
+<p>Nên có một bước bấm tay dự phòng. Ba điều kiện bắt buộc của bước đó:</p>
+<ol class="body">
+<li><strong>Phải đợi trang đích tải xong.</strong> <code>chrome.tabs.update</code> trả về ngay, lúc đó tab vẫn còn là danh mục <em>trước</em>. Bản đầu không kiểm gì cả nên nó tìm thấy thanh sắp xếp của trang cũ rồi bấm — và cú bấm ấy tự điều hướng tab đi chỗ khác, làm mất trang đích. So khớp bằng <strong>mã</strong> trong <code>location.pathname</code> chứ không bằng cả URL, vì Shopee tự viết lại slug và thêm tham số theo dõi sau khi tải.</li>
+<li><strong>Không bấm lại tab đang chọn.</strong> Đọc <code>className</code> của chính nó và của thẻ cha gần nhất, tìm <code>active|selected</code>. Bấm lại làm trang bắn thêm một lượt <code>search_items</code> đua với lượt đang chờ chộp.</li>
+<li><strong>Không <code>await</code> trần.</strong> <code>executeScript</code> với <code>func</code> trả Promise sẽ chờ Promise ấy settle; nếu tab điều hướng giữa chừng thì ngữ cảnh trang bị huỷ và Promise <strong>không bao giờ</strong> settle — lời gọi treo vĩnh viễn, <code>try/catch</code> không đỡ được vì chẳng có lỗi nào được ném. Phải <code>Promise.race</code> với một đồng hồ 12 giây.</li>
+</ol>
+<div class="note trap"><span class="tag">Kiểu lỗi mà phép thử một danh mục không bao giờ bắt được</span>
+<p>Đo 10/09/2026: bước này chạy đúng ở danh mục <strong>đầu tiên</strong> (tab còn ở trang chủ, không có điều hướng nào chen vào) rồi treo ở mọi danh mục sau.</p></div>
+
+<h3>Slug rỗng và slug mất dấu</h3>
+<ul>
+<li>Link chép thẳng từ sheet có dạng <code>/-cat.X.Y</code> với <strong>slug rỗng</strong>, và Shopee trả 404 cho slug rỗng. Sheet ghi link đó để <em>người</em> bấm, không phải để máy tải — extension tự ghép slug từ tên ngành.</li>
+<li>Slug phải <strong>bỏ dấu trước khi lọc</strong>. <code>[^\w]+</code> xoá luôn chữ có dấu: &ldquo;Áo&rdquo; thành <code>o</code>, &ldquo;Đồ Chơi&rdquo; thành <code>Chi</code>. Chuẩn hoá NFD rồi cắt dấu thanh mới ra <code>Ao</code>, <code>Do-Choi</code>.</li>
+</ul>
+
+<h3>Bảng tổng kết: triệu chứng giống nhau, nguyên nhân khác hẳn</h3>
+<div class="tw"><table>
+<thead><tr><th>Cùng một triệu chứng</th><th>Có thể là</th><th>Phân biệt bằng</th></tr></thead>
+<tbody>
+<tr><td rowspan="4">&ldquo;Hết giờ, 0 dòng&rdquo;</td><td>Sàn chặn thật</td><td><code>reason: 'login'</code>, <code>ret</code> chứa VALIDATE</td></tr>
+<tr><td>Máy chạy quá chậm (VPS hết RAM)</td><td>Chộp được ở danh mục đầu rồi hỏng dần</td></tr>
+<tr><td>Hạn giờ của <em>ta</em> cắt trước</td><td>Thời gian hỏng đúng bằng một con số trong bảng hạn</td></tr>
+<tr><td>Cầu nối extension chết (vừa Reload)</td><td><code>ping()</code> trả false, chuỗi &ldquo;context invalidated&rdquo;</td></tr>
+<tr><td rowspan="2">&ldquo;Sàn không có hàng&rdquo;</td><td>Ngành thật sự hết hàng</td><td><code>crawl_log.status = 'empty'</code></td></tr>
+<tr><td>Bóc hụt trường / sàn đổi cấu trúc</td><td><code>trace["mau_keys"]</code>, <code>trace["shape"]</code></td></tr>
+</tbody></table></div>
+</section>
+
+<!-- ══════════════════ 07 ══════════════════ -->
+<section id="s7">
+<h2 class="sec"><span class="num">07</span>Ghi vào kho</h2>
+
+<h3><code>listings_snapshot</code> — append-only</h3>
+<p>Một dòng = <strong>một listing × một ngày × một mã ngành</strong>. Khoá chính: <code>(platform, market, product_id, day, category_code)</code>.</p>
+<pre>INSERT OR <span class="c">IGNORE</span>   <span class="c">— trùng thì giữ lần chụp ĐẦU TIÊN</span></pre>
+<div class="note why"><span class="tag">Vì sao IGNORE, trong khi bảng Trends dùng REPLACE</span>
+<p>Cào lại lần hai trong cùng một ngày phải <strong>không đổi được</strong> mốc đã ghi: giữ lần chụp đầu thì khoảng cách giữa hai mốc luôn xấp xỉ 24 giờ. Cho phép đè thì mốc trôi dần về cuối ngày, và <code>bán/ngày</code> co giãn theo giờ chạy cron chứ không theo nhu cầu thật.</p>
+<p><code>trends_daily</code> ngược lại dùng REPLACE, vì Google chuẩn hoá lại <em>toàn bộ</em> chuỗi mỗi lần truy vấn — giữ bản cũ là để lẫn hai mốc chuẩn hoá trong cùng một chuỗi.</p></div>
+<p>Ngày quét lấy theo <strong>giờ Việt Nam</strong> (<code>db.hom_nay</code>). Từng là ngày UTC, và nó lệch một ngày với lịch chạy 01:00.</p>
+
+<h3>Sự vắng mặt cũng là dữ liệu</h3>
+<p>Chỉ cào sản phẩm <strong>lọt top</strong> của từng danh mục, không cào tràn lan. Sản phẩm rơi khỏi top thì đơn giản là <strong>ngày đó không có dòng</strong>; lịch sử cũ vẫn nguyên trong kho, và bảng Top 10 đọc ngày thiếu thành 0 điểm. Quay lại top thì lại có dòng. Không cần cột <code>out</code> nào.</p>
+
+<h3><code>crawl_log</code> — ghi cả khi hỏng</h3>
+<div class="tw"><table>
+<thead><tr><th>status</th><th>Nghĩa</th><th>Việc phải làm</th></tr></thead>
+<tbody>
+<tr><td><code>ok</code></td><td>Chạy xong, có dòng</td><td>Không gì cả — và lượt sau <strong>bỏ qua</strong> ngành này trong ngày</td></tr>
+<tr><td><code>empty</code></td><td>Chạy xong, sàn không trả gì</td><td>Không có gì để sửa</td></tr>
+<tr><td><code>error</code></td><td>Không chạy được</td><td>Thử lại — nên lượt sau <strong>không</strong> bỏ qua</td></tr>
+<tr><td>(không có dòng nào)</td><td>Chưa chạy tới</td><td><code>crawl_health.missing</code> đếm đúng nhóm này</td></tr>
+</tbody></table></div>
+<p>Bảng này ghi <code>REPLACE</code> — ngược với <code>listings_snapshot</code> ngay trên. Lý do: chạy lại một ngành trong ngày là để <strong>chữa</strong> lần hỏng trước, nên kết quả mới phải đè lên; ở bảng kia thì <em>mốc</em> mới là dữ liệu.</p>
+<div class="note why"><span class="tag">Không có crawl_log thì mọi con số mất nghĩa</span>
+<p>Một sản phẩm vắng mặt hôm nay có <strong>hai cách đọc trái ngược nhau</strong>: rớt khỏi top thật, hay hôm đó không cào được. Chỉ nhật ký cào phân biệt được.</p></div>
+
+<h3>Chạy tiếp được, và lượt vá</h3>
+<ul>
+<li>Mặc định bỏ qua ngành đã <code>ok</code> trong ngày &rarr; đứt giữa chừng thì gọi lại là <strong>làm nốt phần thiếu</strong>, không làm lại từ đầu. Với nhịp ~98 giây một ngành, làm lại từ đầu sau một lần đứt là mất cả buổi.</li>
+<li><code>job_sigcat</code> chạy <strong>bốn lượt</strong>: lớn &rarr; con &rarr; <em>lớn lần nữa</em> &rarr; <em>con lần nữa</em>. Hai lượt sau là lượt vá: nếu lượt chính đủ thì chúng chỉ đọc DB rồi thôi; ngành nào <code>error</code> hay chưa tới lượt thì được thử thêm một lần trước giờ làm việc.</li>
+<li><code>redo=True</code> để ép cào lại tất cả.</li>
+</ul>
+
+<h3>Dọn kho</h3>
+<p><code>job_dondep</code> 06:00 xoá dòng cũ hơn <strong>90 ngày</strong>, và <strong>cố ý không VACUUM</strong> — VACUUM khoá kho, mà nó chạy xen giữa <code>sigcat</code> và <code>sig1688</code>.</p>
+</section>
+
+<!-- ══════════════════ 08 ══════════════════ -->
+<section id="s8">
+<h2 class="sec"><span class="num">08</span>Từ snapshot thành chuỗi bán/ngày</h2>
+<p class="sub">Kho chỉ có các mốc lũy kế. Mọi lăng kính đều cần <strong>tốc độ bán</strong>. Hàm <code>_chuoi</code> làm cầu giữa hai thứ đó, và đây là phần khó nhất về số liệu của cả hệ.</p>
+
+<figure>
+<div class="fbox">
+<svg viewBox="0 0 580 340" role="img" aria-label="Cách chia đều lượng bán giữa hai lần quét">
+  <text x="14" y="22" class="tb">Kho có: các mốc LŨY KẾ, khoảng cách không đều</text>
+
+  <line x1="40" y1="90" x2="548" y2="90" class="ln"/>
+  <circle cx="70" cy="90" r="5" class="bx-kho"/>
+  <circle cx="210" cy="90" r="5" class="bx-kho"/>
+  <circle cx="280" cy="90" r="5" class="bx-kho"/>
+  <circle cx="520" cy="90" r="5" class="bx-kho"/>
+
+  <text x="70" y="62" class="tc" text-anchor="middle">08/09</text>
+  <text x="70" y="48" class="tm" text-anchor="middle">1.000</text>
+  <text x="210" y="62" class="tc" text-anchor="middle">10/09</text>
+  <text x="210" y="48" class="tm" text-anchor="middle">1.120</text>
+  <text x="280" y="62" class="tc" text-anchor="middle">11/09</text>
+  <text x="280" y="48" class="tm" text-anchor="middle">1.135</text>
+  <text x="520" y="62" class="tc" text-anchor="middle">16/09</text>
+  <text x="520" y="48" class="tm" text-anchor="middle">1.900</text>
+
+  <text x="140" y="112" class="tm" text-anchor="middle">Δ120 / 2 ngày</text>
+  <text x="140" y="127" class="tk" text-anchor="middle">60/ngày ×2</text>
+  <text x="245" y="112" class="tm" text-anchor="middle">Δ15 / 1</text>
+  <text x="245" y="127" class="tk" text-anchor="middle">15/ngày</text>
+  <text x="400" y="112" class="tm" text-anchor="middle">Δ765 / 5 ngày</text>
+  <text x="400" y="127" class="tk" text-anchor="middle">153/ngày ×5</text>
+
+  <rect x="10" y="146" width="560" height="44" rx="5" class="bx2"/>
+  <text x="26" y="166" class="tb">Ra: MỘT phần tử cho mỗi ngày lịch giữa lần quét đầu và cuối</text>
+  <text x="26" y="183" class="tm">Ngày trống (lịch đêm hỏng 08–10/09) không bị đếm thành &ldquo;ngày bán 0&rdquo;, cũng không bị gộp</text>
+
+  <rect x="10" y="204" width="560" height="126" rx="5" class="bx-stop"/>
+  <text x="26" y="225" class="ts">BA CHỐT LOẠI BƯỚC RÁC — bước bị loại để lại LỖ, không điền số bịa</text>
+  <text x="26" y="246" class="tb">1 &middot; Bộ đếm lùi</text>
+  <text x="150" y="246" class="tm">delta &lt; 0 = sàn tính lại, không phải bán âm</text>
+  <text x="26" y="266" class="tb">2 &middot; Lũy kế đứng</text>
+  <text x="150" y="266" class="tm">bước chậm hơn 30% mức sàn tự khai (chỉ xét khi sàn khai ≥ 3/ngày)</text>
+  <text x="26" y="286" class="tb">3 &middot; Bộ đếm nhảy</text>
+  <text x="150" y="286" class="tm">bước nhanh hơn 20 lần mức 30 ngày TRƯỚC đó</text>
+  <text x="26" y="308" class="tm">Cộng một chốt phụ: một bước bán nhiều hơn cả con số 30 ngày sàn tự khai (khi gap ≤ 30)</text>
+  <text x="26" y="324" class="tm">Đo trên kho: loại ~10% số bước (7.613 đứng + 58 nhảy / 75.391)</text>
+</svg>
+</div>
+<figcaption>Hai lần quét cách nhau <em>g</em> ngày thì lượng bán giữa chúng chia đều cho <em>g</em> ngày.</figcaption>
+</figure>
+
+<h3>Vì sao phải có ba chốt — hai ví dụ thật</h3>
+<div class="note trap"><span class="tag">Đo 18/09/2026, bảng Tăng tốc hiện &ldquo;+19.300%&rdquo;</span>
+<p>Một cây massage bán ~13.000 cái/30 ngày theo chính Shopee khai (&asymp; 430/ngày), <strong>mà lũy kế chỉ nhích 11 cái trong 4 ngày</strong> &rarr; nền 2,8/ngày. Rồi lũy kế chạy lại &rarr; 578/ngày. Tỷ số hai con số đó là +19.300%.</p>
+<p>Đó không phải hàng bùng nổ — đó là <strong>lũy kế cập nhật trễ</strong>. Ở Shopee PH còn kiểu ngược: lũy kế và bán-30-ngày <em>cùng</em> nhảy ×100 trong hai ngày (bộ đếm lật giữa hai phiên bản, hoặc gộp listing) &rarr; +146.144%.</p>
+<p>Sau khi thêm chốt: đỉnh % Tăng tốc VN 19.300 &rarr; <strong>1.221</strong>, PH 146.144 &rarr; <strong>1.300</strong>; số sản phẩm lọt lăng kính giảm ~7–10%.</p></div>
+<p>Chốt &ldquo;lũy kế đứng&rdquo; chỉ áp khi sàn khai <strong>&ge; 3 cái/ngày</strong> — hàng bán lèo tèo thì một ngày 0 là thật, không phải lỗi bộ đếm.</p>
+
+<h3>1688 đi một đường khác hẳn</h3>
+<pre>Shopee : rate = (lũy kế[t] − lũy kế[t−1]) / số ngày giữa hai mốc
+1688   : rate = sold_monthly / 30     <span class="c">tại MỖI lần quét</span></pre>
+<div class="note why"><span class="tag">Vì sao không dùng lũy kế của 1688</span>
+<p>Lũy kế 1688 bị <strong>làm tròn theo bậc</strong> (&ldquo;1万+&rdquo;), nên hiệu của nó toàn 0 rồi nhảy nghìn — ra đột biến giả. Dùng <code>bookedCount</code> (thành giao ~30 ngày, chính xác) chia 30 thì đó là một <strong>trung bình trượt 30 ngày</strong>.</p>
+<p>Hệ quả phải nói được khi bị hỏi: Tăng tốc trên 1688 vẫn có nghĩa, còn <strong>Đột biến gần như không bao giờ nổ trên 1688</strong> — vì chuỗi đã bị làm mượt, <em>không phải</em> vì sàn đó thiếu sóng.</p></div>
+
+<h3>Ba loại &ldquo;đã bán&rdquo; không cùng một thứ</h3>
+<div class="tw"><table>
+<thead><tr><th>Sàn</th><th>Trường</th><th>Loại</th><th>Cờ ghi vào kho</th></tr></thead>
+<tbody>
+<tr><td>Shopee</td><td><code>historical_sold_count</code></td><td>Lũy kế</td><td><code>sold_type='cumulative'</code></td></tr>
+<tr><td>1688</td><td>&ldquo;已售…件&rdquo; của <strong>chính shop đó</strong></td><td>Lũy kế, làm tròn xuống</td><td>theo từng dòng: <code>cumulative</code> hoặc <code>monthly</code></td></tr>
+<tr><td>Taobao</td><td><code>realSales</code></td><td><strong>Bán ~30 ngày</strong></td><td><code>sold_type='monthly'</code> — bảng Top 10 <strong>từ chối</strong> xếp hạng</td></tr>
+</tbody></table></div>
+<div class="note trap"><span class="tag">Cờ phải đi theo TỪNG DÒNG, không theo sàn</span>
+<p><code>SOLD_TYPE</code> là hằng số theo sàn, nên dòng 1688 rơi về <code>monthly</code> vẫn bị dán nhãn <code>cumulative</code>. Đo 11/09/2026 trên 240 dòng 1688: <strong>53 dòng (22%)</strong> mang số tháng mà nhãn ghi lũy kế. Trừ hai con số ấy giữa hai ngày sẽ cho ra tăng trưởng của một đại lượng <em>không tồn tại</em> — và nó trông hoàn toàn hợp lý.</p>
+<p>Trên 1688 còn một bẫy nữa trong chính chuỗi &ldquo;已售&rdquo;: <code>全网X+件</code> là số <strong>toàn sàn</strong> cho mẫu đó, không phải của shop này — phải bỏ, nếu không là thổi phồng tổng bán. Và nếu tổng (đã làm tròn xuống) lại <em>nhỏ hơn</em> số bán 30 ngày thì bỏ tổng, giữ số tháng chính xác.</p></div>
+
+<h3>Nạp dữ liệu — <code>_nap</code></h3>
+<ul>
+<li>Đọc tối đa <strong>90 ngày</strong> tính ngược từ ngày mới nhất <em>của chính các mã ngành đó</em>.</li>
+<li>Gom theo <code>product_id</code>, giữ <strong>một dòng mỗi ngày</strong>. Cùng sản phẩm hiện ở hai từ khoá 1688 trong cùng ngày thì giữ dòng có <code>sold_monthly</code> lớn hơn.</li>
+<li>Sau đó chỉ tính cho sản phẩm <strong>có mặt ở lần quét mới nhất</strong>: rớt khỏi danh sách hôm nay thì không còn &ldquo;đang tăng tốc&rdquo; hay &ldquo;đột biến&rdquo; nữa, và chuỗi của nó dừng ở một ngày cũ.</li>
+<li>Hàng ảo loại <strong>ngay tại đây</strong>, trước khi tính — vừa khỏi phải nhớ lọc lại ở từng lăng kính, vừa đỡ tính chuỗi cho những sản phẩm sẽ bị vứt.</li>
+</ul>
+</section>
+
+<!-- ══════════════════ 09 ══════════════════ -->
+<section id="s9">
+<h2 class="sec"><span class="num">09</span>Sáu lăng kính, công thức đầy đủ</h2>
+<p class="sub">Tất cả nằm trong <code>_tinh()</code> — một hàm, một sản phẩm, trả về mọi chỉ số và <em>nó lọt những lăng kính nào</em>. Công thức và các mức lấy nguyên từ tài liệu <code>Cach-tinh-tung-trang-thai.docx</code>; các số tô đỏ trong tài liệu nằm ở <code>NGUONG</code>.</p>
+
+<figure>
+<div class="fbox">
+<svg viewBox="0 0 580 452" role="img" aria-label="Thứ tự tính trong hàm _tinh">
+  <defs>
+    <marker id="b5" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar"/></marker>
+    <marker id="b5k" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar-k"/></marker>
+  </defs>
+
+  <rect x="10" y="8" width="560" height="52" rx="5" class="bx2"/>
+  <text x="26" y="28" class="tb">Đầu vào: mọi mốc ngày của MỘT sản phẩm trong MỘT ngành</text>
+  <text x="26" y="47" class="tm">luỹ kế = max(sold_cumulative, sold_monthly) &middot; bán-30-sàn = sold_monthly</text>
+  <path d="M290 60 L290 80" class="ln" marker-end="url(#b5)"/>
+
+  <rect x="10" y="82" width="560" height="34" rx="5" class="bx-kho"/>
+  <text x="26" y="104" class="tk">① Bán chạy — LUÔN có điểm = sold_monthly, không cần lịch sử</text>
+  <path d="M290 116 L290 136" class="ln" marker-end="url(#b5)"/>
+
+  <rect x="10" y="138" width="560" height="52" rx="5" class="bx-kho"/>
+  <text x="26" y="158" class="tk">② 🆕 Tân binh — XÉT TRƯỚC cửa &ldquo;cần ≥ 2 lần quét&rdquo;</text>
+  <text x="26" y="177" class="tm">vì đây là lăng kính DUY NHẤT không so hai kỳ: chỉ hỏi xuất hiện bao lâu, đã bán bao nhiêu</text>
+  <path d="M290 190 L290 210" class="ln" marker-end="url(#b5)"/>
+
+  <rect x="10" y="212" width="560" height="52" rx="5" class="bx-stop"/>
+  <text x="26" y="232" class="ts">CỬA: số lần quét &lt; 2 HOẶC chuỗi rỗng → DỪNG Ở ĐÂY</text>
+  <text x="26" y="251" class="tm">thẻ chỉ mang Bán chạy (và Tân binh nếu đã lọt), bốn lăng kính còn lại không có điểm</text>
+  <path d="M290 264 L290 284" class="ln-k" marker-end="url(#b5k)"/>
+
+  <rect x="10" y="286" width="560" height="34" rx="5" class="bx"/>
+  <text x="26" y="308" class="tb">③ 🔥 Tăng tốc — cửa sổ w = min(5, nửa số ngày có được)</text>
+
+  <rect x="10" y="326" width="560" height="34" rx="5" class="bx"/>
+  <text x="26" y="348" class="tb">④ ⚡ Đột biến — 1 ngày cuối so nền 5 ngày ngay trước</text>
+
+  <rect x="10" y="366" width="560" height="52" rx="5" class="bx"/>
+  <text x="26" y="386" class="tb">⑤ 💰 Ổn định  &amp;  ⑥ 🎯 Khe hở — dùng CHUNG cửa sổ 5 ngày và sàn P20</text>
+  <text x="26" y="405" class="tm">n là số ngày THẬT trong cửa sổ, không phải mức 5 của cấu hình</text>
+
+  <rect x="10" y="426" width="560" height="22" rx="4" class="bx2"/>
+  <text x="26" y="442" class="tm">Một sản phẩm có thể lọt nhiều lăng kính cùng lúc — `lang_kinh` là một dict {tên: điểm}.</text>
+</svg>
+</div>
+<figcaption>Thứ tự trong <code>_tinh()</code>. Vị trí của Tân binh là chi tiết dễ bỏ sót nhất khi đọc code.</figcaption>
+</figure>
+
+<h3>Bảng công thức</h3>
+<div class="tw"><table>
+<thead><tr><th>Lăng kính</th><th>Điều kiện vào</th><th>Điểm xếp hạng</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>Bán chạy</strong><br><code>ban_chay</code></td>
+  <td>Không có điều kiện — mọi sản phẩm đều có</td>
+  <td><code>sold_monthly</code> (số 30 ngày sàn tự khai)</td>
+</tr>
+<tr>
+  <td><strong>🔥 Tăng tốc</strong><br><code>hot</code></td>
+  <td>Phải đạt <strong>cả hai</strong>:<br>· luỹ kế &ge; <strong>1.000</strong><br>· %tăng bán/ngày &ge; <strong>40%</strong>, so <em>w</em> ngày gần nhất với <em>w</em> ngày trước đó, <em>w</em> = min(5, L&div;2)</td>
+  <td>Chính mức %tăng lượt bán</td>
+</tr>
+<tr>
+  <td><strong>⚡ Đột biến</strong><br><code>spike</code></td>
+  <td>· %tăng &ge; <strong>500%</strong>, so <strong>1</strong> ngày cuối với nền <strong>5</strong> ngày ngay trước<br>· luỹ kế &ge; <strong>1.000</strong></td>
+  <td>Chính mức %vọt</td>
+</tr>
+<tr>
+  <td><strong>💰 Ổn định</strong><br><code>steady</code></td>
+  <td>· sàn P20 của cửa sổ 5 ngày &ge; <strong>100</strong> sp/ngày<br>· chưa hạ nhiệt: TB <strong>3</strong> ngày gần nhất &ge; <strong>80%</strong> TB cả cửa sổ</td>
+  <td><em>doanh thu sàn</em> = sàn P20 &times; n &times; giá</td>
+</tr>
+<tr>
+  <td><strong>🎯 Khe hở</strong><br><code>gap</code></td>
+  <td>· luỹ kế &gt; <strong>1.000</strong><br>· cầu đều: sàn P20 &ge; <strong>90%</strong> mức thường (trung vị cửa sổ)<br>· listing dẫn đầu có rating <strong>&gt; 0 và &lt; 4,0★</strong></td>
+  <td>Tổng doanh số cả cửa sổ</td>
+</tr>
+<tr>
+  <td><strong>🆕 Tân binh</strong><br><code>new</code></td>
+  <td>· <strong>không</strong> có mặt ở lần quét đầu tiên của ngành<br>· tuổi &le; <strong>7 ngày</strong><br>· luỹ kế &ge; <strong>350</strong><br>· bán-30-sàn &gt; 0 <strong>và</strong> luỹ kế &le; <strong>1,2 &times;</strong> bán-30-sàn</td>
+  <td>luỹ kế &divide; số ngày xuất hiện</td>
+</tr>
+</tbody></table></div>
+
+<h3>Ba chi tiết mà đọc lướt sẽ bỏ qua</h3>
+
+<h4>1. Sàn P20 nghĩa là gì</h4>
+<p>Mốc <strong>20% từ dưới lên</strong>, tính kiểu tài liệu: <code>k = max(1, ceil(20 × len ÷ 100))</code> rồi lấy phần tử thứ <em>k</em> của dãy đã sắp. &ldquo;20% của 30 ngày = ngày thấp thứ 6&rdquo;. Nó trả lời: <em>80% số ngày bán nhiều hơn mức này</em> — một câu mạnh hơn hẳn trung bình, vì trung bình bị một ngày bùng nổ kéo lên.</p>
+
+<h4>2. Vì sao mọi phép % đều có &ldquo;nền tối thiểu&rdquo;</h4>
+<p><code>_pct</code> trả <code>None</code> khi nền &le; 0 <strong>hoặc</strong> nền &lt; mức tối thiểu (<code>NEN_TOI_THIEU = 1,0</code> sp/ngày; với tiền thì là 1,0 &times; giá). Nền 0 &rarr; 3 là &ldquo;+&infin;%&rdquo;, và xếp thuần theo % thì cả bảng toàn những dòng như thế. Nền bằng 0 còn làm chia cho 0 và hỏng cả truy vấn Khám phá.</p>
+
+<h4>3. Chốt 1,2 lần của Tân binh — chỗ dễ sai nhất của cả tệp</h4>
+<div class="note trap"><span class="tag">&ldquo;Lần đầu thấy&rdquo; KHÔNG đủ để kết luận là hàng mới</span>
+<p>Mỗi lượt cào chỉ lấy top-N của ngành, mà độ phủ thay đổi từng đêm (Shopee VN: 17.140 dòng ngày 10/09 &rarr; 22.634 dòng ngày 14/09). Một sản phẩm <em>cũ</em> vừa leo vào top sẽ &ldquo;lần đầu xuất hiện&rdquo; hôm nay.</p>
+<p>Đo 14/09/2026: <strong>7.321/18.859</strong> sản phẩm lọt Tân binh, dòng đầu bảng là hàng đã bán <strong>1,9 triệu lượt</strong> bị ghi &ldquo;xuất hiện 1 ngày&rdquo;.</p>
+<p><strong>Chốt chặn</strong>: hàng thật sự trẻ thì <em>cả đời</em> nó bán gọn trong 30 ngày qua, nên luỹ kế phải xấp xỉ bán-30-ngày. Luỹ kế lớn hơn nhiều lần = hàng cũ, dù ta mới thấy lần đầu. Sau khi thêm: Shopee VN <strong>7.321 &rarr; 189</strong>, Shopee PH &rarr; 66.</p>
+<p>Không có số bán-30-ngày thì <strong>không nhận</strong> — nhận nhầm hàng cũ tệ hơn bỏ sót một tân binh.</p></div>
+<div class="note why"><span class="tag">Giới hạn thành thật của dữ liệu</span>
+<p>Chốt này <strong>không chạy trên 1688</strong>: sàn đó không có bộ đếm luỹ kế đáng tin, nên <code>luy_ke</code> rơi về đúng <code>sold_monthly</code> và phép so luôn luôn đạt. Tân binh 1688 vì thế vẫn lẫn hàng cũ mới lọt top từ khoá. Muốn siết thì phải có ngày mở shop hoặc ngày đăng — kho hiện chưa cào.</p></div>
+
+<h3>Cửa sổ ngắn làm hai lăng kính mất độ phân biệt</h3>
+<p>Cửa sổ chuẩn là <strong>5 ngày</strong>, hạ từ 7/10/30 ngày ngày 14/09/2026, vì lịch sử thật mới có 3–4 mốc quét và cửa sổ dài chỉ cho ra những lăng kính rỗng. Chưa đủ 5 ngày thì cửa sổ <strong>co lại theo số ngày thật</strong>, công thức giữ nguyên, và mọi kết quả ghi kèm <code>so_ngay</code>.</p>
+<div class="note trap"><span class="tag">Hệ quả đã báo trước và được chấp nhận</span>
+<ul>
+<li><strong>Ổn định</strong>: &ldquo;TB 3 ngày &ge; 80% TB 5 ngày&rdquo; gần như luôn đạt vì hai cửa sổ trùng nhau.</li>
+<li><strong>Khe hở</strong>: P20 của 2–3 giá trị &asymp; trung vị, nên điều kiện &ldquo;bán đều&rdquo; gần như luôn đạt.</li>
+</ul>
+<p>Hai lăng kính này <strong>tự sắc lại</strong> khi dữ liệu dày lên. Chúng mất độ phân biệt mà <em>không báo lỗi</em> — đó là lý do <code>so_ngay</code> nằm trên từng kết quả.</p></div>
+
+<h3>&ldquo;Tăng tốc&rdquo; là một lăng kính, không phải hai</h3>
+<p>Trước 14/09/2026 có <code>hot_gmv</code> (doanh số) và <code>hot_sold</code> (lượt bán) thành hai bảng. Gộp lại thành <code>hot</code> với hai điều kiện phải đạt cả hai. Doanh số vẫn được tính và hiện ra ở <code>tang_doanh_so_pct</code> nhưng chỉ để đọc thêm — hai bảng gần trùng nhau bắt người xem đọc hai lần cùng một nhóm sản phẩm.</p>
+
+<h3>&ldquo;Tất cả ngành&rdquo; vẫn tính riêng từng ngành con</h3>
+<p>Đúng câu &ldquo;tính riêng cho từng ngành&rdquo; của tài liệu: một sản phẩm &ldquo;tăng tốc&rdquo; là so với <em>chính nó</em>, còn &ldquo;tân binh&rdquo; là mới xuất hiện <em>trong ngành của nó</em>. Sản phẩm hiện ở hai ngành thì giữ một thẻ, lăng kính nào cũng lấy <strong>điểm cao hơn</strong>.</p>
+
+<h3>Bộ đệm — và một cái bẫy trong chính bộ đệm</h3>
+<ul>
+<li>Khoá <code>_CACHE</code> gồm cả <strong>dấu thời gian lượt cào mới nhất</strong> (<code>MAX(finished_at)</code> của <code>crawl_log</code>), nên một lượt cào xong — hay đang chạy dở — là tự tính lại, không cần xoá tay.</li>
+<li>Cần thiết vì &ldquo;Tất cả ngành&rdquo; tính lại ~200 ngành mỗi lần bấm; đủ 90 ngày là <strong>~1 triệu dòng</strong> một lượt.</li>
+<li>Trần 3.000 mục, đầy thì xoá sạch.</li>
+</ul>
+<div class="note trap"><span class="tag">Phải trả BẢN SAO</span>
+<p><code>kham_pha</code> gắn thêm <code>diem</code>, <code>ly_do</code> và tên ngành vào thẻ. Sửa thẳng lên bản trong bộ đệm thì <strong>lần bấm sau thấy điểm của lăng kính trước</strong>. Nên mỗi lượt đọc trả về bản sao nông, và <code>lang_kinh</code> được sao riêng vì nó là dict lồng.</p></div>
+</section>
+
+<!-- ══════════════════ 10 ══════════════════ -->
+<section id="s10">
+<h2 class="sec"><span class="num">10</span>Toplist và lọc hàng ảo</h2>
+
+<h3>Toplist — đường đơn giản hơn hẳn Khám phá</h3>
+<p>Toplist dùng <strong>số 30 ngày của sàn</strong> nên chỉ cần một ngày dữ liệu, không cần chuỗi.</p>
+<ol class="body">
+<li>Lấy mọi dòng trong <strong>3 ngày cuối</strong> (<code>day &ge; max(day) − 2</code>).</li>
+<li>Mỗi sản phẩm giữ lần quét <strong>mới nhất</strong>; cùng ngày thì ưu tiên dòng mang nhãn <strong>ngành con</strong>.</li>
+<li>Dựng thẻ, tính <code>doanh_so_30 = ban_30 &times; price</code>.</li>
+<li>Lọc hàng ảo, rồi xếp theo <code>ban_30</code> hoặc <code>doanh_so_30</code>, cắt <code>top_n</code> (mặc định 200, giao diện chia 3 trang).</li>
+</ol>
+<div class="note why"><span class="tag">Vì sao 3 ngày chứ không phải 1</span>
+<p>Một đêm cào dở (như 11/09) sẽ làm Toplist chỉ còn 20 ngành. Lấy cửa sổ 3 ngày thì ngành thiếu của đêm nay vẫn có số của đêm trước.</p>
+<p>Còn việc ưu tiên nhãn ngành con: sản phẩm hiện ở cả ngành lớn lẫn ngành con thì gắn nhãn ngành con, để bấm vào là mở đúng chỗ trong Khám phá.</p></div>
+
+<h3>Hàng ảo — vì sao phải loại</h3>
+<p>Một phần listing trên sàn <strong>không phải hàng bán thật</strong>: quà tặng kèm đơn, hàng mẫu, ô bù chênh lệch, link đặt cọc, ô phí ship lẻ. Giá của chúng là giá ảo — 0đ, 1đ, hoặc chỉ là phần chênh — nên hai chỗ hỏng cùng lúc:</p>
+<ul>
+<li>Doanh số = giá &times; lượt bán ra gần 0, kéo lệch mọi bảng xếp theo tiền.</li>
+<li>Lượt bán lại <strong>rất lớn</strong> (tặng kèm mỗi đơn một cái), nên chúng leo thẳng đầu bảng &ldquo;bán chạy&rdquo;.</li>
+</ul>
+
+<h4>Cách nhận</h4>
+<ul>
+<li><strong>Tiếng Việt / Anh</strong>: danh sách cụm viết không dấu, khớp <strong>nguyên chữ</strong> bằng <code>\b</code> — &ldquo;gift&rdquo; không được nuốt &ldquo;gifted&rdquo;, &ldquo;ko ban&rdquo; không được nuốt &ldquo;khoban&rdquo;. Năm nhóm: quà tặng &middot; không bán/không giao &middot; hàng mẫu &middot; bù tiền/đặt cọc/phí ship &middot; link phụ.</li>
+<li><strong>Tiếng Trung</strong>: khớp thẳng trên tên gốc, vì phép bỏ dấu xoá sạch chữ Hán. <code>补差价</code>, <code>差价链接</code>, <code>专拍</code>, <code>勿拍</code>, <code>不发货</code>, <code>赠品</code>, <code>样品链接</code>, <code>运费链接</code>, <code>定金</code>&hellip;</li>
+<li><strong>Tên rỗng thì KHÔNG kết luận là ảo</strong> — không biết thì giữ, vì bỏ nhầm một sản phẩm thật tệ hơn để lọt một sản phẩm ảo.</li>
+</ul>
+<div class="note trap"><span class="tag">Cụm cố ý KHÔNG có trong danh sách</span>
+<p><code>礼品</code> (quà tặng) <strong>không</strong> nằm trong danh sách tiếng Trung, dù nghĩa đúng: trên 1688 đó là cả một <em>ngành hàng thật</em>, đưa vào là quét sạch mấy nghìn sản phẩm bán thật.</p>
+<p>Tương tự ở bộ nhận sàn: <code>hang si</code> không nằm trong từ điển nhận diện 1688 dù 1688 đúng là sàn sỉ — &ldquo;hàng sỉ&rdquo; là chữ thông dụng của người bán Việt.</p></div>
+
+<h4>Lọc ở đâu</h4>
+<div class="tw"><table>
+<thead><tr><th>Nơi</th><th>Lọc lúc nào</th><th>Vì sao</th></tr></thead>
+<tbody>
+<tr><td>Khám phá (<code>_tinh_nganh_that</code>)</td><td><strong>Trước</strong> khi tính chuỗi</td><td>Khỏi phải nhớ lọc lại ở từng lăng kính, và đỡ tính chuỗi cho sản phẩm sẽ bị vứt</td></tr>
+<tr><td>Toplist</td><td><strong>Sau</strong> khi dựng thẻ</td><td>Để <code>da_loc</code> đếm đúng số sản phẩm người dùng đáng lẽ nhìn thấy — mỗi <code>product_id</code> một lần, không phải mỗi dòng snapshot</td></tr>
+</tbody></table></div>
+<p>Sửa danh sách <code>TU_HANG_AO</code> là <strong>cách duy nhất</strong> để nới hay siết bộ lọc — đừng rải điều kiện ra các hàm tính.</p>
+
+<h3>Trang Tuỳ chỉnh</h3>
+<p>Mọi mức trong <code>NGUONG</code> chỉnh được <strong>theo từng sàn</strong>. <code>cau_hinh(san)</code> lấy mức tài liệu rồi đè bằng giá trị đã lưu <strong>nếu nằm trong <code>BOUNDS</code></strong>; giá trị không phải số hoặc ngoài khoảng thì bỏ qua. Khi lưu, chỉ những khoá <em>khác mặc định</em> mới được ghi xuống — nên đổi mặc định trong code là các sàn chưa tuỳ chỉnh tự theo.</p>
+</section>
+
+<!-- ══════════════════ 11 ══════════════════ -->
+<section id="s11">
+<h2 class="sec"><span class="num">11</span>Bảng hằng số</h2>
+
+<h3>Lịch và vòng cào</h3>
+<div class="tw"><table>
+<thead><tr><th>Hằng</th><th class="numc">Giá trị</th><th>Vì sao đúng con số đó</th></tr></thead>
+<tbody>
+<tr><td><code>LICH["sigcat"]</code></td><td class="numc">01:00</td><td>Shopee VN ‖ PH song song, ~3h50, xong ~04:50 — trước giờ làm việc</td></tr>
+<tr><td><code>LICH["dondep"]</code></td><td class="numc">06:00</td><td>Sau sigcat và trước sig1688</td></tr>
+<tr><td><code>LICH["sig1688"]</code></td><td class="numc">09:00</td><td>Đầu giờ làm việc vì cần <em>người</em> giải slider</td></tr>
+<tr><td><code>PER_KEYWORD</code></td><td class="numc">60</td><td>Đúng một trang Shopee</td></tr>
+<tr><td><code>PER_CATEGORY</code></td><td class="numc">100</td><td>Hai trang; cũng là mẫu số của điểm hạng ở Top 10</td></tr>
+<tr><td><code>NGHI_GIUA_LUOT</code></td><td class="numc">4 giây</td><td>~12 request/phút thay vì ~50; 205 ngành vẫn chỉ ~18 phút</td></tr>
+<tr><td><code>CHO_THO_S</code></td><td class="numc">900 giây</td><td>Một lần rớt ngắn không đáng phải trả bằng cả phần còn lại của đêm</td></tr>
+<tr><td><code>DUNG_SAU_DANG_NHAP</code></td><td class="numc">3 ngành liên tiếp</td><td>Một lần có thể là xác minh thoáng qua; ba lần là tường thật</td></tr>
+<tr><td><code>CHO_CAPTCHA_S</code> / nhịp</td><td class="numc">60 phút / 120 giây</td><td>Thử dày hơn thì tab bị nạp lại đúng lúc người ta đang kéo slider</td></tr>
+<tr><td><code>db.GIU_NGAY</code></td><td class="numc">90 ngày</td><td>Dài hơn mọi cửa sổ tính toán</td></tr>
+</tbody></table></div>
+
+<h3>Hạn giờ (thứ tự lồng nhau là bắt buộc)</h3>
+<div class="tw"><table>
+<thead><tr><th>Đường</th><th>Extension</th><th>Trang máy-thợ</th><th>Backend</th></tr></thead>
+<tbody>
+<tr><td>Shopee (danh mục)</td><td class="numc">~129 s</td><td class="numc">160 s</td><td class="numc">180 s</td></tr>
+<tr><td>1688 / Taobao (mtop)</td><td class="numc">~100 s</td><td class="numc">120 s</td><td class="numc">140 s</td></tr>
+<tr><td>Temu (gợi ý)</td><td class="numc">150 s</td><td class="numc">165 s</td><td class="numc">180 s</td></tr>
+<tr><td>TikTok / Douyin</td><td class="numc">120 s</td><td class="numc">140 s</td><td class="numc">155 s</td></tr>
+<tr><td>Trends</td><td class="numc">~50 s + 60 s</td><td class="numc">110 s</td><td class="numc">120 s</td></tr>
+<tr><td>Tìm bằng ảnh</td><td class="numc">~50 s</td><td class="numc">88 s</td><td class="numc">100 s</td></tr>
+<tr><td colspan="4">Long-poll <code>/next</code>: 25 s &middot; <code>WORKER_TTL_S</code>: 40 s &middot; hạn chung khi job không có trong bảng: 45 s</td></tr>
+</tbody></table></div>
+
+<h3>Ngưỡng lăng kính (<code>scout.NGUONG</code>)</h3>
+<div class="tw"><table>
+<thead><tr><th>Khoá</th><th class="numc">Mặc định</th><th class="numc">Khoảng cho phép</th></tr></thead>
+<tbody>
+<tr><td><code>top_n</code></td><td class="numc">200</td><td class="numc">10 – 500</td></tr>
+<tr><td><code>min_lan_quet</code></td><td class="numc">2</td><td class="numc">2 – 90</td></tr>
+<tr><td><code>tang_toc_pct</code> / <code>tang_toc_luy_ke</code> / <code>tang_toc_cua_so</code></td><td class="numc">40% / 1.000 / 5</td><td class="numc">1–100k / 0–10tr / 1–45</td></tr>
+<tr><td><code>dot_bien_pct</code> / <code>_luy_ke</code> / <code>_nhanh</code> / <code>_nen</code></td><td class="numc">500% / 1.000 / 1 / 5</td><td class="numc">10–100k / 0–10tr / 1–7 / 1–60</td></tr>
+<tr><td><code>on_dinh_moc</code> / <code>_phan_vi</code> / <code>_giu_nhiet</code></td><td class="numc">100 / 20 / 80%</td><td class="numc">0–10tr / 1–99 / 1–200</td></tr>
+<tr><td><code>on_dinh_cua_so</code> / <code>_gan_day</code></td><td class="numc">5 / 3</td><td class="numc">2–90 / 1–60</td></tr>
+<tr><td><code>khe_ho_luy_ke</code> / <code>_deu</code> / <code>_rating</code></td><td class="numc">1.000 / 90% / 4,0★</td><td class="numc">0–10tr / 1–100 / 0,1–5,0</td></tr>
+<tr><td><code>tan_binh_ngay</code> / <code>_da_ban</code> / <code>_ty_le</code></td><td class="numc">7 / 350 / 1,2</td><td class="numc">1–90 / 0–10tr / 1,0–100</td></tr>
+<tr><td colspan="3">Nội bộ, không chỉnh được: nền tối thiểu 1,0 sp/ngày &middot; luỹ kế đứng 30% &middot; bộ đếm nhảy 20× &middot; lệch tối thiểu 3,0/ngày &middot; không tính quá 90 ngày</td></tr>
+</tbody></table></div>
+</section>
+
+<!-- ══════════════════ 12 ══════════════════ -->
+<section id="s12">
+<h2 class="sec"><span class="num">12</span>Bẫy đã trả giá</h2>
+
+<div class="tw"><table>
+<thead><tr><th>Ngày</th><th>Triệu chứng</th><th>Nguyên nhân</th><th>Cách chữa</th></tr></thead>
+<tbody>
+<tr><td class="numc">10/09</td><td>Danh mục chết ở trần 75s, một VN một PH</td><td>Bấm thanh sắp xếp của trang <em>trước</em>, cú bấm tự điều hướng tab đi chỗ khác</td><td>Đợi <code>location.pathname</code> chứa mã ngành mới bấm</td></tr>
+<tr><td class="numc">10/09</td><td>Treo vĩnh viễn, không lỗi nào được ném</td><td><code>executeScript</code> trả Promise, tab điều hướng giữa chừng &rarr; Promise không bao giờ settle</td><td><code>Promise.race</code> với đồng hồ 12s</td></tr>
+<tr><td class="numc">10/09</td><td>Danh mục dừng ở 60 mục thay vì 100</td><td>Hai trang cùng <code>match_id</code>, lượt chụp trang 2 nhận lại response trang 1</td><td>Thêm điều kiện offset <code>newest=</code></td></tr>
+<tr><td class="numc">10/09</td><td>Một mẻ 10 từ khoá bị <strong>tráo chéo</strong>, không lớp nào nghi ngờ</td><td><code>__rsCap</code> còn response của từ khoá trước khi <code>tabs.update</code> chưa commit</td><td>Lọc theo <code>keyword=</code> trong chính URL của response</td></tr>
+<tr><td class="numc">10/09</td><td>Shopee trả 404 cho mọi danh mục</td><td>Link chép từ sheet có slug rỗng</td><td>Extension tự ghép slug từ tên ngành, có bỏ dấu NFD</td></tr>
+<tr><td class="numc">11/09</td><td>30 ngành 1688 đầu tiên dính <code>FAIL_SYS_USER_VALIDATE</code></td><td>Cào liền mạch ~50 request/phút</td><td>Nghỉ 4 giây giữa hai lượt</td></tr>
+<tr><td class="numc">11/09</td><td>22% dòng 1688 mang số tháng mà nhãn ghi luỹ kế</td><td><code>SOLD_TYPE</code> là hằng số theo <em>sàn</em></td><td>Gắn cờ theo từng <em>dòng</em></td></tr>
+<tr><td class="numc">14/09</td><td>7.321/18.859 sản phẩm lọt Tân binh, đầu bảng là hàng đã bán 1,9 triệu lượt</td><td>&ldquo;Lần đầu thấy&rdquo; ≠ hàng mới; độ phủ top thay đổi từng đêm</td><td>Chốt luỹ kế &le; 1,2 &times; bán-30-ngày &rarr; còn 189</td></tr>
+<tr><td class="numc">14/09</td><td>Hỏi &ldquo;top Shopee VN&rdquo;, sáu thẻ đầu là hàng sỉ Trung Quốc</td><td>Gộp ba sàn rồi xếp theo lượt bán; 1688 lớn hơn hàng chục lần</td><td>Tách khối theo sàn, không có bảng gộp</td></tr>
+<tr><td class="numc">14/09</td><td>Ngành &ldquo;Mẹ &amp; Bé&rdquo; biến mất khỏi phần lọc</td><td>Một dấu phẩy: <code>"be,"</code> không khớp <code>"bé"</code></td><td>Dấu câu phải thành khoảng trắng ở <em>cả hai</em> phía</td></tr>
+<tr><td class="numc">14/09</td><td>150/150 ngành &ldquo;ok&rdquo; nhưng lượt nào cũng đúng 180 giây</td><td>Future thuộc vòng sự kiện của luồng lịch, <code>set_result</code> gọi từ vòng uvicorn</td><td><code>run_coroutine_threadsafe</code> về đúng vòng của server</td></tr>
+<tr><td class="numc">14/09</td><td>297 ngành thành <code>error</code> trong 10 giây</td><td>Hai luồng thợ cùng bận &gt; 40s &rarr; backend tưởng thợ offline</td><td>Thêm vế &ldquo;đang cầm job chưa quá hạn&rdquo; vào <code>worker_online</code></td></tr>
+<tr><td class="numc">15/09</td><td><code>sigcat</code> nghiến từ 01:00 tới 10:51, <code>sig1688</code> bị đẩy lùi</td><td>Vòng lặp lịch gọi <code>run_job</code> thẳng nên đứng chờ</td><td>Bắn job ra luồng riêng + chốt dừng sau 3 lần bị đòi đăng nhập</td></tr>
+<tr><td class="numc">15/09</td><td>Nhật ký bảo mở <em>shopee.vn</em> trong khi sàn chặn là <em>Shopee PH</em></td><td>Extension viết cứng tên miền trong câu báo lỗi</td><td>Backend dựng lại câu bằng <code>domain</code> thật</td></tr>
+<tr><td class="numc">18/09</td><td>Bảng Tăng tốc hiện &ldquo;+19.300%&rdquo;</td><td>Luỹ kế đứng 4 ngày rồi chạy lại một lượt</td><td>Ba chốt loại bước rác &rarr; đỉnh còn 1.221</td></tr>
+<tr><td class="numc">18/09</td><td>182/205 ngành 1688 hỏng liền mạch</td><td>Slider bật giữa chừng, vòng cào vẫn đi tiếp</td><td>Chờ người giải + báo mail + thử lại đúng ngành đang dở</td></tr>
+<tr><td class="numc">—</td><td>Người vận hành mở trang xác minh, thấy bình thường, tưởng đã giải</td><td>mtop không trả <code>data.url</code>, code rơi về trang chủ 1688 (không có slider)</td><td>Nói thẳng khi không có địa chỉ thật; trace chở cả <code>ret</code> lẫn <code>verifyUrl</code></td></tr>
+</tbody></table></div>
+
+<div class="note trap"><span class="tag">Mẫu chung</span>
+<p>Đọc lại cả bảng: chỉ <strong>hai</strong> dòng là sàn thật sự chặn (11/09 và 18/09, đều là slider 1688). Phần còn lại là hạn giờ đặt sai, điều kiện đua, dữ liệu bị tráo, hoặc máy chạy hết RAM — nhưng <em>triệu chứng</em> của chúng đọc y hệt &ldquo;bị chặn bot&rdquo;.</p>
+<p>Đó là lý do mọi câu báo lỗi trong hệ này đều cố nói ra <strong>đã thấy gì</strong>, chứ không chỉ nói &ldquo;thất bại&rdquo;.</p></div>
+</section>
+
+<!-- ══════════════════ 13 ══════════════════ -->
+<section id="s13">
+<h2 class="sec"><span class="num">13</span>Hỏi đáp phỏng vấn</h2>
+<p class="sub">Bấm để mở đáp án.</p>
+
+<details class="qa"><summary>Hệ thống chống bị nhận là bot bằng cách nào?</summary><div class="a">
+<p>Không chống. Nó <strong>mượn một trình duyệt thật</strong> đã đăng nhập sẵn, trên một máy luôn bật. Backend không tự gọi sàn; nó sai job xuống một extension Chrome qua hàng đợi relay.</p>
+<p>Điểm kỹ thuật mấu chốt: fetch <strong>không</strong> chạy trong service worker của extension (đó là cross-origin <code>chrome-extension://</code> &rarr; <code>shopee.vn</code>, Shopee trả 403 dù đã đăng nhập) mà được tiêm vào <strong>chính tab của sàn</strong> bằng <code>executeScript(world:'MAIN')</code>. Khi ấy request là same-origin, mang cookie và ngữ cảnh trang y như chính Shopee tự gọi.</p>
+<p>Không có dòng nào giả mạo User-Agent hay xoay proxy cho Shopee/1688. Thứ duy nhất được điều chỉnh là <strong>nhịp</strong> và <strong>đường đi</strong>.</p>
+</div></details>
+
+<details class="qa"><summary>Sàn nào cũng ký request được à? Taobao và Temu thì sao?</summary><div class="a">
+<p>Không. Taobao cần chữ ký mtop cộng cookie chống bot <code>x5sec</code>, Temu cần token <code>anti-content</code> — cả hai do JS của trang sinh runtime và xoay liên tục, không reimplement bền được.</p>
+<p>Với những sàn đó dùng cách <strong>ký sinh</strong>: <code>page-hook.js</code> cài từ <code>document_start</code> ở MAIN world bọc <code>fetch</code> và <code>XMLHttpRequest</code> <em>trước</em> khi trang kịp gọi; extension chỉ điều hướng tab tới URL tìm kiếm, <strong>trang tự gọi và tự ký</strong>, hook chộp response vào <code>window.__rsCap</code>, background đọc ra.</p>
+<p>1688 là ngoại lệ ngược lại: chữ ký mtop ở đó <em>tự dựng được</em> — <code>md5(token &amp; t &amp; appKey &amp; data)</code> với token đọc từ cookie <code>_m_h5_tk</code> same-origin.</p>
+</div></details>
+
+<details class="qa"><summary>Vì sao 1688 phải thử ký ba lần?</summary><div class="a">
+<p>Đó là nhịp chuẩn của mtop. Lần đầu có thể trả <code>FAIL_SYS_TOKEN</code> vì token rỗng hoặc hết hạn, <strong>nhưng server set lại cookie <code>_m_h5_tk</code></strong> trong chính response đó &rarr; lần sau ký đúng. Nghỉ 400 ms giữa hai lần.</p>
+<p>Và tab phải ở <code>h5api.m.1688.com</code> chứ không phải <code>www</code> hay <code>s.1688.com</code>: chỉ tên miền đó <strong>không redirect login</strong>, và cookie đọc được same-origin.</p>
+</div></details>
+
+<details class="qa"><summary>Bị chặn thì làm gì? Có bao nhiêu loại?</summary><div class="a">
+<p>Ba loại, ba cách xử.</p>
+<p><strong>Tường đăng nhập (Shopee)</strong>: nhận bằng URL <code>/login|/verify</code> hoặc chữ <em>verify/captcha/robot/xác minh</em> trong 300 ký tự đầu của body. Không thử lượt hai (trang đăng nhập không tự đi), và 3 ngành liên tiếp thì dừng cả lượt.</p>
+<p><strong>Slider Baxia (1688)</strong>: nhận bằng <code>FAIL_SYS_USER_VALIDATE</code>. Mở đúng trang xác minh mà mtop trả về, <code>active:true</code> để người thấy; backend gửi một mail, chờ tối đa 60 phút, thử lại đúng ngành đang dở mỗi 2 phút. Giải một lần là đủ cho cả máy vì cookie <code>x5sec</code> theo hồ sơ Chrome.</p>
+<p><strong>Bị phục vụ bản nghèo</strong>: không có lỗi nào cả — 200, cấu trúc đúng, chỉ ít dữ liệu hơn. Cách duy nhất phát hiện là so với Chrome thật. Đây là loại nguy hiểm nhất.</p>
+</div></details>
+
+<details class="qa"><summary>Vì sao vòng cào 1688 chạy 9 giờ sáng?</summary><div class="a">
+<p>Đây là quyết định vận hành, không phải kỹ thuật. Cookie <code>x5sec</code> hết hiệu lực sau vài giờ, nên một lượt cào lúc nửa đêm không ai canh sẽ hỏng sạch cả 205 ngành. Đặt vào đầu giờ làm việc để <em>có người</em> giải slider khi nó bật.</p>
+<p>Đánh đổi đã nêu rõ: dữ liệu 1688 trễ hơn Shopee 8 tiếng. Chấp nhận được vì đó là nguồn tra <strong>giá vốn</strong>, không phải nguồn của bảng xếp hạng.</p>
+</div></details>
+
+<details class="qa"><summary>Số &ldquo;bán/ngày&rdquo; lấy ở đâu ra? Ba sàn có giống nhau không?</summary><div class="a">
+<p>Không giống, và lý do là độ tin của hai con số trên hai sàn ngược nhau.</p>
+<p><strong>Shopee</strong>: hiệu bộ đếm luỹ kế giữa hai lần quét, chia đều cho số ngày giữa hai lần. Số 30 ngày của Shopee chỉ dùng làm chốt chặn bước nhảy vô lý.</p>
+<p><strong>1688</strong>: luỹ kế bị làm tròn theo bậc (&ldquo;1万+&rdquo;), hiệu của nó toàn 0 rồi nhảy nghìn — ra đột biến giả. Nên bán/ngày = <code>bookedCount &divide; 30</code> tại mỗi lần quét, tức một trung bình trượt 30 ngày.</p>
+<p>Hệ quả phải nói được: Đột biến gần như <strong>không bao giờ nổ trên 1688</strong>, vì chuỗi đã bị làm mượt — không phải vì sàn đó thiếu sóng.</p>
+</div></details>
+
+<details class="qa"><summary>Ba chốt loại bước rác là gì và vì sao cần?</summary><div class="a">
+<p>Bộ đếm lùi (<code>delta &lt; 0</code> = sàn tính lại), luỹ kế đứng (bước chậm hơn 30% mức sàn tự khai, chỉ xét khi sàn khai &ge; 3/ngày), bộ đếm nhảy (bước nhanh hơn 20 lần mức 30 ngày trước đó). Cộng một chốt phụ: một bước bán nhiều hơn cả con số 30 ngày sàn khai.</p>
+<p>Cần vì lũy kế Shopee cập nhật trễ. Ví dụ đo được: cây massage bán ~13.000/30 ngày mà luỹ kế chỉ nhích 11 cái trong 4 ngày &rarr; nền 2,8/ngày, rồi luỹ kế chạy lại &rarr; 578/ngày = <strong>+19.300%</strong>. Sau khi thêm chốt, đỉnh % Tăng tốc VN còn 1.221, PH còn 1.300.</p>
+<p>Bước bị loại để lại <strong>lỗ</strong>, không điền số bịa — thiếu còn hơn bịa.</p>
+</div></details>
+
+<details class="qa"><summary>Vì sao Tân binh được xét trước cửa &ldquo;cần 2 lần quét&rdquo;?</summary><div class="a">
+<p>Vì nó là lăng kính <strong>duy nhất không so hai kỳ</strong> với nhau — nó chỉ hỏi &ldquo;xuất hiện bao lâu rồi, đã bán bao nhiêu&rdquo;. Một sản phẩm vừa hiện ra trong lần quét hôm nay mới có đúng một mốc, và đó <em>chính là</em> tân binh điển hình. Để nó rơi vào cửa 2-lần-quét thì bảng Tân binh rỗng trơn suốt những ngày kho còn mỏng.</p>
+</div></details>
+
+<details class="qa"><summary>Cây ngành lấy từ đâu? Vì sao không dùng cây của Shopee?</summary><div class="a">
+<p>Từ một Google Sheet của chủ dự án, nạp vào <code>shopee_categories</code>. Đó là danh sách ngành <em>người ta đã chọn làm</em>, không phải danh sách ngành <em>sàn đang có</em> — sheet luôn là tập con, và phần bỏ đi là một quyết định kinh doanh.</p>
+<p>Sheet thay đổi liên tục nên: ngành biến mất được đánh <code>active=0</code> chứ không xoá (xoá là mất cầu nối tới lịch sử đã cào), và cột &ldquo;No.&rdquo; không làm khoá vì nó bị đánh số lại — khoá thật là <code>sub_id</code>.</p>
+<p>1688 thì không có mã ngành: menu của nó trỏ thẳng tới <code>offer_search.htm?keywords=</code>, nên 205 ngành của nó là 205 cụm <strong>tiếng Trung</strong> ánh xạ tay về ngành con Shopee VN.</p>
+</div></details>
+
+<details class="qa"><summary>Vì sao ngành lớn phải cào riêng, không cộng ngành con lại?</summary><div class="a">
+<p>Vì Shopee xếp hạng <strong>trong phạm vi từng danh mục</strong>. Top 100 của &ldquo;Thời Trang Nam&rdquo; không bằng gộp top 100 của 15 ngành con: một sản phẩm hạng 40 ở &ldquo;Áo&rdquo; có thể là hạng 3 của cả ngành cha, còn hàng bán chạy nhất ngành cha có thể nằm ở một ngành con ta không cào.</p>
+<p>Mã ngành lớn là <code>main_id</code>, không trùng <code>sub_id</code> nào, nên hai tầng sống chung trong kho mà không đè nhau.</p>
+</div></details>
+
+<details class="qa"><summary>Sản phẩm biến mất khỏi kho một ngày thì hiểu thế nào?</summary><div class="a">
+<p>Có <strong>hai cách đọc trái ngược nhau</strong>, và chỉ <code>crawl_log</code> phân biệt được: rớt khỏi top thật (ngành đó <code>ok</code> hôm ấy), hay hôm đó không cào được (<code>error</code>/không có dòng nào).</p>
+<p>Nếu là rớt khỏi top thì đó <em>là</em> dữ liệu, không cần cột &ldquo;out&rdquo; nào — bảng Top 10 đọc ngày thiếu thành 0 điểm, quay lại top thì lại có dòng.</p>
+</div></details>
+
+<details class="qa"><summary>Hai luồng máy-thợ chạy song song có an toàn không?</summary><div class="a">
+<p>An toàn nhờ một <strong>bất biến ở phía backend</strong>, không phải nhờ may: mỗi vòng cào bắn job một-cái-một và chờ xong mới bắn tiếp, nên hàng đợi có nhiều nhất một job cho mỗi nguồn, và N luồng luôn nhặt được N tên miền khác nhau. Extension dùng một tab cho mỗi tên miền, nên hai job <em>cùng</em> tên miền chạy song song sẽ phá nhau.</p>
+<p>Đo 11/09/2026: 20 ngành vn ‖ 20 ngành ph cùng lúc &rarr; 40/40 ok, 63–69 giây một ngành, <em>nhanh hơn</em> lúc chạy đơn (100–119s). Thứ làm hỏng là tải máy nói chung, không phải việc hai vòng chạy cùng nhau.</p>
+</div></details>
+
+<details class="qa"><summary>Điểm yếu lớn nhất của kiến trúc này là gì?</summary><div class="a">
+<p><strong>Phụ thuộc vào một máy thợ luôn bật</strong>, có người đăng nhập sẵn và sẵn sàng kéo slider. Máy đó tắt là cả vòng cào đứng. Hàng đợi relay nằm trong RAM một tiến trình, nên backend restart giữa chừng là mất job đang bay (chữa được bằng cách chạy tiếp — ngành <code>ok</code> được bỏ qua).</p>
+<p>Thứ hai: mỗi lần sàn đổi cấu trúc phản hồi là một vòng sửa. Hệ đã chuẩn bị cho chuyện đó bằng cách khai ra hình dạng thật (<code>trace["mau_keys"]</code>, <code>shape</code>, sổ <code>__rsSeen</code>) thay vì chỉ báo &ldquo;0 dòng&rdquo;.</p>
+<p>Thứ ba, về số liệu: khi lịch sử còn ngắn thì Ổn định và Khe hở mất độ phân biệt mà không báo lỗi. Đã biết trước, đã chấp nhận, và <code>so_ngay</code> trên từng kết quả là để người xem tự đánh giá.</p>
+</div></details>
+</section>
+
+<footer class="end">
+  <p><strong>Đường cào:</strong> <code>backend/hub/scheduler.py</code> &rarr; <code>backend/hub/ingestion/market_snapshot.py</code> &rarr; <code>backend/lib/core/worker_relay.py</code> &rarr; <code>frontend/public/worker/index.html</code> &rarr; <code>extension/background.js</code> + <code>extension/page-hook.js</code>.</p>
+  <p><strong>Tính toán:</strong> <code>backend/hub/signal/store.py</code> &rarr; <code>backend/hub/signal/scout.py</code>. Cây ngành: <code>hub/ingestion/shopee_categories.py</code> và <code>hub/ingestion/map_1688.py</code>.</p>
+  <p>Tài liệu cùng bộ: <a href="one-shot-ai-logic.html">Logic One-shot AI</a> &middot; <a href="cham-diem-9-chi-so.html">Chấm điểm 9 chỉ số</a>.</p>
+</footer>
+
+</div>
+</body>
+</html>

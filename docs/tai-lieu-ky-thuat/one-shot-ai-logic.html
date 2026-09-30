@@ -1,0 +1,1110 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Logic One-shot AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@600;700&display=swap">
+<style>
+/* Bo cuc: mot cot doc doc, so thu tu bam le trai; so do tran het chieu ngang khoi noi dung. */
+:root{
+  --bg:#f3f5f6; --surface:#ffffff; --surface-2:#eaeef0;
+  --ink:#131e26; --muted:#5d6f7b; --line:#d6dee2; --line-2:#c2ced4;
+  --kho:#0d6a68;
+  --ai:#a9531b;
+  --stop:#a02b2b;
+  --ok:#2c7349;
+  --sans:"IBM Plex Sans",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --serif:"IBM Plex Serif",Georgia,serif;
+  --mono:"IBM Plex Mono","Cascadia Mono",Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e1418; --surface:#161f25; --surface-2:#1d282e;
+  --ink:#e4ecf0; --muted:#94a6b1; --line:#26333a; --line-2:#334450;
+  --kho:#4fc2b4; --ai:#e29558; --stop:#e07a72; --ok:#6cc78f;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0e1418; --surface:#161f25; --surface-2:#1d282e;
+  --ink:#e4ecf0; --muted:#94a6b1; --line:#26333a; --line-2:#334450;
+  --kho:#4fc2b4; --ai:#e29558; --stop:#e07a72; --ok:#6cc78f;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.65 var(--sans)}
+.wrap{max-width:980px;margin:0 auto;padding-inline:20px;padding-block:0 96px}
+
+header.top{padding-block:56px 36px;border-bottom:2px solid var(--ink)}
+header.top .kicker{font:600 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--kho)}
+header.top h1{font:700 clamp(32px,6vw,52px)/1.05 var(--serif);margin:14px 0 0;text-wrap:balance;letter-spacing:-.015em}
+header.top p.lede{margin:16px 0 0;max-width:62ch;color:var(--muted);font-size:17px}
+header.top .meta{margin-top:22px;font:500 12px/1.6 var(--mono);color:var(--muted)}
+
+nav.toc{margin-block:28px 8px;padding:18px 20px;background:var(--surface);border:1px solid var(--line);border-radius:4px}
+nav.toc h2{font:600 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 12px}
+nav.toc ol{margin:0;padding:0;list-style:none;display:grid;gap:6px 26px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+nav.toc a{color:var(--ink);text-decoration:none;font-size:14px;display:flex;gap:10px}
+nav.toc a:hover{color:var(--kho);text-decoration:underline}
+nav.toc .n{font:600 12px/1.6 var(--mono);color:var(--kho);min-width:22px}
+
+section{padding-block:44px 8px;border-top:1px solid var(--line);margin-top:36px}
+h2.sec{font:700 clamp(22px,3.4vw,30px)/1.2 var(--serif);margin:0 0 6px;text-wrap:balance;letter-spacing:-.01em}
+h2.sec .num{font:600 13px/1 var(--mono);color:var(--kho);display:block;margin-bottom:10px;letter-spacing:.1em}
+h3{font:600 18px/1.35 var(--sans);margin:34px 0 8px;text-wrap:balance}
+h4{font:600 14px/1.4 var(--mono);margin:24px 0 6px;color:var(--ink)}
+p{margin:10px 0;max-width:68ch}
+.sub{color:var(--muted);max-width:68ch;margin-top:0}
+ul,ol.body{margin:10px 0;padding-left:22px;max-width:68ch}
+li{margin:5px 0}
+code{font:500 .88em/1.4 var(--mono);background:var(--surface-2);padding:.1em .34em;border-radius:3px;overflow-wrap:anywhere}
+a{color:var(--kho)}
+strong{font-weight:600}
+mark{background:rgba(169,83,27,.18);color:inherit;padding:.05em .2em;border-radius:2px}
+
+.note{margin:16px 0;padding:14px 16px;border-left:3px solid var(--line-2);background:var(--surface);border-radius:0 4px 4px 0}
+.note.why{border-left-color:var(--kho)}
+.note.trap{border-left-color:var(--stop)}
+.note.ai{border-left-color:var(--ai)}
+.note p{margin:6px 0;max-width:64ch}
+.note p:first-child{margin-top:0}
+.note p:last-child{margin-bottom:0}
+.note .tag{font:600 10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;display:block;margin-bottom:8px}
+.note.why .tag{color:var(--kho)} .note.trap .tag{color:var(--stop)} .note.ai .tag{color:var(--ai)}
+
+.tw{overflow-x:auto;margin:18px 0;border:1px solid var(--line);border-radius:4px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:13.5px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+thead th{background:var(--surface-2);font:600 11px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+td code{background:transparent;padding:0}
+.numc{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+pre{overflow-x:auto;margin:14px 0;padding:14px 16px;background:var(--surface);border:1px solid var(--line);border-radius:4px;font:400 12.5px/1.6 var(--mono);color:var(--ink)}
+pre .c{color:var(--muted)}
+
+figure{margin:24px 0}
+figure .fbox{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:18px 14px}
+figure svg{display:block;width:100%;height:auto;min-width:430px;max-width:100%}
+figcaption{margin-top:8px;font-size:12.5px;color:var(--muted);max-width:68ch}
+svg .bx{fill:var(--surface);stroke:var(--line-2);stroke-width:1.2}
+svg .bx2{fill:var(--surface-2);stroke:var(--line-2);stroke-width:1.2}
+svg .bx-kho{fill:rgba(13,106,104,.10);stroke:var(--kho);stroke-width:1.3}
+svg .bx-ai{fill:rgba(169,83,27,.11);stroke:var(--ai);stroke-width:1.3}
+svg .bx-stop{fill:rgba(160,43,43,.09);stroke:var(--stop);stroke-width:1.3}
+svg .t{fill:var(--ink);font:500 12.5px var(--sans)}
+svg .tb{fill:var(--ink);font:600 12.5px var(--sans)}
+svg .tm{fill:var(--muted);font:400 11px var(--sans)}
+svg .tc{fill:var(--ink);font:500 11px var(--mono)}
+svg .tk{fill:var(--kho);font:600 11px var(--mono)}
+svg .ts{fill:var(--stop);font:600 11px var(--mono)}
+svg .ta{fill:var(--ai);font:600 11px var(--mono)}
+svg .ln{stroke:var(--line-2);stroke-width:1.4;fill:none}
+svg .ln-k{stroke:var(--kho);stroke-width:1.4;fill:none}
+svg .ln-s{stroke:var(--stop);stroke-width:1.4;fill:none}
+svg .ln-d{stroke:var(--line-2);stroke-width:1.2;fill:none;stroke-dasharray:4 3}
+svg .ar{fill:var(--line-2)} svg .ar-k{fill:var(--kho)} svg .ar-s{fill:var(--stop)}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+.chip{font:500 12px/1 var(--mono);padding:6px 10px;border:1px solid var(--line-2);border-radius:999px;color:var(--muted);background:var(--surface)}
+.chip.k{border-color:var(--kho);color:var(--kho)}
+.chip.a{border-color:var(--ai);color:var(--ai)}
+.chip.s{border-color:var(--stop);color:var(--stop)}
+
+details.qa{border:1px solid var(--line);border-radius:4px;background:var(--surface);margin:10px 0}
+details.qa>summary{cursor:pointer;padding:13px 16px;font-weight:600;font-size:14.5px;list-style:none;display:flex;gap:10px;align-items:flex-start}
+details.qa>summary::-webkit-details-marker{display:none}
+details.qa>summary::before{content:"?";font:600 13px/1.4 var(--mono);color:var(--kho);flex:0 0 auto}
+details.qa[open]>summary{border-bottom:1px solid var(--line)}
+details.qa .a{padding:12px 16px 14px}
+details.qa .a p{margin:8px 0}
+details.qa .a p:first-child{margin-top:0}
+details.qa summary:focus-visible{outline:2px solid var(--kho);outline-offset:-2px}
+
+footer.end{margin-top:56px;padding-top:24px;border-top:2px solid var(--ink);color:var(--muted);font-size:13px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="kicker">Research SPY &middot; Trend Signal Hub</div>
+  <h1>Logic One-shot AI</h1>
+  <p class="lede">Toàn bộ đường đi của một câu hỏi: dữ liệu được cào về bằng cách nào, câu hỏi được đọc ra sao, phần nào do luật quyết định và phần nào do Gemini sinh ra.</p>
+  <div class="meta">Đọc thẳng từ mã nguồn nhánh Titus &middot; 29/09/2026</div>
+</header>
+
+<nav class="toc">
+  <h2>Nội dung</h2>
+  <ol>
+    <li><a href="#s0"><span class="n">00</span><span>Bản đồ một trang</span></a></li>
+    <li><a href="#s1"><span class="n">01</span><span>Ba nguồn dữ liệu, ba nhịp thời gian</span></a></li>
+    <li><a href="#s2"><span class="n">02</span><span>Đường cào — nuôi kho mỗi đêm</span></a></li>
+    <li><a href="#s3"><span class="n">03</span><span>Chặng HIỂU — đọc ý định bằng luật</span></a></li>
+    <li><a href="#s4"><span class="n">04</span><span>Chặng LẤY — digest và cú chặn CHUYEN_HUB</span></a></li>
+    <li><a href="#s5"><span class="n">05</span><span>Chặng TÌM WEB</span></a></li>
+    <li><a href="#s6"><span class="n">06</span><span>Chặng PROMPT và lượt gọi Gemini</span></a></li>
+    <li><a href="#s7"><span class="n">07</span><span>Chặng HẬU XỬ LÝ — gắn lại số thật</span></a></li>
+    <li><a href="#s8"><span class="n">08</span><span>Ma trận 8 ý định</span></a></li>
+    <li><a href="#s9"><span class="n">09</span><span>Bảng hằng số</span></a></li>
+    <li><a href="#s10"><span class="n">10</span><span>Những cái bẫy đã trả giá</span></a></li>
+    <li><a href="#s11"><span class="n">11</span><span>Hỏi đáp phỏng vấn</span></a></li>
+  </ol>
+</nav>
+
+<!-- ══════════════════ 00 ══════════════════ -->
+<section id="s0">
+<h2 class="sec"><span class="num">00</span>Bản đồ một trang</h2>
+<p class="sub">Một câu để nhớ: <strong>One-shot AI không crawl lúc bạn hỏi.</strong> Nó đọc câu hỏi bằng luật, lấy đúng mẩu dữ liệu đã có, rồi gọi Gemini <strong>đúng một lượt</strong>. Việc cào diễn ra đêm hôm trước, do một hệ thống hoàn toàn khác.</p>
+
+<div class="chips">
+  <span class="chip k">Kho: cào đêm hôm trước</span>
+  <span class="chip">Luật: 0 token, tất định</span>
+  <span class="chip a">Gemini: 1 lượt (nhánh ý tưởng: 2)</span>
+  <span class="chip s">3/8 ý định không gọi AI</span>
+</div>
+
+<figure>
+<div class="fbox">
+<svg viewBox="0 0 580 782" role="img" aria-label="Sơ đồ bảy chặng của một câu hỏi One-shot AI">
+  <defs>
+    <marker id="a1" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar"/></marker>
+    <marker id="a1k" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar-k"/></marker>
+    <marker id="a1s" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar-s"/></marker>
+  </defs>
+
+  <!-- cot giua -->
+  <rect x="150" y="10" width="280" height="46" rx="5" class="bx"/>
+  <text x="290" y="31" class="tb" text-anchor="middle">Câu hỏi + cả lịch sử hội thoại</text>
+  <text x="290" y="47" class="tm" text-anchor="middle">POST /api/hub/signal/ask &middot; messages[]</text>
+  <path d="M290 56 L290 82" class="ln" marker-end="url(#a1)"/>
+
+  <rect x="150" y="84" width="280" height="52" rx="5" class="bx"/>
+  <text x="290" y="105" class="tb" text-anchor="middle">1 &middot; HIỂU — truy_van.doc()</text>
+  <text x="290" y="121" class="tm" text-anchor="middle">1 ý định + 6 bộ lọc &middot; khớp chuỗi, KHÔNG gọi AI</text>
+  <path d="M290 136 L290 162" class="ln" marker-end="url(#a1)"/>
+
+  <rect x="150" y="164" width="280" height="52" rx="5" class="bx"/>
+  <text x="290" y="185" class="tb" text-anchor="middle">2 &middot; LẤY — ask.digest()</text>
+  <text x="290" y="201" class="tm" text-anchor="middle">chỉ ý định meta mới xuống kho</text>
+
+  <!-- kho ben phai -->
+  <path d="M430 190 L474 190" class="ln-k" marker-end="url(#a1k)"/>
+  <rect x="476" y="160" width="96" height="60" rx="5" class="bx-kho"/>
+  <text x="524" y="183" class="tk" text-anchor="middle">KHO</text>
+  <text x="524" y="199" class="tm" text-anchor="middle">listings_</text>
+  <text x="524" y="212" class="tm" text-anchor="middle">snapshot</text>
+
+  <!-- nhanh chuyen hub ben trai -->
+  <path d="M150 190 L106 190" class="ln-s" marker-end="url(#a1s)"/>
+  <rect x="4" y="152" width="100" height="76" rx="5" class="bx-stop"/>
+  <text x="54" y="172" class="ts" text-anchor="middle">CHUYEN_HUB</text>
+  <text x="54" y="188" class="tm" text-anchor="middle">toplist &middot; san_pham</text>
+  <text x="54" y="201" class="tm" text-anchor="middle">lang_kinh</text>
+  <text x="54" y="218" class="tm" text-anchor="middle">DỪNG, không gọi AI</text>
+
+  <path d="M290 216 L290 242" class="ln" marker-end="url(#a1)"/>
+
+  <rect x="150" y="244" width="280" height="52" rx="5" class="bx"/>
+  <text x="290" y="265" class="tb" text-anchor="middle">3 &middot; TÌM WEB — web.tim()</text>
+  <text x="290" y="281" class="tm" text-anchor="middle">chỉ khi nen_tim() = true</text>
+  <path d="M150 270 L106 270" class="ln-d" marker-end="url(#a1)"/>
+  <rect x="4" y="248" width="100" height="44" rx="5" class="bx2"/>
+  <text x="54" y="266" class="tc" text-anchor="middle">DuckDuckGo</text>
+  <text x="54" y="282" class="tm" text-anchor="middle">Bing dự phòng</text>
+  <path d="M290 296 L290 322" class="ln" marker-end="url(#a1)"/>
+
+  <rect x="150" y="324" width="280" height="62" rx="5" class="bx"/>
+  <text x="290" y="345" class="tb" text-anchor="middle">4 &middot; DỰNG PROMPT</text>
+  <text x="290" y="361" class="tm" text-anchor="middle">phạm vi sàn &middot; quy tắc chung</text>
+  <text x="290" y="376" class="tm" text-anchor="middle">hướng dẫn theo ý định &middot; dữ liệu &middot; khối web</text>
+  <path d="M290 386 L290 412" class="ln" marker-end="url(#a1)"/>
+
+  <rect x="150" y="414" width="280" height="62" rx="5" class="bx-ai"/>
+  <text x="290" y="435" class="tb" text-anchor="middle">5 &middot; GEMINI — map_demand()</text>
+  <text x="290" y="451" class="tm" text-anchor="middle">mode = talk  →  dừng ở đây (~1 giây)</text>
+  <text x="290" y="466" class="tm" text-anchor="middle">mode = products  →  hỏi sàn + chấm lại</text>
+  <path d="M430 445 L474 445" class="ln-d" marker-end="url(#a1)"/>
+  <rect x="476" y="420" width="100" height="50" rx="5" class="bx2"/>
+  <text x="526" y="440" class="tc" text-anchor="middle">ô tìm kiếm</text>
+  <text x="526" y="456" class="tc" text-anchor="middle">của sàn</text>
+  <path d="M290 476 L290 502" class="ln" marker-end="url(#a1)"/>
+
+  <rect x="150" y="504" width="280" height="56" rx="5" class="bx-kho"/>
+  <text x="290" y="525" class="tb" text-anchor="middle">6 &middot; GẮN SỐ THẬT — _gan_kho()</text>
+  <text x="290" y="541" class="tm" text-anchor="middle">mỗi món AI nghĩ ra được tra lại vào kho</text>
+  <text x="290" y="555" class="tm" text-anchor="middle">trên ĐÚNG MỘT sàn</text>
+  <path d="M476 214 C 470 330, 470 440, 434 528" class="ln-k" marker-end="url(#a1k)"/>
+  <path d="M290 560 L290 586" class="ln" marker-end="url(#a1)"/>
+
+  <rect x="150" y="588" width="280" height="76" rx="5" class="bx"/>
+  <text x="290" y="609" class="tb" text-anchor="middle">7 &middot; TRẢ VỀ GIAO DIỆN</text>
+  <text x="290" y="627" class="tc" text-anchor="middle">reply &middot; items &middot; hubProducts</text>
+  <text x="290" y="643" class="tc" text-anchor="middle">webSources &middot; grounding &middot; hubRedirect</text>
+  <text x="290" y="658" class="tm" text-anchor="middle">thẻ sản phẩm vẽ bằng số kho, không phải số AI gõ</text>
+
+  <rect x="4" y="690" width="572" height="82" rx="5" class="bx2"/>
+  <text x="20" y="712" class="tk">Quy tắc xuyên suốt</text>
+  <text x="20" y="732" class="tm">1 &middot; Lọc trước rồi mới hỏi AI — kho ~70.000 dòng, gửi hết là ~3 triệu token mỗi câu.</text>
+  <text x="20" y="749" class="tm">2 &middot; Việc gì luật làm được thì luật làm — mỗi lượt Gemini là một suất hạn mức miễn phí.</text>
+  <text x="20" y="766" class="tm">3 &middot; Số hiện ra màn hình luôn là số kho, không bao giờ là số mô hình viết lại.</text>
+</svg>
+</div>
+<figcaption>Bảy chặng của một lượt hỏi. Hai nhánh rẽ sớm: <code>CHUYEN_HUB</code> dừng ngay ở chặng 2 và không tốn lượt Gemini nào; <code>mode=talk</code> dừng ở chặng 5.</figcaption>
+</figure>
+
+<h3>Ba tệp phải nhớ tên</h3>
+<div class="tw"><table>
+<thead><tr><th>Tệp</th><th>Việc duy nhất của nó</th><th>Có gọi AI không</th></tr></thead>
+<tbody>
+<tr><td><code>backend/hub/signal/truy_van.py</code></td><td>HIỂU — biến câu hỏi thành một cấu trúc <code>YeuCau</code></td><td>Không. Không cả đọc cơ sở dữ liệu.</td></tr>
+<tr><td><code>backend/hub/signal/ask.py</code></td><td>LẤY + dựng prompt + hậu xử lý</td><td>Gọi gián tiếp qua <code>map_demand</code></td></tr>
+<tr><td><code>backend/lib/opportunity/demand_map.py</code></td><td>TRẢ LỜI — nói chuyện hoặc dựng bảng món hàng</td><td>Có, đây là chỗ duy nhất gọi Gemini</td></tr>
+</tbody></table></div>
+
+<div class="note why"><span class="tag">Vì sao tách ba</span>
+<p>Trước 14/09/2026 ba việc HIỂU · LẤY · TRẢ LỜI trộn chung trong một hàm <code>digest</code> dài. Khi câu trả lời sai thì không truy được cái nào sai: hiểu sai câu hỏi, lấy nhầm dữ liệu, hay mô hình diễn giải hỏng. Tách ra rồi thì <code>truy_van</code> kiểm được bằng bảng câu mẫu chạy trong một phần nghìn giây, không cần cơ sở dữ liệu và không cần khoá Gemini.</p></div>
+
+<div class="note trap"><span class="tag">Đừng nhầm</span>
+<p>Có một tệp tên <code>backend/hub/engines/oneshot.py</code> ở route <code>POST /api/hub/oneshot</code>. Đó là engine đời cũ thời Etsy/Amazon, ground trên bảng keyword chứ không phải kho listing. Mục One-shot AI trên sidebar <strong>không dùng nó</strong>.</p></div>
+</section>
+
+<!-- ══════════════════ 01 ══════════════════ -->
+<section id="s1">
+<h2 class="sec"><span class="num">01</span>Ba nguồn dữ liệu, ba nhịp thời gian</h2>
+<p class="sub">Câu hỏi hay bị hỏi nhất khi phỏng vấn: &ldquo;nó crawl lúc nào?&rdquo;. Câu trả lời là có ba nguồn và chúng chạy ở ba nhịp khác nhau.</p>
+
+<div class="tw"><table>
+<thead><tr><th>Nguồn</th><th>Cào lúc nào</th><th>Ai đi lấy</th><th>Phục vụ</th><th>Hỏng thì sao</th></tr></thead>
+<tbody>
+<tr><td><strong>Kho</strong> <code>listings_snapshot</code></td><td>Đêm hôm trước, theo lịch cố định</td><td>Scheduler &rarr; relay &rarr; extension trên trình duyệt-thợ</td><td>Số bán, giá, ngành, 6 lăng kính</td><td>Câu hỏi số liệu trả lời bằng dữ liệu của ngày gần nhất còn có</td></tr>
+<tr><td><strong>Web</strong> DuckDuckGo / Bing</td><td>Ngay lúc hỏi, trần 8 giây</td><td>Backend gọi HTTP thẳng</td><td>Bối cảnh, xu hướng, chính sách, &ldquo;vì sao&rdquo;</td><td>Trả rỗng, câu trả lời vẫn đi bằng phần còn lại</td></tr>
+<tr><td><strong>Ô tìm kiếm sàn</strong></td><td>Ngay lúc hỏi, chỉ nhánh <code>y_tuong</code></td><td><code>probe_terms</code> gọi provider từ khoá</td><td>Chứng minh sàn có bán món AI vừa nghĩ ra</td><td>Món đó thành <code>not_found</code>, không phải lỗi</td></tr>
+</tbody></table></div>
+
+<div class="note why"><span class="tag">Ranh giới phải nói được</span>
+<p>Kho trả lời được <em>&ldquo;cái gì đang bán&rdquo;</em>. Nó không trả lời được <em>&ldquo;vì sao&rdquo;</em>, <em>&ldquo;mùa này người ta nói gì&rdquo;</em>, <em>&ldquo;sàn vừa ra chính sách gì&rdquo;</em> — phần đó nằm trên web. Ô tìm kiếm sàn lại chỉ chứng minh <strong>sàn có bán món đó</strong>, không chứng minh <strong>có bao nhiêu người mua</strong>. Ba nguồn không thay thế nhau được.</p></div>
+</section>
+
+<!-- ══════════════════ 02 ══════════════════ -->
+<section id="s2">
+<h2 class="sec"><span class="num">02</span>Đường cào — nuôi kho mỗi đêm</h2>
+<p class="sub">Phần này chạy độc lập với One-shot AI. Nó cũng nuôi luôn bảng Top sản phẩm của Trend Signal Hub.</p>
+
+<figure>
+<div class="fbox">
+<svg viewBox="0 0 580 620" role="img" aria-label="Sơ đồ đường cào dữ liệu ban đêm">
+  <defs>
+    <marker id="a2" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar"/></marker>
+    <marker id="a2k" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar-k"/></marker>
+  </defs>
+
+  <rect x="10" y="10" width="560" height="80" rx="5" class="bx"/>
+  <text x="26" y="32" class="tb">scheduler._loop() — xét lịch mỗi 60 giây</text>
+  <text x="26" y="53" class="tc">01:00 sigcat</text><text x="126" y="53" class="tm">Shopee VN ‖ PH, ~3h50, xong ~04:50</text>
+  <text x="26" y="69" class="tc">06:00 dondep</text><text x="126" y="69" class="tm">xoá dòng cũ hơn 90 ngày, không VACUUM</text>
+  <text x="26" y="85" class="tc">09:00 sig1688</text><text x="126" y="85" class="tm">~18 phút, đầu giờ làm việc vì cần người giải slider</text>
+  <path d="M290 92 L290 112" class="ln" marker-end="url(#a2)"/>
+  <text x="300" y="104" class="tm">bắn ra LUỒNG RIÊNG, không chặn vòng lặp</text>
+
+  <rect x="10" y="114" width="560" height="86" rx="5" class="bx"/>
+  <text x="26" y="136" class="tb">market_snapshot.snapshot_categories()</text>
+  <text x="26" y="156" class="tm">ngành lớn (44) trước &rarr; ngành con (403) &rarr; LƯỢT VÁ lại cả hai tầng</text>
+  <text x="26" y="173" class="tm">bỏ qua ngành đã ok trong ngày &middot; 60 listing mỗi ngành &middot; nghỉ 4 giây giữa hai lượt (1688)</text>
+  <text x="26" y="191" class="tm">thợ rớt: chờ tối đa 900s &middot; 3 ngành liên tiếp bị đòi đăng nhập: dừng cả lượt</text>
+  <path d="M290 202 L290 226" class="ln" marker-end="url(#a2)"/>
+
+  <rect x="10" y="228" width="560" height="66" rx="5" class="bx"/>
+  <text x="26" y="250" class="tb">worker_relay — hàng đợi job trong RAM, một tiến trình</text>
+  <text x="26" y="270" class="tm">worker long-poll 25 giây &middot; mỗi vòng cào bắn MỘT job rồi chờ xong mới bắn tiếp</text>
+  <text x="26" y="287" class="tm">nhờ bất biến đó, hai luồng thợ luôn nhặt được hai tên miền khác nhau</text>
+  <path d="M290 296 L290 320" class="ln" marker-end="url(#a2)"/>
+
+  <rect x="10" y="322" width="560" height="62" rx="5" class="bx-ai"/>
+  <text x="26" y="344" class="tb">Extension trên trình duyệt-thợ (Chrome thật)</text>
+  <text x="26" y="364" class="tm">mở tab sàn, để CHÍNH TRANG gọi API của nó rồi chộp response</text>
+  <text x="26" y="380" class="tm">lý do: backend không ký được request chống bot của sàn</text>
+  <path d="M290 386 L290 410" class="ln" marker-end="url(#a2)"/>
+
+  <rect x="10" y="412" width="560" height="44" rx="5" class="bx2"/>
+  <text x="290" y="432" class="tb" text-anchor="middle">Shopee VN &middot; Shopee PH &middot; 1688</text>
+  <text x="290" y="449" class="tm" text-anchor="middle">trang niêm yết thật, không phải API công khai</text>
+  <path d="M290 458 L290 482" class="ln-k" marker-end="url(#a2k)"/>
+
+  <rect x="10" y="484" width="560" height="60" rx="5" class="bx-kho"/>
+  <text x="26" y="506" class="tb">store.save_snapshot() &rarr; listings_snapshot</text>
+  <text x="26" y="526" class="tm">1 dòng = 1 listing &times; 1 ngày &middot; append-only</text>
+  <text x="26" y="542" class="tm">INSERT OR IGNORE theo (platform, market, product_id, day) — cào lại trong ngày KHÔNG đè</text>
+  <path d="M290 546 L290 570" class="ln-k" marker-end="url(#a2k)"/>
+
+  <rect x="10" y="572" width="560" height="42" rx="5" class="bx-kho"/>
+  <text x="290" y="592" class="tb" text-anchor="middle">scout.py — tính 6 lăng kính từ chuỗi ngày</text>
+  <text x="290" y="608" class="tm" text-anchor="middle">cửa sổ 5 ngày &middot; cần tối thiểu 2 lần quét</text>
+</svg>
+</div>
+<figcaption>Đường cào. Ba job có lịch; <code>sigsnap</code> (chụp theo từ khoá watchlist) nằm trong <code>JOBS</code> nhưng không nằm trong <code>LICH</code> — chỉ chạy tay.</figcaption>
+</figure>
+
+<h3>Bốn quyết định vận hành phải giải thích được</h3>
+
+<h4>1. Vì sao IGNORE chứ không REPLACE</h4>
+<p>Cào lại lần hai trong cùng một ngày phải <strong>không đổi được</strong> mốc đã ghi. Giữ lần chụp đầu thì khoảng cách giữa hai mốc luôn xấp xỉ 24 giờ. Cho phép đè thì mốc trôi dần về cuối ngày, và con số <code>bán/ngày</code> co giãn theo giờ chạy cron chứ không theo nhu cầu thật.</p>
+<p>Ngược lại, bảng <code>trends_daily</code> dùng <code>INSERT OR REPLACE</code>, và đó không phải mâu thuẫn: Google chuẩn hoá lại toàn bộ chuỗi mỗi lần truy vấn, nên giữ bản cũ là để lẫn hai mốc chuẩn hoá trong cùng một chuỗi.</p>
+
+<h4>2. Vì sao 1688 chạy 09:00 chứ không phải nửa đêm</h4>
+<p>1688 đòi giải slider Baxia định kỳ; cookie <code>x5sec</code> hết hiệu lực sau vài giờ. Một lượt cào lúc 00:00 không ai canh sẽ hỏng sạch cả 205 ngành. Đặt vào đầu giờ làm việc để có người giải một lần khi nó bật lên. Đánh đổi đã chấp nhận: dữ liệu 1688 trễ hơn Shopee 8 tiếng — chấp nhận được vì đây là nguồn tra <strong>giá vốn</strong>, không phải nguồn của bảng xếp hạng.</p>
+
+<h4>3. Vì sao job phải chạy trên luồng riêng</h4>
+<div class="note trap"><span class="tag">Sự cố 15/09/2026</span>
+<p>Vòng lặp lịch từng gọi <code>run_job(name)</code> thẳng, nên nó đứng chờ job đang chạy. <code>sigcat</code> bắt đầu 01:00, Shopee PH đòi đăng nhập từ 07:12, lượt vá nghiến từng ngành lỗi mất ~80 giây mỗi ngành — tới 10:51 vẫn chưa xong, kéo <code>dondep</code> (06:00) và <code>sig1688</code> (09:00) đứng chờ theo. Tệ nhất là <code>sig1688</code>: nó cố ý đặt 09:00 để <em>có người</em> giải slider, bị đẩy lùi thì chạy lúc không ai canh.</p>
+<p>Khoá <code>_job_locks</code> chỉ chặn hai lượt của <strong>cùng một job</strong> — đúng với khoá, sai với vòng lặp.</p></div>
+
+<h4>4. Vì sao khởi động lại backend không kéo cả lịch chạy dồn</h4>
+<p><code>start()</code> đánh dấu mọi job đã qua giờ hôm nay là &ldquo;đã chạy&rdquo;. Không có việc đó thì restart lúc 19:48 sẽ lập tức chạy cả <code>sigcat</code> (4 tiếng) lẫn <code>sig1688</code> (cần người giải slider), trong khi người ta chỉ restart để sửa một dòng code.</p>
+
+<div class="note why"><span class="tag">Kiểm lịch có chạy không</span>
+<p>Đọc <code>luong_dang_chay</code>, <strong>đừng đọc</strong> <code>enabled</code>. Trường <code>enabled</code> đọc <code>SCHEDULER_ENABLED</code> (mặc định bật) trong khi luồng lịch thật do <code>HUB_SCHEDULER</code> quyết định (mặc định tắt). Đã có lần <code>/status</code> báo <code>enabled: true</code> nhiều ngày liền trong khi không job nào từng chạy.</p></div>
+
+<h3>Một cái bẫy trong chính dữ liệu</h3>
+<p>Chữ &ldquo;đã bán&rdquo; của mỗi sàn không cùng một loại:</p>
+<div class="tw"><table>
+<thead><tr><th>Sàn</th><th>Trường</th><th>Loại</th><th>Hệ quả</th></tr></thead>
+<tbody>
+<tr><td>Shopee</td><td><code>historical_sold_count</code></td><td>Lũy kế</td><td>Bán/ngày = hiệu giữa hai lần quét chia số ngày</td></tr>
+<tr><td>1688</td><td>&ldquo;已售…件&rdquo; của shop</td><td>Lũy kế, nhưng làm tròn theo bậc (&ldquo;1万+&rdquo;)</td><td>Hiệu toàn 0 rồi nhảy nghìn &rarr; phải dùng <code>sold_monthly</code> &divide; 30</td></tr>
+<tr><td>Taobao</td><td><code>realSales</code></td><td>Bán ~30 ngày, <strong>không</strong> lũy kế</td><td>Ghi kèm cờ <code>sold_type='monthly'</code>; <code>top10.py</code> từ chối xếp hạng</td></tr>
+</tbody></table></div>
+<div class="note trap"><span class="tag">Kiểu sai không ai bắt được bằng mắt</span>
+<p>Lấy hiệu của hai con số &ldquo;bán 30 ngày&rdquo; rồi gọi đó là tăng trưởng sẽ ra một số trông hoàn toàn hợp lý. Đó là lý do cờ <code>sold_type</code> tồn tại.</p></div>
+</section>
+
+<!-- ══════════════════ 03 ══════════════════ -->
+<section id="s3">
+<h2 class="sec"><span class="num">03</span>Chặng HIỂU — đọc ý định bằng luật</h2>
+<p class="sub"><code>truy_van.doc(cau_hoi, tim_nganh, co_trong_kho)</code> &rarr; một <code>YeuCau</code>. Không gọi AI, không đọc cơ sở dữ liệu. Hai hàm phụ thuộc DB được <strong>tiêm vào</strong> chứ không import thẳng, để bảng tự kiểm chạy được mà không cần kho.</p>
+
+<div class="note why"><span class="tag">Vì sao không dùng AI để phân loại</span>
+<p><strong>Một</strong>: mỗi lượt gọi Gemini là một suất hạn mức miễn phí, mà phân loại xảy ra <em>trước</em> mỗi câu hỏi — nhân đôi số lượt gọi. <strong>Hai</strong>: khớp chuỗi là tất định, cùng một câu luôn ra cùng kết quả, sai thì mở ra sửa được; bộ phân loại bằng AI sai thì chỉ có cách đổi prompt rồi cầu may. <strong>Ba</strong>: bộ này kiểm bằng bảng câu mẫu chạy trong một phần nghìn giây.</p></div>
+
+<h3>Mô hình: một ý định + nhiều bộ lọc</h3>
+<p>Đây là chỗ bản đầu sai. Ban đầu mọi thứ nhét chung vào một phép phân loại phẳng, nên &ldquo;top bán chạy ngành Mẹ &amp; Bé trên Shopee VN&rdquo; không xếp được vào đâu — nó vừa là toplist, vừa là ngành, vừa là sàn. Thật ra chỉ có <strong>một</strong> ý định (toplist), còn ngành và sàn là <strong>bộ lọc</strong> chồng lên nó.</p>
+<pre><span class="c">ý định = toplist · lang_kinh · san_pham · meta · y_tuong · xa_giao · ngoai_pham_vi · khong_ro   (chọn đúng một)</span>
+<span class="c">bộ lọc = sàn · ngành · lăng kính · bảng · khoảng giá · số lượng                                 (cộng dồn)</span></pre>
+
+<h3>Hai hàm chuẩn hoá, và vì sao phải có cả hai</h3>
+<div class="tw"><table>
+<thead><tr><th>Hàm</th><th>Làm gì</th><th>Dùng khi</th></tr></thead>
+<tbody>
+<tr><td><code>fold(s)</code></td><td>NFD &rarr; bỏ dấu thanh &rarr; <code>đ</code>&rarr;<code>d</code> &rarr; thường hoá &rarr; mọi ký tự không phải <code>[0-9a-z]</code> thành khoảng trắng</td><td>Khớp từ điển (tên sàn, cụm lăng kính, cụm toplist&hellip;)</td></tr>
+<tr><td><code>chuan(s)</code></td><td>Giữ nguyên dấu, chỉ thường hoá và biến dấu câu thành khoảng trắng</td><td>Rút tên món, khớp tên ngành khi câu có dấu</td></tr>
+<tr><td><code>co(q, *cum)</code></td><td>Kiểm tra <code>" cụm "</code> có nằm trong <code>q</code> đã đệm khoảng trắng hai đầu không</td><td>Mọi phép khớp từ điển</td></tr>
+<tr><td><code>khoang_cach(a,b,toi_da)</code></td><td>Levenshtein <strong>có chặn trên</strong>: vượt ngưỡng thì trả <code>toi_da+1</code> và dừng tính</td><td>Khớp mờ tên sàn</td></tr>
+</tbody></table></div>
+
+<div class="note trap"><span class="tag">Bẫy đã cắn hai lần trong một ngày</span>
+<p>Khớp chuỗi con thì <code>"san ph"</code> (sàn PH) nằm gọn trong <code>"san pham"</code> — <strong>mọi câu có chữ &ldquo;sản phẩm&rdquo; bị nhận là hỏi Shopee PH</strong>. Cùng ngày, <code>"ung"</code> (ủng) nằm trong <code>"ung dung"</code>. Chữa bằng cách đệm khoảng trắng rồi tìm <code>" cụm "</code>. Đây là lý do <code>co()</code> tồn tại như một hàm riêng thay vì viết <code>in</code> rải rác.</p></div>
+
+<h3>Bước 0 — rút bộ lọc (luôn chạy, không dừng sớm)</h3>
+
+<h4>Sàn — bốn tầng nhận diện, cộng dồn</h4>
+<ol class="body">
+<li><strong>Cụm nguyên từ</strong> (<code>TU_SAN</code>): <code>shopee vn</code>, <code>viet nam</code>, <code>trong nuoc</code>, <code>noi dia</code> / <code>shopee ph</code>, <code>philippines</code>, <code>phi lip pin</code> / <code>1688</code>, <code>alibaba</code>, <code>taobao</code>, <code>trung quoc</code>, <code>nguon si</code>, <code>hang tau</code>.</li>
+<li><strong>Viết tắt nguyên từ</strong> (<code>TU_SAN_NGUYEN</code>): <code>vn</code>, <code>ph</code>, <code>1688</code>. Phải là một từ riêng — <code>vn</code> nằm trong <code>advn</code>.</li>
+<li><strong>Regex họ tên theo âm</strong> (<code>TU_SAN_REGEX</code>): <code>^(phi|pi)li?p+in(e|es|as)?$</code> bắt trọn <em>philipin, philippin, philipine, philippines, pilipinas</em>.</li>
+<li><strong>Khớp mờ lỗi gõ phím</strong> (<code>TU_SAN_GAN</code>): chỉ xét từ dài &ge; 5 ký tự; ngân sách chỉnh sửa 2 nếu dạng chuẩn dài &ge; 9 ký tự, ngược lại 1. Với mỗi từ chọn dạng chuẩn <strong>gần nhất</strong> để một từ mơ hồ không bị gán cho nhiều sàn.</li>
+</ol>
+<div class="note why"><span class="tag">Vì sao cần cả 3 lẫn 4</span>
+<p>Regex bắt lỗi theo <strong>âm</strong> (rụng chữ: <em>philipin</em>). Khớp mờ bắt lỗi <strong>gõ phím</strong> (thừa/thiếu/sai 1–2 ký tự: <em>philippnes</em>, <em>vietnamm</em>, <em>alibba</em>). Hai loại lỗi khác nhau, không cái nào phủ hết cái kia. Không đưa <code>ph</code>/<code>vn</code> vào khớp mờ vì quá ngắn, sẽ dính bừa.</p></div>
+
+<p>Sau khi nhận diện, ba luật cuối chạy theo thứ tự:</p>
+<ul>
+<li><strong>&ldquo;shopee&rdquo; trơn</strong> không kèm thị trường &rarr; cả hai sàn Shopee, <strong>không</strong> kéo theo 1688.</li>
+<li><strong>&ldquo;chỉ / duy nhất / riêng&rdquo;</strong> trong 3 từ ngay trước tên sàn &rarr; chỉ lấy sàn đó, các sàn còn lại rơi vào <code>san_loai</code>, <strong>trả về ngay</strong> (mạnh hơn mọi thứ khác trong câu).</li>
+<li><strong>Phủ định</strong> — cửa sổ <strong>4 từ</strong> ngay trước chỗ nhắc sàn, khớp <code>khong, dung, chang, bo qua, bo, tru, ngoai tru, loai, khoi, khong can, khong quan tam, khong lay, khong tinh, ngoai</code>. Rộng hơn thì &ldquo;không&rdquo; ở đầu câu phủ định nhầm tên sàn nằm cuối câu; hẹp hơn thì hụt &ldquo;đừng có lấy hàng 1688&rdquo;. Nếu loại hết mà không giữ cái nào (&ldquo;không lấy 1688&rdquo;) thì các sàn <strong>còn lại</strong> mới là thứ người ta muốn.</li>
+</ul>
+
+<h4>Khoảng giá</h4>
+<p>Chỉ nhận số <strong>đi kèm đơn vị tiền</strong> (<code>k, ngàn, nghìn, tr, triệu, m, tỷ, đ, đồng, vnd</code>). Nhận số trần thì &ldquo;top 20 sản phẩm&rdquo; thành giá 20, và &ldquo;1688&rdquo; thành giá 1688. Thứ tự xét: khoảng <code>từ A đến/tới/- B</code> trước (và trả về ngay), rồi <code>dưới/ít hơn/rẻ hơn/không quá/tối đa</code> &rarr; <code>gia_max</code>, rồi <code>trên/hơn/cao hơn/từ</code> &rarr; <code>gia_min</code> <em>chỉ khi</em> chưa bắt được <code>gia_max</code>.</p>
+<p>Về sau <code>_loc_gia</code> loại thẳng dòng <strong>không có giá</strong> — không đoán hộ.</p>
+
+<h4>Số lượng, lăng kính, bảng, thị trường</h4>
+<ul>
+<li><code>top (\d{1,3})</code> hoặc <code>(\d{1,3}) (san pham|mon|dong|cai)</code>, kẹp trong <strong>1–200</strong> để một câu không kéo cả kho ra.</li>
+<li>Lăng kính: cụm <strong>dài hơn thắng</strong>, để &ldquo;đang tăng&rdquo; không cướp mất &ldquo;tăng đột biến&rdquo;.</li>
+<li>Có chữ chỉ tiền (<code>doanh so, doanh thu, gmv, ra tien, nhieu tien, tien nhat, thu ve</code>) &rarr; <code>bang = "doanh_so"</code>, mặc định là <code>"ban_chay"</code>.</li>
+<li>Thị trường: <code>PH</code> <strong>chỉ khi</strong> <code>shopee_ph</code> có trong <code>sans</code> <em>và</em> <code>shopee_vn</code> không có. Nó quyết định <strong>ngôn ngữ</strong> cụm đem đi hỏi sàn, không quyết định nguồn số.</li>
+</ul>
+
+<h4>Ngành</h4>
+<p>Gọi <code>scout.nganh_lien_quan(cau_hoi, 3)</code>, rồi <strong>khử trùng theo TÊN</strong> và cắt còn <strong>2</strong>. Khử trùng vì cây ngành có tên lặp ở hai ngành lớn khác nhau (&ldquo;Áo&rdquo; nằm cả trong Thời Trang Nam lẫn Thời Trang Nữ), câu khớp chữ &ldquo;áo&rdquo; trả về hai dòng y hệt nhau — đọc như hệ thống nhận nhầm hai lần.</p>
+
+<h3>Bước 1 — cây quyết định, thứ tự có ý nghĩa</h3>
+
+<figure>
+<div class="fbox">
+<svg viewBox="0 0 640 906" role="img" aria-label="Cây quyết định tám ý định của truy_van.doc">
+  <defs>
+    <marker id="a3" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar"/></marker>
+    <marker id="a3k" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar-k"/></marker>
+  </defs>
+
+  <rect x="10" y="8" width="360" height="62" rx="5" class="bx2"/>
+  <text x="26" y="29" class="tb">Bước 0 — rút bộ lọc (không dừng)</text>
+  <text x="26" y="47" class="tm">sàn &middot; giá &middot; số lượng &middot; lăng kính &middot; bảng &middot; thị trường</text>
+  <text x="26" y="63" class="tm">ngành (khử trùng theo tên, cắt còn 2)</text>
+  <path d="M190 70 L190 92" class="ln" marker-end="url(#a3)"/>
+
+  <!-- 1 -->
+  <rect x="10" y="94" width="360" height="46" rx="5" class="bx"/>
+  <text x="26" y="114" class="t">1 &middot; co(TU_XA_GIAO) VÀ câu &le; 6 từ ?</text>
+  <text x="26" y="131" class="tm">chào &middot; cảm ơn &middot; bạn làm được gì &middot; ok</text>
+  <path d="M370 117 L466 117" class="ln-k" marker-end="url(#a3k)"/>
+  <rect x="468" y="98" width="162" height="38" rx="5" class="bx-kho"/>
+  <text x="549" y="122" class="tk" text-anchor="middle">xa_giao</text>
+  <path d="M190 140 L190 162" class="ln" marker-end="url(#a3)"/>
+
+  <!-- 2 -->
+  <rect x="10" y="164" width="360" height="46" rx="5" class="bx"/>
+  <text x="26" y="184" class="t">2 &middot; co(TU_NGOAI_PHAM_VI) ?</text>
+  <text x="26" y="201" class="tm">thời tiết &middot; bóng đá &middot; kể chuyện &middot; lập trình</text>
+  <path d="M370 187 L466 187" class="ln-k" marker-end="url(#a3k)"/>
+  <rect x="468" y="168" width="162" height="38" rx="5" class="bx-kho"/>
+  <text x="549" y="192" class="tk" text-anchor="middle">ngoai_pham_vi</text>
+  <path d="M190 210 L190 232" class="ln" marker-end="url(#a3)"/>
+
+  <!-- 3 -->
+  <rect x="10" y="234" width="360" height="62" rx="5" class="bx"/>
+  <text x="26" y="254" class="t">3 &middot; là câu hỏi về CHÍNH CÁI KHO ?</text>
+  <text x="26" y="271" class="tm">co(TU_META)  HOẶC  (chủ ngữ + nghi vấn</text>
+  <text x="26" y="287" class="tm">VÀ không có ngành VÀ không có chữ toplist)</text>
+  <path d="M370 265 L466 265" class="ln-k" marker-end="url(#a3k)"/>
+  <rect x="468" y="246" width="162" height="38" rx="5" class="bx-kho"/>
+  <text x="549" y="270" class="tk" text-anchor="middle">meta</text>
+  <path d="M190 296 L190 318" class="ln" marker-end="url(#a3)"/>
+
+  <!-- 4 -->
+  <rect x="10" y="320" width="360" height="46" rx="5" class="bx"/>
+  <text x="26" y="340" class="t">4 &middot; bước 0 đã bắt được tên lăng kính ?</text>
+  <text x="26" y="357" class="tm">tăng tốc &middot; đột biến &middot; ổn định &middot; khe hở &middot; tân binh</text>
+  <path d="M370 343 L466 343" class="ln-k" marker-end="url(#a3k)"/>
+  <rect x="468" y="324" width="162" height="38" rx="5" class="bx-stop"/>
+  <text x="549" y="348" class="ts" text-anchor="middle">lang_kinh</text>
+  <path d="M190 366 L190 388" class="ln" marker-end="url(#a3)"/>
+
+  <!-- 5 -->
+  <rect x="10" y="390" width="360" height="46" rx="5" class="bx"/>
+  <text x="26" y="410" class="t">5 &middot; co(TU_Y_TUONG) ?</text>
+  <text x="26" y="427" class="tm">nên bán gì &middot; gợi ý &middot; mở shop &middot; nhập gì</text>
+  <path d="M370 413 L466 413" class="ln-k" marker-end="url(#a3k)"/>
+  <rect x="468" y="394" width="162" height="38" rx="5" class="bx-kho"/>
+  <text x="549" y="418" class="tk" text-anchor="middle">y_tuong</text>
+  <path d="M190 436 L190 458" class="ln" marker-end="url(#a3)"/>
+
+  <!-- 6 -->
+  <rect x="10" y="460" width="360" height="46" rx="5" class="bx"/>
+  <text x="26" y="480" class="t">6 &middot; co(TU_TOPLIST) HOẶC có so_luong ?</text>
+  <text x="26" y="497" class="tm">top &middot; bán chạy &middot; cao nhất &middot; xếp hạng &middot; &ldquo;top 20&rdquo;</text>
+  <path d="M370 483 L466 483" class="ln-k" marker-end="url(#a3k)"/>
+  <rect x="468" y="464" width="162" height="38" rx="5" class="bx-stop"/>
+  <text x="549" y="488" class="ts" text-anchor="middle">toplist</text>
+  <path d="M190 506 L190 528" class="ln" marker-end="url(#a3)"/>
+
+  <!-- ten mon -->
+  <rect x="10" y="530" width="360" height="52" rx="5" class="bx2"/>
+  <text x="26" y="550" class="tb">mon = _ten_mon(cau_hoi)</text>
+  <text x="26" y="568" class="tm">lược hết chữ chức năng, GIỮ DẤU, còn lại là ứng viên tên món</text>
+  <path d="M190 582 L190 604" class="ln" marker-end="url(#a3)"/>
+
+  <!-- 7 -->
+  <rect x="10" y="606" width="360" height="62" rx="5" class="bx"/>
+  <text x="26" y="626" class="t">7 &middot; có ngành VÀ cụm còn lại chính là tên ngành ?</text>
+  <text x="26" y="644" class="tm">mon rỗng, hoặc mọi chữ của mon nằm trong tên ngành</text>
+  <text x="26" y="660" class="tm">(&ldquo;ngành thời trang nữ&rdquo; khớp cả hai đường)</text>
+  <path d="M370 637 L466 637" class="ln-k" marker-end="url(#a3k)"/>
+  <rect x="468" y="618" width="162" height="38" rx="5" class="bx-stop"/>
+  <text x="549" y="642" class="ts" text-anchor="middle">toplist</text>
+  <path d="M190 668 L190 690" class="ln" marker-end="url(#a3)"/>
+
+  <!-- 8 -->
+  <rect x="10" y="692" width="360" height="76" rx="5" class="bx"/>
+  <text x="26" y="712" class="t">8 &middot; mon đủ dài VÀ kho có hàng khớp ?</text>
+  <text x="26" y="730" class="tm">đủ dài = &ge; 2 chữ, hoặc 1 chữ + có TU_HOI_MON</text>
+  <text x="26" y="746" class="tm">(&ldquo;bán thế nào&rdquo;, &ldquo;giá bao nhiêu&rdquo;, &ldquo;ra sao&rdquo;)</text>
+  <text x="26" y="762" class="tm">co_trong_kho = scout.tim_san_pham(mon, "shopee_vn")</text>
+  <path d="M370 730 L466 730" class="ln-k" marker-end="url(#a3k)"/>
+  <rect x="468" y="700" width="162" height="60" rx="5" class="bx-stop"/>
+  <text x="549" y="722" class="ts" text-anchor="middle">san_pham</text>
+  <text x="549" y="740" class="tm" text-anchor="middle">tu_khoa = [mon]</text>
+  <text x="549" y="754" class="tm" text-anchor="middle">nganh = [] (xoá đi)</text>
+  <path d="M190 768 L190 790" class="ln" marker-end="url(#a3)"/>
+
+  <rect x="10" y="792" width="360" height="46" rx="5" class="bx-kho"/>
+  <text x="190" y="813" class="tk" text-anchor="middle">khong_ro</text>
+  <text x="190" y="830" class="tm" text-anchor="middle">không phải lỗi — là một kết cục hợp lệ</text>
+
+  <rect x="10" y="852" width="620" height="46" rx="5" class="bx2"/>
+  <text x="26" y="872" class="tm"><tspan class="tk">Xanh</tspan> = vẫn đi tiếp tới Gemini.  <tspan class="ts">Đỏ</tspan> = nhóm CHUYEN_HUB, dừng ở ask.py, trả câu tất định, không gọi AI.</text>
+  <text x="26" y="890" class="tm">Nhánh 7 trả về toplist nên cũng rơi vào CHUYEN_HUB.</text>
+</svg>
+</div>
+<figcaption>Chữ càng đặc thù xét càng sớm. Một câu tiếng Việt thường dính nhiều dấu hiệu cùng lúc, nên thứ tự chính là phần logic.</figcaption>
+</figure>
+
+<h3>Ba chỗ trong cây dễ bị hỏi vặn</h3>
+
+<h4>Vì sao xã giao xét trước tất cả</h4>
+<p>Câu chào không được rơi xuống tầng tra kho, vì ở đó <code>_ten_mon("xin chào")</code> rút còn <code>"chào"</code>, đem tra kho khớp trúng <strong>&ldquo;chảo&rdquo;</strong> (chảo rán) — và câu chào bị trả lời bằng một bảng đồ nhà bếp. Điều kiện <code>&le; 6 từ</code> để &ldquo;chào bạn, cho mình hỏi top bán chạy ngành mẹ và bé&rdquo; không bị nuốt thành câu chào.</p>
+
+<h4>Vì sao <code>y_tuong</code> đứng trước <code>toplist</code></h4>
+<p>&ldquo;Mùa mưa nên bán gì cho chạy&rdquo; có chữ <em>chạy</em> nhưng vẫn là câu xin ý tưởng. Ngược lại &ldquo;top sản phẩm bán chạy&rdquo; không chứa cụm xin ý tưởng nào nên không bị bắt nhầm — quan hệ một chiều, đặt đúng thứ tự là đủ.</p>
+
+<h4>Vì sao meta phải có thêm hai điều kiện phủ định</h4>
+<p>Luật meta là <em>&ldquo;chủ ngữ là cái kho&rdquo; + &ldquo;một chữ nghi vấn&rdquo;</em> chứ không liệt kê cả câu, vì số biến thể của một câu tiếng Việt là vô hạn. Nhưng luật đó một mình thì &ldquo;ngành nào bán chạy&rdquo; cũng thành câu meta, nên phải thêm: <strong>không có ngành</strong> và <strong>không có chữ toplist</strong>.</p>
+
+<h3><code>_ten_mon</code> — hàm tinh vi nhất trong tệp</h3>
+<p>Nhiệm vụ: bỏ hết chữ chức năng, phần còn lại là ứng viên tên món. Cách làm:</p>
+<ol class="body">
+<li>Tách câu thành từ, giữ <strong>song song hai bản</strong> (có dấu / không dấu) khớp 1–1 theo chỉ số.</li>
+<li>Bỏ <strong>cụm nhiều chữ</strong> trước — duyệt <code>TU_SAN</code> + <code>TU_TOPLIST</code> + <code>TU_Y_TUONG</code> + <code>TU_HOI_MON</code> + <code>TU_META</code> + <code>TU_LANG_KINH</code>, <strong>sắp theo độ dài giảm dần</strong>, đánh dấu vị trí trên bản không dấu.</li>
+<li>Bỏ <strong>từ đơn</strong> trong <code>TU_BO</code>. Nếu cả câu gõ <strong>có dấu</strong> thì chặn theo bản có dấu; nếu cả câu gõ <strong>không dấu</strong> thì đành chặn theo bản không dấu.</li>
+<li>Bỏ viết tắt sàn và mọi cụm toàn chữ số.</li>
+<li>Ghép lại <strong>từ bản có dấu</strong>.</li>
+</ol>
+<div class="note trap"><span class="tag">Vì sao phải giữ dấu — đo 14/09/2026</span>
+<p>Lược trên chuỗi đã bỏ dấu thì &ldquo;mua&rdquo; (động từ, nằm trong <code>TU_BO</code>) <strong>nuốt luôn</strong> &ldquo;mưa&rdquo;: câu &ldquo;áo mưa bán thế nào&rdquo; rút còn mỗi &ldquo;áo&rdquo;, rồi khớp vào ngành <em>Áo</em> và trả về bảng thời trang. Cùng họ: giày/giấy, ủng/ứng, chào/chảo. Loại bug này <strong>không bao giờ báo lỗi</strong> — nó chỉ trả về câu trả lời sai một cách trôi chảy.</p></div>
+
+<h3>Lưới an toàn: hai bảng tự kiểm</h3>
+<p><code>kiem_tra()</code> ở cuối tệp chạy hai bảng và trả về danh sách dòng sai:</p>
+<ul>
+<li><code>MAU</code> — 32 cặp (câu hỏi, ý định mong đợi), phủ cả 8 ý định.</li>
+<li><code>MAU_SAN</code> — 13 cặp (câu hỏi, danh sách sàn mong đợi). Tách riêng vì <code>MAU</code> chỉ soi ý định, mà lỗi &ldquo;hỏi Philippines ra cả ba sàn&rdquo; nằm ở khâu đọc sàn nên lọt lưới trọn.</li>
+</ul>
+<p>Bốn dòng trong <code>MAU_SAN</code> là <strong>chống nhận nhầm</strong>, và chúng đáng nhớ khi phỏng vấn: <code>"phí ship rẻ nhất"</code> &rarr; <code>[]</code> (&ldquo;phí&rdquo; không phải Philippines), <code>"cà phê sữa đá bán chạy"</code> &rarr; <code>[]</code>, <code>"điện thoại philips còn bán không"</code> &rarr; <code>[]</code> (thương hiệu Philips &ne; Philippines), <code>"top sản phẩm bán chạy"</code> &rarr; <code>[]</code> (không nói sàn thì để rỗng, <code>ask.py</code> tự lấy cả ba).</p>
+</section>
+
+<!-- ══════════════════ 04 ══════════════════ -->
+<section id="s4">
+<h2 class="sec"><span class="num">04</span>Chặng LẤY — digest và cú chặn CHUYEN_HUB</h2>
+<p class="sub"><code>ask.digest(cau_hoi)</code> nhận <code>YeuCau</code> rồi lấy đúng phần kho tương ứng. Đây là chỗ thay đổi lớn nhất trong lịch sử tính năng.</p>
+
+<h3>Nguyên tắc nền: lọc trước rồi mới hỏi AI</h3>
+<div class="note why"><span class="tag">Chốt 14/09/2026</span>
+<p>Kho có ~70.000 dòng và lớn thêm ~52.000 dòng mỗi ngày. Gửi hết cho Gemini là khoảng <strong>3 triệu token một câu hỏi</strong> — vượt cửa sổ model và đốt sạch hạn mức bản miễn phí. Nhưng &ldquo;sản phẩm nào bán chạy nhất&rdquo; là việc <strong>sắp xếp</strong>, mà kho làm việc đó trong <strong>0,3 giây và 0 token</strong>. Nên: kho lọc và xếp, Gemini chỉ đọc phần đã lọc (~1.000 token) rồi diễn giải. Đo thật: Top 10 bán chạy Shopee VN &asymp; 470 token.</p></div>
+
+<h3>Ba ý định bị chặn trước khi tới AI</h3>
+<pre>CHUYEN_HUB = frozenset({<span class="c">"toplist", "san_pham", "lang_kinh"</span>})</pre>
+<p>Với ba ý định này, <code>digest</code> <strong>không kéo bảng nào</strong> và <code>ask()</code> trả về ngay một câu tất định mời người dùng mở Trend Signal Hub, kèm cờ <code>hubRedirect: true</code> để giao diện bày nút. <strong>Không gọi Gemini</strong> — nhanh và không thể bịa.</p>
+
+<div class="note why"><span class="tag">Chốt 22/09/2026 — lý do</span>
+<p>Đây đúng là ba nhóm câu mà One-shot AI hay trả lời sai: hỏi Shopee lại trả về hàng 1688, số theo từng sản phẩm lệch giữa các sàn. Chủ dự án chốt: không tra bảng sản phẩm trong ô chat nữa, thay bằng hướng người dùng sang nơi bảng đúng theo từng sàn, có ảnh và link.</p></div>
+
+<p>Câu chuyển hướng do <code>_loi_chuyen_hub(dg)</code> sinh ra, và nó <strong>nhắc lại đúng thứ hệ thống hiểu được</strong> — sàn, ngành, lăng kính — để người đọc thấy nó không lờ câu mình hỏi mà chỉ đổi nơi trả lời. Ba biến thể câu chữ theo ba ý định.</p>
+
+<div class="note trap"><span class="tag">Chi tiết dễ bị vặn</span>
+<p>Ba hàm <code>_lay_toplist</code> / <code>_lay_lang_kinh</code> / <code>_lay_san_pham</code> vẫn nằm nguyên trong <code>ask.py</code> nhưng <strong>không ai gọi nữa</strong> — giữ ở dạng ngủ, phòng khi cần bật lại việc tra thẳng trong chat. Biết điều này là biết đọc mã nguồn; không biết thì sẽ giải thích một luồng không còn chạy.</p></div>
+
+<h3>Ý định duy nhất còn xuống kho: <code>meta</code></h3>
+<p><code>_lay_meta()</code> gọi <code>scout.tong_quan_kho()</code>, <strong>đếm thật</strong> chứ không viết cứng (số ngày quét và số sản phẩm đổi mỗi đêm). Trả về, cho từng sàn: số lần quét, danh sách ngày quét, ngày mới nhất, số sản phẩm lần cuối, số ngành lớn / ngành con — cộng tên sáu lăng kính và câu &ldquo;dữ liệu cào trực tiếp từ trang niêm yết của sàn, mỗi đêm một lần&rdquo;.</p>
+<p>Kho rỗng thì trả về đúng một dòng <code>"KHO CHƯA CÓ DỮ LIỆU NÀO."</code></p>
+
+<h3>Luật &ldquo;hỏi số mà kho không có&rdquo;</h3>
+<pre><span class="c">if</span> yc.can_so_lieu <span class="c">and not</span> parts <span class="c">and</span> yc.y_dinh <span class="c">not in</span> CHUYEN_HUB:
+    parts = [<span class="c">"KHO KHÔNG CÓ DỮ LIỆU khớp câu hỏi này (phạm vi: …). Nói thẳng là chưa có, đừng bịa sản phẩm."</span>]</pre>
+<p><code>can_so_lieu</code> đúng với <code>toplist, lang_kinh, san_pham, meta</code>. Vì ba cái đầu đã bị <code>CHUYEN_HUB</code> loại, trên thực tế dòng này chỉ còn phục vụ <code>meta</code>.</p>
+<div class="note why"><span class="tag">Vì sao phải nói ra</span>
+<p>Im lặng gửi prompt rỗng là để mô hình tự do bịa một bảng nghe rất thật. Một khối dữ liệu rỗng và một khối dữ liệu ghi &ldquo;kho không có&rdquo; là hai thứ khác hẳn nhau đối với mô hình.</p></div>
+
+<h3>Khối grounding trả về giao diện</h3>
+<p><code>_grounding(dg)</code> đóng gói đúng những gì hệ thống đã hiểu: <code>yDinh</code>, <code>lyDo</code> (danh sách câu giải thích do <code>yc.ghi()</code> tích lại suốt quá trình đọc), <code>san</code>, <code>sanLoai</code>, <code>phamVi</code>, <code>nganh</code>, <code>langKinh</code>, <code>bang</code>, <code>tuKhoa</code>, <code>giaMin</code>, <code>giaMax</code>, <code>nTop</code>, <code>ngay</code>.</p>
+<p>Đây là thứ <strong>đọc đầu tiên</strong> khi có người báo &ldquo;nó trả lời sai câu tôi hỏi&rdquo;: nhìn <code>lyDo</code> là biết ngay hệ thống hiểu sai ở khâu nào.</p>
+</section>
+
+<!-- ══════════════════ 05 ══════════════════ -->
+<section id="s5">
+<h2 class="sec"><span class="num">05</span>Chặng TÌM WEB</h2>
+<p class="sub"><code>backend/hub/signal/web.py</code>. Thêm 18/09/2026. Đây là phần <strong>thêm</strong>: hỏng nó không được làm hỏng câu trả lời từ kho.</p>
+
+<h3>Khi nào tìm — <code>nen_tim(cau_hoi, y_dinh)</code></h3>
+<div class="tw"><table>
+<thead><tr><th>Điều kiện</th><th>Kết quả</th><th>Vì sao</th></tr></thead>
+<tbody>
+<tr><td><code>y_dinh == "xa_giao"</code> hoặc câu rỗng</td><td><strong>Không</strong></td><td>Câu chào không cần bối cảnh web</td></tr>
+<tr><td><code>y_dinh</code> &isin; <code>{y_tuong, san_pham, khong_ro}</code></td><td><strong>Luôn tìm</strong></td><td>Đây đúng là chỗ kho thiếu bối cảnh</td></tr>
+<tr><td>Còn lại: câu chứa từ khoá tra web</td><td>Tìm</td><td>Người dùng nói rõ muốn tin mới</td></tr>
+</tbody></table></div>
+<p>Danh sách <code>TU_TIM_WEB</code>: <em>trên web, tìm web, tra web, search, google, trên mạng, internet, tin tức, tin mới, bài báo, báo chí, mới nhất, gần đây, hiện nay, xu hướng, trend, năm nay, chính sách, quy định</em>.</p>
+<div class="note trap"><span class="tag">Chi tiết nhỏ nhưng có lý do</span>
+<p>Phép khớp này chạy trên bản <strong>CÓ DẤU</strong> (<code>cau_hoi.lower()</code>), không phải bản đã <code>fold</code>. Bỏ dấu thì &ldquo;báo&rdquo; chập với &ldquo;bao&rdquo; (bao bì) và &ldquo;mạng&rdquo; chập với &ldquo;màng&rdquo;.</p></div>
+
+<h3>Nguồn và cách lấy</h3>
+<ol class="body">
+<li><strong>DuckDuckGo bản HTML</strong> — <code>POST https://html.duckduckgo.com/html/</code> với <code>{q, kl}</code>. Vùng <code>vn-vi</code> hoặc <code>ph-en</code> theo thị trường. Phải gỡ link thật ra khỏi lớp bọc <code>//duckduckgo.com/l/?uddg=</code>, và bỏ mọi URL chứa <code>duckduckgo.com/y.js</code> vì đó là quảng cáo, không phải kết quả.</li>
+<li><strong>Bing</strong> — dự phòng, <code>GET https://www.bing.com/search?q=&amp;cc=</code>, parse khối <code>li.b_algo</code>.</li>
+<li>Hỏng cả hai &rarr; <code>results</code> rỗng, <code>error</code> nói vì sao, ghi log mức <code>info</code>. <strong>Không ném lỗi.</strong></li>
+</ol>
+<p>Lọc sau khi lấy: chỉ giữ URL bắt đầu bằng <code>http</code>, có tiêu đề, và khử trùng theo URL. Cắt còn <strong>5</strong> kết quả (mỗi kết quả ~80 token).</p>
+
+<h3>Cache và trần thời gian</h3>
+<ul>
+<li>Trần cả lượt: <strong>8 giây</strong> — câu trả lời không được chờ web lâu hơn thế.</li>
+<li>Cache trong RAM, khoá <code>"{vùng}|{câu hỏi thường hoá}"</code>, sống <strong>6 giờ</strong>. Bấm &ldquo;hỏi lại&rdquo; không đi tìm lại.</li>
+<li><strong>Chỉ cache khi có kết quả</strong> — không cache một lần hỏng.</li>
+</ul>
+
+<h3>Đưa vào prompt như thế nào</h3>
+<p><code>khoi_prompt()</code> đánh mã <code>[W1]</code>&hellip;<code>[W5]</code> cho từng kết quả và kèm câu dặn:</p>
+<ul>
+<li>&ldquo;đây là bài viết trên mạng, <strong>KHÔNG phải số liệu kho</strong>&rdquo;;</li>
+<li>&ldquo;dùng ý nào thì ghi mã nguồn ngay sau ý đó&rdquo;;</li>
+<li>&ldquo;số bán hàng thì vẫn chỉ lấy từ kho; <strong>web nói khác kho thì tin kho</strong>&rdquo;;</li>
+<li>&ldquo;kết quả không liên quan thì bỏ qua&rdquo;.</li>
+</ul>
+<p>Đúng danh sách ấy, đúng thứ tự ấy, cũng được trả về giao diện ở <code>webSources</code> để người đọc bấm ra được.</p>
+
+<div class="note ai"><span class="tag">Vì sao tự tìm thay vì bật grounding của Gemini</span>
+<p>Đo 18/09/2026 với khoá đang dùng: gọi thường trả <strong>200</strong>; cùng câu đó kèm <code>tools: [{google_search: {}}]</code> trả <strong>429 ở mọi model</strong> (3.5-flash-lite, 3.5-flash, flash-latest). Gói miễn phí của khoá này không có hạn mức grounding. Tự tìm thì không tốn thêm lượt Gemini nào — vẫn đúng một lượt gọi, chỉ dài thêm ~500 token.</p></div>
+</section>
+
+<!-- ══════════════════ 06 ══════════════════ -->
+<section id="s6">
+<h2 class="sec"><span class="num">06</span>Chặng PROMPT và lượt gọi Gemini</h2>
+
+<h3>Khung prompt — bốn khối, luôn có</h3>
+<p><code>ask()</code> chèn <strong>một lượt giả vai <code>assistant</code></strong> lên đầu hội thoại, trước mọi lượt thật.</p>
+<div class="note why"><span class="tag">Vì sao vai assistant chứ không phải user hay system</span>
+<p>Để mô hình đọc khối này như <strong>dữ kiện đã có trên bàn</strong>, chứ không như một yêu cầu phải trả lời.</p></div>
+
+<div class="tw"><table>
+<thead><tr><th>#</th><th>Khối</th><th>Nội dung</th></tr></thead>
+<tbody>
+<tr><td class="numc">1</td><td>Nguồn</td><td>&ldquo;DỮ LIỆU THẬT từ kho Trend Signal Hub (cào trực tiếp từ sàn, đã lọc theo câu hỏi).&rdquo;</td></tr>
+<tr><td class="numc">2</td><td>Phạm vi sàn</td><td>Tên các sàn được phép nói tới; nếu câu có phủ định thì ghi rõ sàn nào người dùng đã loại trừ</td></tr>
+<tr><td class="numc">3</td><td>Quy tắc chung</td><td>Chỉ dùng số trong khối; không bịa thêm sản phẩm; luôn nói rõ sản phẩm thuộc sàn nào; <strong>không cộng hay so tiền giữa hai sàn khác đơn vị (VND/PHP/CNY)</strong>; không có trong khối thì nói là kho chưa có; thông tin web chỉ để giải thích bối cảnh</td></tr>
+<tr><td class="numc">4</td><td>Hướng dẫn theo ý định</td><td>Một câu dặn riêng lấy từ bảng <code>HUONG_DAN</code> — đây là <strong>tầng ràng buộc sinh</strong> của hệ RAG</td></tr>
+</tbody></table></div>
+<p>Rồi mới nối thêm (nếu có) khối <code>DỮ LIỆU</code> và khối web. Với <code>khong_ro</code> / <code>ngoai_pham_vi</code> mà web có kết quả, thêm một câu nữa: nếu web trả lời được và câu hỏi liên quan buôn bán thì trả lời ngắn dựa trên nó kèm mã <code>[W#]</code>, thay vì hỏi lại hay từ chối.</p>
+
+<div class="note why"><span class="tag">Gửi cả khi không có bảng nào</span>
+<p>Trước đây khối này chỉ gửi khi phần dữ liệu không rỗng, nên câu chào hỏi và câu ngoài phạm vi đi thẳng tới mô hình <strong>trần trụi</strong> — và nó trả lời như một trợ lý đa năng, hứa những thứ công cụ không làm được. Câu dặn theo ý định mới là phần <strong>luôn phải có</strong>; bảng số chỉ là phần tuỳ câu.</p></div>
+
+<h3>Bảng <code>HUONG_DAN</code> — tám câu dặn</h3>
+<div class="tw"><table>
+<thead><tr><th>Ý định</th><th>Điều cấm / điều buộc, nói gọn</th></tr></thead>
+<tbody>
+<tr><td><code>toplist</code></td><td>Trả lời bằng đúng những dòng đã cho, nêu rõ sàn, đừng bịa thêm dòng nào</td></tr>
+<tr><td><code>lang_kinh</code></td><td>Nếu dữ liệu nói KHÔNG CÓ sản phẩm nào đạt mức thì <strong>nói thẳng</strong> — tuyệt đối không thay bằng danh sách bán chạy thông thường rồi coi như đã trả lời</td></tr>
+<tr><td><code>san_pham</code></td><td>Nếu dữ liệu ghi KHO CHƯA ĐO thì nói là <strong>kho chưa có số</strong>, <strong>không được</strong> kết luận sàn không bán món đó</td></tr>
+<tr><td><code>meta</code></td><td>Trả lời gọn bằng đúng các con số; không liệt kê sản phẩm</td></tr>
+<tr><td><code>y_tuong</code></td><td>Đề xuất món hợp bối cảnh; đừng bịa số — hệ thống sẽ tự gắn số thật vào sau</td></tr>
+<tr><td><code>xa_giao</code></td><td>Trả lời ngắn rồi nói rõ hỏi được gì; không liệt kê sản phẩm</td></tr>
+<tr><td><code>ngoai_pham_vi</code></td><td>Nói thẳng là không trả lời được, gợi ý vài câu đúng phạm vi; không bịa</td></tr>
+<tr><td><code>khong_ro</code></td><td><strong>Mặc định là trò chuyện, không phải từ chối.</strong> Xem dưới.</td></tr>
+</tbody></table></div>
+
+<div class="note ai"><span class="tag">Chốt 22/09/2026 — mặc định trò chuyện</span>
+<p>Câu rơi vào <code>khong_ro</code> là câu không khớp một dạng tra số cụ thể nào, nhưng <strong>phần lớn vẫn là câu buôn bán</strong>. Ép nó &ldquo;hỏi lại&rdquo; thì người dùng thấy như bot không hiểu gì. Nên để Gemini trả lời như một cố vấn thương mại điện tử bằng kiến thức chung.</p>
+<p>Ranh giới duy nhất phải giữ: Gemini <strong>không có số thật của kho</strong>, nên cấm nó bịa <strong>con số</strong> bán hàng cụ thể; tư vấn, kinh nghiệm, hướng đi chung thì thoải mái. Cần số thật thì mời hỏi &ldquo;top bán chạy&hellip;&rdquo; theo sàn/ngành. Chỉ khi câu quá mơ hồ hoặc vô nghĩa mới hỏi lại kèm 2–3 ví dụ.</p>
+<p>Câu ngoài lề thật sự (thời tiết, kể chuyện) đã bị chặn ở nhánh <code>ngoai_pham_vi</code> phía trên, <strong>không lọt xuống đây</strong>.</p></div>
+
+<h3>Ghép hội thoại rồi gọi</h3>
+<pre>chat = [ChatTurn(<span class="c">"assistant"</span>, khung)] + [mọi lượt thật, giữ nguyên vai]
+<span class="c">if</span> chat[-1].role != <span class="c">"user"</span> <span class="c">or not</span> chat[-1].text:
+    <span class="c">return</span> {<span class="c">"error"</span>: <span class="c">"Thiếu câu hỏi"</span>}
+result = <span class="c">await</span> map_demand(chat, SearchContext(country=dg[<span class="c">"thi_truong"</span>]))</pre>
+<p>Lưu ý: <code>ask()</code> lấy câu hỏi bằng cách duyệt <strong>ngược</strong> danh sách và lấy lượt đầu tiên có <code>role != "assistant"</code> và có chữ.</p>
+
+<h3>Bên trong <code>map_demand</code></h3>
+
+<figure>
+<div class="fbox">
+<svg viewBox="0 0 580 660" role="img" aria-label="Sơ đồ ba bước bên trong map_demand">
+  <defs>
+    <marker id="a4" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar"/></marker>
+    <marker id="a4k" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar-k"/></marker>
+  </defs>
+
+  <rect x="10" y="8" width="560" height="40" rx="5" class="bx2"/>
+  <text x="26" y="26" class="t">Không có GEMINI_API_KEY ?  &rarr;  trả mode=talk kèm message, dừng.</text>
+  <text x="26" y="42" class="tm">Mọi kết cục đều kèm message — map_demand không bao giờ ném lỗi.</text>
+  <path d="M290 48 L290 70" class="ln" marker-end="url(#a4)"/>
+
+  <rect x="10" y="72" width="560" height="78" rx="5" class="bx-ai"/>
+  <text x="26" y="93" class="tb">BƯỚC 1 &middot; _ask() — lượt Gemini thứ nhất</text>
+  <text x="26" y="112" class="tm">responseSchema JSON bắt buộc &middot; temperature 0.5 &middot; 8 lượt hội thoại gần nhất</text>
+  <text x="26" y="129" class="tm">mô hình tự chọn mode: "products" (cần bảng mới) hay "talk" (mọi câu còn lại)</text>
+  <text x="26" y="145" class="tm">nghi ngờ thì chọn talk — một bảng 15 món không ai hỏi tệ hơn một câu trả lời đúng chỗ</text>
+  <path d="M290 150 L290 172" class="ln" marker-end="url(#a4)"/>
+
+  <rect x="10" y="174" width="560" height="56" rx="5" class="bx2"/>
+  <text x="26" y="194" class="tb">Code ghi đè nhãn: mode = "products" CHỈ KHI mô hình khai products VÀ có ít nhất 1 món</text>
+  <text x="26" y="213" class="tm">một lượt khai "products" mà không đẻ ra món nào thì trên thực tế là một lượt nói chuyện —</text>
+  <text x="26" y="226" class="tm">tin theo nhãn đó chỉ dựng ra một khối bảng rỗng</text>
+
+  <path d="M120 230 L120 252" class="ln-k" marker-end="url(#a4k)"/>
+  <text x="128" y="246" class="tk">talk</text>
+  <rect x="10" y="254" width="220" height="48" rx="5" class="bx-kho"/>
+  <text x="120" y="274" class="tb" text-anchor="middle">DỪNG — ~1 giây</text>
+  <text x="120" y="291" class="tm" text-anchor="middle">không hỏi sàn, không chấm lại</text>
+
+  <path d="M440 230 L440 310" class="ln" marker-end="url(#a4)"/>
+  <text x="448" y="266" class="ta">products</text>
+
+  <rect x="10" y="312" width="560" height="66" rx="5" class="bx"/>
+  <text x="26" y="333" class="tb">BƯỚC 2 &middot; probe_terms() — hỏi ô tìm kiếm của sàn</text>
+  <text x="26" y="352" class="tm">hai nguồn đầu phục vụ thị trường đó (Google Trends bị loại vì phải mở trình duyệt thật)</text>
+  <text x="26" y="369" class="tm">song song theo món (tối đa 5 món cùng lúc), tuần tự theo sàn, 4 gợi ý mỗi sàn</text>
+  <path d="M290 378 L290 398" class="ln" marker-end="url(#a4)"/>
+
+  <rect x="10" y="400" width="560" height="66" rx="5" class="bx-ai"/>
+  <text x="26" y="421" class="tb">BƯỚC 3 &middot; _verify() — lượt Gemini thứ hai</text>
+  <text x="26" y="440" class="tm">temperature 0 &middot; chấm cả bảng trong MỘT lượt gọi</text>
+  <text x="26" y="457" class="tm">đọc gợi ý của sàn để phán, không dựa vào trí nhớ &rarr; real / niche / wrong</text>
+  <path d="M290 466 L290 486" class="ln" marker-end="url(#a4)"/>
+
+  <rect x="10" y="488" width="560" height="78" rx="5" class="bx-kho"/>
+  <text x="26" y="509" class="tb">_judge() — hai luật CỨNG, prompt không ghi đè được</text>
+  <text x="26" y="528" class="tm">1 &middot; không có bằng chứng nào &rarr; not_found, bất kể mô hình nói gì</text>
+  <text x="26" y="545" class="tm">2 &middot; searchTerm phải là MỘT TRONG các chuỗi bằng chứng của sàn;</text>
+  <text x="40" y="560" class="tm">không khớp thì lấy chuỗi đầu tiên (trừ khi status = wrong)</text>
+  <path d="M290 566 L290 586" class="ln" marker-end="url(#a4)"/>
+
+  <rect x="10" y="588" width="560" height="62" rx="5" class="bx"/>
+  <text x="26" y="609" class="tb">Lọc và xếp</text>
+  <text x="26" y="628" class="tm">bỏ HẲN món có usefulness &lt; 50 &middot; tier = core nếu &ge; 75, còn lại adjacent</text>
+  <text x="26" y="645" class="tm">sắp theo (tier, −usefulness, status) &middot; hết món &rarr; quay về mode talk kèm message</text>
+</svg>
+</div>
+<figcaption>Nhánh <code>y_tuong</code> là nhánh duy nhất tốn <strong>hai</strong> lượt Gemini. Mọi nhánh khác tốn một, và ba nhánh <code>CHUYEN_HUB</code> tốn không lượt nào.</figcaption>
+</figure>
+
+<h3>Chi tiết từng bước</h3>
+
+<h4>Bước 1 — <code>_ask()</code></h4>
+<ul>
+<li><strong>Cửa sổ hội thoại</strong>: chỉ <code>MAX_TURNS = 8</code> lượt gần nhất vào prompt. Lý do chính không phải tiền: mười lượt bối cảnh cũ sẽ <strong>kéo câu trả lời về phía những gì đã nói</strong>, đúng lúc người dùng vừa đổi hẳn sang chuyện khác.</li>
+<li><strong>Ngôn ngữ tên món</strong> do <code>_market_language(country)</code> gọi tên ra <em>bằng chữ</em>, không để mô hình suy từ mã nước. Đo 18/08/2026: hỏi thị trường <code>PH</code> thì tên món về bằng <strong>tiếng Tây Ban Nha</strong> — mô hình đi từ &ldquo;Philippines&rdquo; qua lịch sử thuộc địa. Lượt chạy vẫn &ldquo;thành công&rdquo;, vẫn ra 15 món, chỉ là không cụm nào tìm được ở thị trường đó.</li>
+<li><strong>Cách nghĩ ra món</strong>: prompt bắt đi theo <strong>chuỗi hệ quả</strong>, không liệt kê &ldquo;sản phẩm liên quan&rdquo;. Ví dụ trong chính prompt: <em>mùa mưa &rarr; quần áo phơi không khô &rarr; ẩm mốc &rarr; xịt thơm quần áo, máy sấy mini</em>.</li>
+<li><strong>Hạn ngạch ba mức</strong>: core 7 &middot; adjacent 5 &middot; hidden 3, tối đa 15 món.</li>
+<li><strong>Vệ sinh đầu ra ở code</strong>: bỏ món trùng tên (so bản thường hoá), bỏ tier không hợp lệ, kẹp <code>usefulness</code> về 0–100, và <code>_clean_gloss</code> xoá dòng nghĩa khi nó <strong>lặp lại đúng chữ</strong> của tên món — luật này nằm ở code chứ không ở prompt, vì mô hình vẫn chép <code>term</code> sang <code>gloss</code> bất kể prompt dặn gì.</li>
+</ul>
+
+<h4>Bước 2 — <code>probe_terms()</code></h4>
+<p>Với thị trường VN, hai nguồn đầu phục vụ được là <strong>Shopee</strong> và <strong>TikTok</strong> (Google Trends bị loại khỏi danh sách vì phải mở trình duyệt thật, quá chậm cho ~15 món). Mỗi nguồn trả tối đa 4 gợi ý cho mỗi món. Semaphore giới hạn 5 món hỏi cùng lúc — Taobao đo thấy <code>ConnectTimeout</code> khi bị hỏi dồn. Một lượt gọi hỏng chỉ làm món đó thiếu bằng chứng; <strong>ánh xạ rỗng là một kết quả, không phải lỗi</strong>.</p>
+
+<h4>Bước 3 — <code>_verify()</code> và <code>_judge()</code></h4>
+<p>Prompt chấm lại nói thẳng: <em>&ldquo;đọc dữ liệu đó để phán xét, đừng dựa vào trí nhớ&rdquo;</em>. Ba nhãn: <code>real</code> (sàn hoàn thiện thành nhiều biến thể của đúng món), <code>niche</code> (gợi ý ít hoặc lệch sang thứ gần giống), <code>wrong</code> (gợi ý nói về một món khác hẳn — mô hình đã đặt tên sai). Nhãn thứ tư <code>not_found</code> <strong>không có trong prompt</strong>; nó do code gán ở <code>_judge</code>.</p>
+<div class="note why"><span class="tag">Vì sao searchTerm phải là chuỗi có thật</span>
+<p>Cụm này chảy thẳng sang mục Từ khoá làm từ gốc. Một cụm do mô hình tự viết sẽ hỏng ở tận bên kia, nơi triệu chứng chỉ còn là &ldquo;bảng rỗng&rdquo; — không ai truy ngược được về đây.</p></div>
+
+<h4>Ngưỡng hữu ích</h4>
+<p><code>USEFULNESS_FLOOR = 50</code>, và món dưới ngưỡng bị <strong>bỏ hẳn</strong> chứ không xếp xuống cuối bảng. Nhưng ngưỡng chỉ chặn ở khâu <strong>hiển thị</strong>: <code>TIER_QUOTA</code> giữ nguyên, vì đó là bộ máy tìm ra những món lệch khỏi từ gốc (mùa mưa &rarr; máy sấy giày). Bóp phần đề xuất là bóp đúng thứ làm nên tính năng.</p>
+<p>Nếu có đề xuất mà không món nào qua ngưỡng: <code>mode</code> quay về <code>talk</code> kèm câu &ldquo;Đã nghĩ ra N món cho câu này nhưng không món nào đủ hữu ích để đề xuất&rdquo; — vì một bảng rỗng không kèm lý do đọc thành &ldquo;công cụ hỏng&rdquo;.</p>
+
+<h4>Lớp gọi mạng</h4>
+<p><code>call_gemini</code> ở <code>lib/keywords/gloss.py</code>: endpoint <code>v1beta/models/{model}:generateContent</code>, model mặc định <code>gemini-3.5-flash-lite</code> (đổi được qua <code>GEMINI_MODEL</code>), timeout <strong>30 giây</strong>, <strong>thử lại tối đa 2 lần và CHỈ khi hết giờ</strong>. Khoá sai, model sai hay payload sai đều trả lỗi ngay — lặp lại chúng chỉ tốn gấp đôi thời gian để nhận cùng một câu trả lời, tệ hơn là đốt gấp đôi hạn mức khi nguyên nhân đúng là hạn mức.</p>
+</section>
+
+<!-- ══════════════════ 07 ══════════════════ -->
+<section id="s7">
+<h2 class="sec"><span class="num">07</span>Chặng HẬU XỬ LÝ — gắn lại số thật</h2>
+<p class="sub">Phần này là câu trả lời cho &ldquo;khác gì một con chatbot thường?&rdquo;.</p>
+
+<h3><code>_gan_kho(items, san)</code></h3>
+<p>Mỗi món mô hình đề xuất được tra lại vào kho: thử <code>term</code> trước (tiếng Việt có dấu, khớp chính xác hơn), không được mới thử <code>searchTerm</code>. Kết quả gắn vào trường <code>signal</code>.</p>
+<pre>san_tim = dg[<span class="c">"san"</span>][0] <span class="c">if</span> dg[<span class="c">"san"</span>] <span class="c">else</span> (<span class="c">"shopee_ph" if</span> dg[<span class="c">"thi_truong"</span>] == <span class="c">"PH" else "shopee_vn"</span>)</pre>
+<div class="note why"><span class="tag">Vì sao chỉ tra một sàn</span>
+<p>Gộp ba sàn vào một con số &ldquo;n listing&rdquo; là trộn lại đúng hai thang đo vừa mất công tách ra. Câu có nói sàn thì theo sàn đó; không nói thì theo thị trường người hỏi đang bán, mặc định VN.</p></div>
+
+<h3><code>scout.tim_san_pham</code> — cách kho tra một cái tên</h3>
+<ol class="body">
+<li>Dựng <strong>chỉ mục tìm-theo-tên</strong> của lần quét mới nhất, giữ trong RAM. Khoá gồm dấu thời gian lượt cào nên một lượt cào xong là tự dựng lại. Cần vì mỗi câu hỏi tra ~13 cụm, mà dựng lại chỉ mục cho mỗi cụm là đọc 22.000 dòng mười ba lần.</li>
+<li>Bỏ trùng theo <code>product_id</code> và loại <strong>hàng ảo</strong> (quà tặng kèm, hàng mẫu, ô bù chênh lệch, link đặt cọc, ô phí ship) — giá của chúng là giá ảo.</li>
+<li><strong>Nới dần từ phải sang trái</strong>: món AI gợi ý thường là một mô tả (&ldquo;áo mưa bít cánh dơi&rdquo;) chứ không phải tên trên sàn, nên khớp nguyên cụm gần như luôn trượt. Bỏ dần chữ cuối cho tới khi còn <strong>2 chữ</strong>. Dừng ở 2 vì một chữ (&ldquo;áo&rdquo;, &ldquo;túi&rdquo;) rộng tới mức con số không còn nói gì.</li>
+<li>Khớp <strong>nguyên từ</strong>, trên bản có dấu nếu từ khoá có dấu.</li>
+<li>Xếp theo <code>sold_monthly</code> giảm dần, trả về <code>n</code>, <code>ban_30</code> của cái đầu bảng, <code>gia_min</code>/<code>gia_max</code>, và tối đa 3 thẻ.</li>
+</ol>
+<p>Trả <code>None</code> khi kho không có — và đó là <strong>câu trả lời thật, không phải lỗi</strong>.</p>
+<div class="note trap"><span class="tag">Hai chữ phải nói đúng</span>
+<p>Trường <code>cum</code> là cụm <strong>thật sự đã khớp</strong>, và <code>nguyen_cum</code> cho biết nó có bằng cụm được hỏi không. Giao diện phải nói ra khi nó ngắn hơn, nếu không thì &ldquo;49 listing&rdquo; đọc thành 49 cái áo mưa bít cánh dơi — trong khi đó là số của &ldquo;áo mưa&rdquo; nói chung.</p>
+<p>Và khi <code>signal = null</code>, giao diện nói <strong>&ldquo;kho chưa đo&rdquo;</strong>, <strong>không</strong> nói &ldquo;sàn không bán&rdquo;. Kho chỉ cào TOP mỗi ngành nên hàng ngách vắng mặt là chuyện thường.</p>
+<p>Tra <code>"ủng"</code> bằng <code>LIKE '%ủng%'</code> ra 57 dòng mà gần hết là rác: nó khớp vào <em>thuần ch<strong>ủng</strong></em> và <em>kh<strong>ủng</strong> long</em>. Tra trên bản bỏ dấu còn tệ hơn — 197 listing, đứng đầu là tai nghe, vì khớp &ldquo;<strong>ứng</strong> dụng&rdquo;.</p></div>
+
+<h3><code>_the_san_pham</code> — thẻ trả về giao diện</h3>
+<ul>
+<li>Khử trùng theo <code>(sàn, product_id)</code> — một sản phẩm có thể nằm ở cả ba bảng.</li>
+<li>Cắt tối đa <strong>40</strong> thẻ.</li>
+<li>Rút gọn còn đúng <strong>16 trường</strong> giao diện thật sự vẽ. Gửi cả dòng snapshot thì mỗi lượt hỏi chở thêm vài chục KB mà không ai dùng.</li>
+<li>Trường <code>khoi</code> cho biết thẻ đó thuộc khối nào đã gửi cho AI, để giao diện gom đúng nhóm thay vì đổ một danh sách phẳng không biết dòng nào vì sao có mặt.</li>
+</ul>
+
+<h3>Hình dạng cuối cùng trả về</h3>
+<div class="tw"><table>
+<thead><tr><th>Trường</th><th>Nguồn</th><th>Ai sinh ra</th></tr></thead>
+<tbody>
+<tr><td><code>reply</code>, <code>situation</code>, <code>followUps</code></td><td><code>map_demand</code></td><td>Gemini</td></tr>
+<tr><td><code>items[].term / gloss / pain</code></td><td><code>map_demand</code></td><td>Gemini</td></tr>
+<tr><td><code>items[].status / searchTerm</code></td><td><code>_judge</code></td><td>Gemini + luật cứng của code</td></tr>
+<tr><td><code>items[].signal</code></td><td><code>_gan_kho</code></td><td><strong>Kho</strong></td></tr>
+<tr><td><code>hubProducts</code></td><td><code>_the_san_pham</code></td><td><strong>Kho</strong></td></tr>
+<tr><td><code>webSources</code></td><td><code>web.tim</code></td><td>DuckDuckGo / Bing</td></tr>
+<tr><td><code>grounding</code></td><td><code>_grounding</code></td><td><strong>Luật</strong> (<code>truy_van</code>)</td></tr>
+<tr><td><code>hubRedirect</code></td><td><code>ask()</code></td><td><strong>Luật</strong></td></tr>
+</tbody></table></div>
+
+<h3>Phía giao diện</h3>
+<ul>
+<li>Component dùng chung với trang Cơ hội cũ: <code>OpportunityWorkspace</code> với cờ <code>hub</code>. Ba khác biệt: gọi <code>/api/hub/signal/ask</code>, <strong>không có ô Quốc gia</strong> (sàn đã quyết định thị trường), và cất hội thoại ở khoá riêng <code>hub-oneshot-v1</code>.</li>
+<li>Gửi lên <strong>cả lịch sử</strong>: lượt user gửi <code>{role, text, items: []}</code>, lượt assistant gửi <code>{role, text: reply, items: [tên các món]}</code> — để câu kiểu &ldquo;món thứ hai bán ở đâu&rdquo; có cái để trỏ vào.</li>
+<li>Lịch sử giữ song song trong một <code>ref</code> để hai câu gửi sát nhau không bị câu sau đọc phải lịch sử cũ.</li>
+<li>Lưu <strong>20 lượt</strong> cuối vào <code>localStorage</code>; khôi phục trong <code>useEffect</code> chứ không ở giá trị khởi tạo, vì trang dựng cả ở phía server nơi không có <code>window</code>.</li>
+<li>Nút xoá hội thoại <strong>hai bước</strong>, bước xác nhận tự rút lui sau 4 giây.</li>
+<li>Đo hành vi: <code>trackTask('oneshot', 'ai_ask', …)</code>. <strong>Có câu trả lời là thành công</strong>, dù ít hay nhiều gợi ý; chỉ lỗi thật mới tính FAIL.</li>
+<li>Câu vừa hỏi <strong>ở lại trên màn hình</strong> khi lỗi — nuốt nó đi cùng lỗi sẽ buộc người dùng gõ lại nguyên câu, thứ họ vừa mất công viết nhất.</li>
+</ul>
+</section>
+
+<!-- ══════════════════ 08 ══════════════════ -->
+<section id="s8">
+<h2 class="sec"><span class="num">08</span>Ma trận 8 ý định</h2>
+<p class="sub">Bảng này trả lời được gần hết câu hỏi phỏng vấn dạng &ldquo;hỏi câu X thì chuyện gì xảy ra&rdquo;.</p>
+
+<div class="tw"><table>
+<thead><tr><th>Ý định</th><th>Ví dụ câu</th><th>Tra kho?</th><th>Tìm web?</th><th>Gọi Gemini?</th><th>Trả về</th></tr></thead>
+<tbody>
+<tr>
+  <td><code>toplist</code></td>
+  <td>&ldquo;top 20 bán chạy Shopee VN&rdquo;</td>
+  <td>Không</td><td>Không</td>
+  <td><strong>Không</strong></td>
+  <td>Câu chuyển Hub + <code>hubRedirect</code></td>
+</tr>
+<tr>
+  <td><code>lang_kinh</code></td>
+  <td>&ldquo;sản phẩm nào đang tăng tốc&rdquo;</td>
+  <td>Không</td><td>Không</td>
+  <td><strong>Không</strong></td>
+  <td>Câu chuyển Hub, nhắc lại tên lăng kính</td>
+</tr>
+<tr>
+  <td><code>san_pham</code></td>
+  <td>&ldquo;áo mưa bán thế nào&rdquo;</td>
+  <td>Có, nhưng chỉ để <em>nhận diện</em> ý định</td><td>Không*</td>
+  <td><strong>Không</strong></td>
+  <td>Câu chuyển Hub, nhắc lại tên món</td>
+</tr>
+<tr>
+  <td><code>meta</code></td>
+  <td>&ldquo;dữ liệu cập nhật đến ngày nào&rdquo;</td>
+  <td><strong>Có</strong> — <code>tong_quan_kho()</code></td><td>Không</td>
+  <td>Có, 1 lượt</td>
+  <td>Câu trả lời bằng số đếm thật</td>
+</tr>
+<tr>
+  <td><code>y_tuong</code></td>
+  <td>&ldquo;mùa mưa nên bán gì&rdquo;</td>
+  <td>Có, ở khâu <em>gắn số</em> sau khi AI đã nghĩ ra món</td><td>Có</td>
+  <td><strong>Có, 2 lượt</strong></td>
+  <td>Bảng món + <code>signal</code> của kho + <code>searchTerm</code></td>
+</tr>
+<tr>
+  <td><code>xa_giao</code></td>
+  <td>&ldquo;xin chào&rdquo;, &ldquo;bạn làm được gì&rdquo;</td>
+  <td>Không</td><td><strong>Không</strong></td>
+  <td>Có, 1 lượt</td>
+  <td>Câu chào + liệt kê hỏi được gì</td>
+</tr>
+<tr>
+  <td><code>ngoai_pham_vi</code></td>
+  <td>&ldquo;hôm nay thời tiết thế nào&rdquo;</td>
+  <td>Không</td><td>Chỉ khi câu có từ khoá tra web</td>
+  <td>Có, 1 lượt</td>
+  <td>Từ chối thẳng + gợi ý câu đúng phạm vi</td>
+</tr>
+<tr>
+  <td><code>khong_ro</code></td>
+  <td>&ldquo;làm sao tăng tỷ lệ chốt đơn&rdquo;</td>
+  <td>Không</td><td><strong>Có</strong></td>
+  <td>Có, 1 lượt</td>
+  <td>Tư vấn tự nhiên, <strong>cấm bịa con số</strong></td>
+</tr>
+</tbody></table></div>
+<p class="sub">* <code>san_pham</code> nằm trong <code>Y_DINH_TIM</code> của <code>web.py</code>, nhưng <code>ask()</code> chặn ở <code>CHUYEN_HUB</code> <strong>trước</strong> khi tới đoạn tìm web, nên trên thực tế nhánh này không bao giờ đi tìm.</p>
+
+<div class="note why"><span class="tag">Đọc bảng này ra một câu</span>
+<p>Ba ý định nặng về số liệu <strong>không</strong> dùng AI. Bốn ý định dùng AI thì hoặc không có số (xã giao, ngoài phạm vi, chưa rõ ý), hoặc số được gắn vào <strong>sau</strong> khi AI đã nói xong (ý tưởng). Ý định duy nhất mà AI được đọc số kho rồi diễn giải là <code>meta</code> — và đó là số đếm về chính cái kho, không phải số bán hàng.</p></div>
+</section>
+
+<!-- ══════════════════ 09 ══════════════════ -->
+<section id="s9">
+<h2 class="sec"><span class="num">09</span>Bảng hằng số</h2>
+<p class="sub">Con số nào cũng có lý do. Nhớ được lý do quan trọng hơn nhớ con số.</p>
+
+<h3>Đọc câu hỏi — <code>truy_van.py</code></h3>
+<div class="tw"><table>
+<thead><tr><th>Hằng</th><th class="numc">Giá trị</th><th>Vì sao đúng con số đó</th></tr></thead>
+<tbody>
+<tr><td>Ngưỡng câu xã giao</td><td class="numc">&le; 6 từ</td><td>Để &ldquo;chào bạn, cho mình hỏi top bán chạy ngành mẹ và bé&rdquo; không bị nuốt thành câu chào</td></tr>
+<tr><td>Cửa sổ phủ định sàn</td><td class="numc">4 từ</td><td>Rộng hơn thì &ldquo;không&rdquo; đầu câu phủ định nhầm sàn cuối câu; hẹp hơn thì hụt &ldquo;đừng có lấy hàng 1688&rdquo;</td></tr>
+<tr><td>Cửa sổ &ldquo;chỉ / duy nhất / riêng&rdquo;</td><td class="numc">3 từ</td><td>Giới hạn dương, mạnh hơn mọi thứ khác nên phải sát</td></tr>
+<tr><td>Độ dài tối thiểu để khớp mờ</td><td class="numc">5 ký tự</td><td>Ngắn hơn thì một hai ký tự sai đã thành từ khác hẳn</td></tr>
+<tr><td>Ngân sách chỉnh sửa</td><td class="numc">2 nếu &ge; 9 ký tự, còn lại 1</td><td>Tên càng dài càng chịu được nhiều lỗi gõ hơn</td></tr>
+<tr><td>Kẹp số lượng</td><td class="numc">1–200</td><td>Để một câu không kéo cả kho ra</td></tr>
+<tr><td>Số ngành giữ lại</td><td class="numc">2 (lấy từ 3 ứng viên)</td><td>Đã khử trùng theo tên trước khi cắt</td></tr>
+<tr><td>Độ dài tối thiểu tên món</td><td class="numc">2 chữ (1 chữ nếu có TU_HOI_MON)</td><td>Cụm một chữ khớp hàng nghìn listing, con số trả về chẳng nói gì về ý người hỏi</td></tr>
+</tbody></table></div>
+
+<h3>Truy hồi và trả lời</h3>
+<div class="tw"><table>
+<thead><tr><th>Hằng</th><th class="numc">Giá trị</th><th>Ghi chú</th></tr></thead>
+<tbody>
+<tr><td><code>TOP_BAN_CHAY</code> / <code>TOP_DOANH_SO</code> / <code>TOP_NGANH</code></td><td class="numc">5 / 4 / 5</td><td>Mỗi dòng &asymp; 30 token. Hiện ở trạng thái ngủ cùng ba hàm <code>_lay_*</code></td></tr>
+<tr><td>Thẻ sản phẩm trả về</td><td class="numc">tối đa 40, 16 trường</td><td>Đã khử trùng theo (sàn, product_id)</td></tr>
+<tr><td>Nới cụm khi tra tên</td><td class="numc">dừng ở 2 chữ</td><td>Một chữ quá rộng để có nghĩa</td></tr>
+<tr><td>Kết quả web vào prompt</td><td class="numc">5</td><td>&asymp; 80 token mỗi kết quả</td></tr>
+<tr><td>Trần thời gian tìm web</td><td class="numc">8 giây</td><td>Câu trả lời không được chờ lâu hơn</td></tr>
+<tr><td>Cache web</td><td class="numc">6 giờ</td><td>Chỉ cache khi có kết quả</td></tr>
+<tr><td>Lượt hội thoại vào prompt</td><td class="numc">8</td><td>Lý do chính là <em>trôi ngữ cảnh</em>, không phải token</td></tr>
+<tr><td>Món tối đa mỗi bảng</td><td class="numc">15 (7 core / 5 adjacent / 3 hidden)</td><td>Hạn ngạch ở khâu đề xuất, không phải khâu hiển thị</td></tr>
+<tr><td>Câu hỏi gợi ý tiếp theo</td><td class="numc">3, mỗi câu &le; 8 chữ</td><td>Viết ở ngôi người dùng, bấm là gửi được</td></tr>
+<tr><td>Ngưỡng hữu ích</td><td class="numc">50 (bỏ hẳn), 75 (lên core)</td><td>Chặn ở khâu hiển thị</td></tr>
+<tr><td>Bằng chứng mỗi sàn</td><td class="numc">4 gợi ý, 2 sàn, 5 món song song</td><td>Trends bị loại vì phải mở trình duyệt thật</td></tr>
+<tr><td>Nhiệt độ Gemini</td><td class="numc">0.5 khi đề xuất, 0 khi chấm lại</td><td>Đề xuất cần đa dạng, chấm lại cần lặp lại được</td></tr>
+<tr><td>Timeout / số lần thử</td><td class="numc">30 giây / 2, chỉ khi hết giờ</td><td>Lỗi khoá hay payload thì trả ngay</td></tr>
+<tr><td>Hội thoại lưu ở trình duyệt</td><td class="numc">20 lượt cuối</td><td>Khoá <code>hub-oneshot-v1</code></td></tr>
+</tbody></table></div>
+
+<h3>Kho và lăng kính — <code>scout.NGUONG</code></h3>
+<p>Các số này chỉnh được theo từng sàn ở trang cấu hình, và <code>BOUNDS</code> chặn khoảng hợp lệ.</p>
+<div class="tw"><table>
+<thead><tr><th>Lăng kính</th><th>Điều kiện</th></tr></thead>
+<tbody>
+<tr><td>Nền chung</td><td>Top 200 sản phẩm &middot; cần &ge; <strong>2</strong> lần quét &middot; cửa sổ chuẩn <strong>5 ngày</strong> &middot; không tính quá 90 ngày</td></tr>
+<tr><td>🔥 Đang tăng tốc</td><td>Phải đạt <strong>cả hai</strong>: bán/ngày tăng &ge; <strong>40%</strong> (5 ngày này so 5 ngày trước) <strong>VÀ</strong> đã bán lũy kế &ge; <strong>1.000</strong></td></tr>
+<tr><td>⚡ Đột biến</td><td>Vọt &ge; <strong>500%</strong> (1 ngày gần nhất so nền 5 ngày trước đó) và đã bán &ge; 1.000</td></tr>
+<tr><td>💰 Bán khoẻ ổn định</td><td>Mốc &ge; <strong>100</strong> sp/ngày ở phân vị <strong>20</strong>, và chưa hạ nhiệt: TB 3 ngày gần nhất &ge; <strong>80%</strong> TB 5 ngày</td></tr>
+<tr><td>🎯 Khe hở</td><td>Lũy kế &gt; 1.000 &middot; P20 &ge; <strong>90%</strong> mức thường &middot; sản phẩm dẫn đầu có rating &lt; <strong>4,0★</strong></td></tr>
+<tr><td>🆕 Tân binh bán chạy</td><td>Xuất hiện &le; <strong>7 ngày</strong> &middot; đã bán &ge; <strong>350</strong> &middot; lũy kế &le; 1,2 &times; bán-30-ngày</td></tr>
+</tbody></table></div>
+<div class="note trap"><span class="tag">Hệ quả đã báo trước và được chấp nhận</span>
+<p>Khi lịch sử còn ngắn, hai lăng kính mất độ phân biệt mà <strong>không báo lỗi</strong>: <em>Ổn định</em> gần như luôn đạt vì hai cửa sổ trùng nhau; <em>Khe hở</em> gần như luôn đạt vì P20 của 2–3 giá trị xấp xỉ trung vị. Mỗi kết quả vì thế ghi kèm <code>so_ngay</code> — tính trên bao nhiêu ngày.</p>
+<p>Và trên 1688, <em>Đột biến</em> gần như không bao giờ nổ — vì chuỗi đã bị làm mượt bởi phép <code>sold_monthly ÷ 30</code>, không phải vì sàn đó thiếu sóng.</p></div>
+
+<h3>Vòng cào</h3>
+<div class="tw"><table>
+<thead><tr><th>Hằng</th><th class="numc">Giá trị</th><th>Vì sao</th></tr></thead>
+<tbody>
+<tr><td>Listing mỗi từ khoá / ngành</td><td class="numc">60</td><td>Đúng trang đầu của Shopee; sâu hơn thì đuôi gần như không bao giờ lọt Top 10</td></tr>
+<tr><td>Nghỉ giữa hai lượt (1688)</td><td class="numc">4 giây</td><td>Giữ được suốt một lượt 18 phút mà không bật slider Baxia</td></tr>
+<tr><td>Chờ thợ rớt</td><td class="numc">900 giây</td><td>Đêm 14/09 tab thợ rớt lúc 04:52 và 297 ngành còn lại thành lỗi trong 10 giây</td></tr>
+<tr><td>Dừng sau N lần bị đòi đăng nhập</td><td class="numc">3 liên tiếp</td><td>Một lần có thể là trang xác minh thoáng qua; ba lần liền là tường thật</td></tr>
+<tr><td>Hạn một job relay</td><td class="numc">45 giây (người dùng) &middot; 140 giây (1688 nền)</td><td>Hạn tính <strong>từ lúc xếp hàng</strong>, không phải từ lúc bắt đầu chạy</td></tr>
+<tr><td>Long-poll của worker</td><td class="numc">25 giây</td><td>Đủ ngắn để bắt job mới nhanh, đủ dài để không quay vòng tốn CPU</td></tr>
+<tr><td>Giữ dữ liệu</td><td class="numc">90 ngày</td><td><code>dondep</code> 06:00, chỉ DELETE, cố ý không VACUUM để không khoá kho</td></tr>
+</tbody></table></div>
+</section>
+
+<!-- ══════════════════ 10 ══════════════════ -->
+<section id="s10">
+<h2 class="sec"><span class="num">10</span>Những cái bẫy đã trả giá</h2>
+<p class="sub">Mỗi dòng ở đây từng là một bug thật, có ngày tháng. Đây là phần đáng kể nhất khi phỏng vấn: nó chứng minh người viết đã <em>đo</em> chứ không <em>đoán</em>.</p>
+
+<div class="tw"><table>
+<thead><tr><th>Ngày</th><th>Triệu chứng</th><th>Nguyên nhân</th><th>Cách chữa</th></tr></thead>
+<tbody>
+<tr><td class="numc">14/09</td><td>Hỏi &ldquo;top sản phẩm trên Shopee VN&rdquo;, sáu thẻ đầu là hàng sỉ Trung Quốc</td><td>Gộp ba sàn rồi xếp theo lượt bán. 1688 là sàn sỉ: một dòng khăn giấy bán 4,6 triệu cái, quán quân Shopee VN ở mức 68 nghìn</td><td>Tách khối theo sàn. Suất tối thiểu mỗi sàn <strong>không</strong> cứu được, vì bước cuối vẫn xếp lại cả bảng</td></tr>
+<tr><td class="numc">14/09</td><td>Mọi câu có chữ &ldquo;sản phẩm&rdquo; bị nhận là hỏi Shopee PH</td><td>Khớp chuỗi con: <code>"san ph"</code> &sub; <code>"san pham"</code></td><td>Đệm khoảng trắng hai đầu, tìm <code>" cụm "</code></td></tr>
+<tr><td class="numc">14/09</td><td>&ldquo;áo mưa bán thế nào&rdquo; trả về bảng thời trang</td><td>Lược từ trên chuỗi bỏ dấu: &ldquo;mua&rdquo; nuốt &ldquo;mưa&rdquo;, còn lại mỗi &ldquo;áo&rdquo;</td><td><code>_ten_mon</code> giữ hai bản song song, ghép lại từ bản có dấu</td></tr>
+<tr><td class="numc">14/09</td><td>&ldquo;xin chào&rdquo; được trả lời bằng bảng chảo rán</td><td>&ldquo;chào&rdquo; bỏ dấu thành &ldquo;chao&rdquo;, khớp &ldquo;chảo&rdquo;</td><td>Nhánh <code>xa_giao</code> xét <strong>trước</strong> mọi thứ</td></tr>
+<tr><td class="numc">14/09</td><td>&ldquo;dữ liệu cập nhật đến ngày nào&rdquo; khớp trúng ngành <em>Đèn</em> và <em>Ô/Dù</em></td><td>&ldquo;đến&rdquo;&rarr;&ldquo;den&rdquo;, &ldquo;dữ&rdquo;&rarr;&ldquo;du&rdquo;</td><td><code>nganh_lien_quan</code> khớp trên bản giữ dấu khi câu có dấu</td></tr>
+<tr><td class="numc">14/09</td><td>Tra &ldquo;giày&rdquo; ra 1.469 listing mà đứng đầu là giấy vệ sinh; tra &ldquo;ủng&rdquo; ra 197 listing đứng đầu là tai nghe</td><td>Bỏ dấu làm chập từ; và khớp chuỗi con lôi cả &ldquo;khủng long&rdquo;, &ldquo;ứng dụng&rdquo; vào</td><td>Chỉ mục giữ song song hai bản; khớp nguyên từ</td></tr>
+<tr><td class="numc">14/09</td><td>&ldquo;mùa mưa nên bán gì&rdquo; bị đính bảng top bán chạy toàn sàn, người xem tưởng xốt phô mai là hàng nên bán mùa mưa</td><td>Mọi ý định dùng chung một khối dữ liệu</td><td>Tách hẳn từng nhánh truy hồi thay vì một hàm <code>digest</code> dài</td></tr>
+<tr><td class="numc">15/09</td><td>1688 không chạy; <code>sigcat</code> nghiến từ 01:00 tới 10:51</td><td>Vòng lặp lịch gọi <code>run_job</code> thẳng nên đứng chờ; Shopee PH đòi đăng nhập từ 07:12</td><td>Bắn job ra luồng riêng; thêm chốt dừng sau 3 lần bị đòi đăng nhập</td></tr>
+<tr><td class="numc">18/09</td><td>182/205 ngành 1688 hỏng liền một mạch</td><td>Slider Baxia bật giữa chừng; vòng cào cứ đi tiếp, ngành nào sau đó cũng hỏng</td><td>Dừng và chờ người giải, thử lại đúng ngành đang dở, gửi mail cảnh báo ngay lúc dính</td></tr>
+<tr><td class="numc">18/09</td><td>Bật <code>google_search</code> của Gemini thì 429 ở mọi model</td><td>Gói miễn phí của khoá không có hạn mức grounding</td><td>Tự tìm web bằng DuckDuckGo/Bing, không tốn thêm lượt Gemini</td></tr>
+<tr><td class="numc">22/09</td><td>&ldquo;bán chạy nhất thị trường philipin&rdquo; rơi về cả ba sàn</td><td>&ldquo;philipin&rdquo; không khớp &ldquo;philippines&rdquo; cũng không khớp &ldquo;phi lip pin&rdquo;</td><td>Thêm regex họ tên theo âm <strong>và</strong> tầng khớp mờ Levenshtein — hai loại lỗi khác nhau</td></tr>
+<tr><td class="numc">22/09</td><td>Câu buôn bán thường bị bot hỏi lại như không hiểu gì</td><td><code>khong_ro</code> mặc định là từ chối</td><td>Đổi mặc định thành trò chuyện tư vấn, giữ đúng một điều cấm: bịa con số</td></tr>
+<tr><td class="numc">18/08</td><td>Hỏi thị trường PH, tên món về bằng <strong>tiếng Tây Ban Nha</strong></td><td>Mô hình suy từ &ldquo;Philippines&rdquo; qua lịch sử thuộc địa chứ không qua thứ tiếng người ta đang gõ</td><td>Gọi <strong>tên ngôn ngữ</strong> ra bằng chữ trong prompt; thị trường không rõ thì dùng câu chung, không ép mặc định</td></tr>
+</tbody></table></div>
+
+<div class="note trap"><span class="tag">Mẫu chung của cả bảng</span>
+<p>Gần hết là <strong>lỗi im lặng</strong>: hệ thống không ném exception, không ghi log lỗi, chỉ trả về một câu trả lời sai một cách trôi chảy. Đó là lý do <code>truy_van</code> có bảng tự kiểm, <code>scout</code> có <code>MAU_NGANH_PH</code>, và mọi kết quả đều kèm <code>grounding</code> để soi ngược.</p></div>
+</section>
+
+<!-- ══════════════════ 11 ══════════════════ -->
+<section id="s11">
+<h2 class="sec"><span class="num">11</span>Hỏi đáp phỏng vấn</h2>
+<p class="sub">Bấm để mở đáp án.</p>
+
+<details class="qa"><summary>One-shot AI crawl dữ liệu lúc nào?</summary><div class="a">
+<p>Nó <strong>không</strong> crawl kho lúc bạn hỏi. Kho được cào đêm hôm trước bằng một hệ thống riêng: scheduler bắn job &rarr; relay &rarr; extension trên trình duyệt-thợ &rarr; sàn. Lúc hỏi, One-shot AI chỉ đọc kho.</p>
+<p>Có hai thứ nó lấy <em>trực tiếp</em> lúc hỏi: kết quả tìm web (DuckDuckGo/Bing, trần 8 giây) và gợi ý ô tìm kiếm sàn — nhưng cái sau chỉ chạy ở nhánh xin ý tưởng.</p>
+</div></details>
+
+<details class="qa"><summary>Vì sao không gửi cả kho cho Gemini?</summary><div class="a">
+<p>~70.000 dòng, thêm ~52.000 dòng mỗi ngày, tương đương ~3 triệu token một câu hỏi — vượt cửa sổ model và đốt sạch hạn mức. Mà &ldquo;sản phẩm nào bán chạy nhất&rdquo; là việc sắp xếp, kho làm trong 0,3 giây với 0 token. Nên kho lọc và xếp, Gemini đọc ~1.000 token đã lọc rồi diễn giải.</p>
+</div></details>
+
+<details class="qa"><summary>Đây có phải RAG không? Ba tầng nằm ở đâu?</summary><div class="a">
+<p>Có. <strong>Tầng hiểu truy vấn</strong> là <code>truy_van.doc</code> — nhưng thay vì embedding thì dùng luật, vì miền hẹp và tất định quan trọng hơn. <strong>Tầng truy hồi</strong> là <code>ask.digest</code> — truy hồi bằng SQL có cấu trúc, không phải tìm vector, vì câu hỏi là câu xếp hạng chứ không phải câu tìm đoạn văn giống nhau. <strong>Tầng ràng buộc sinh</strong> là bảng <code>HUONG_DAN</code> cộng khối quy tắc chung.</p>
+</div></details>
+
+<details class="qa"><summary>Vì sao dùng luật để phân loại ý định thay vì để LLM làm?</summary><div class="a">
+<p>Ba lý do. Phân loại xảy ra <em>trước</em> mỗi câu hỏi nên dùng LLM là nhân đôi số lượt gọi, mà mỗi lượt là một suất hạn mức miễn phí. Khớp chuỗi tất định: cùng một câu luôn ra cùng kết quả, sai thì mở ra sửa được, còn bộ phân loại bằng AI sai thì chỉ có cách đổi prompt rồi cầu may. Và bộ luật kiểm được bằng bảng câu mẫu chạy trong một phần nghìn giây, không cần DB, không cần khoá.</p>
+</div></details>
+
+<details class="qa"><summary>Hỏi &ldquo;top bán chạy Shopee VN&rdquo; thì chuyện gì xảy ra?</summary><div class="a">
+<p><code>truy_van</code> cho ra <code>y_dinh = "toplist"</code>, <code>sans = ["shopee_vn"]</code>. Vì <code>toplist</code> nằm trong <code>CHUYEN_HUB</code>, <code>ask()</code> trả về ngay một câu tất định mời mở Trend Signal Hub, kèm <code>hubRedirect: true</code>. <strong>Không tra kho, không tìm web, không gọi Gemini.</strong></p>
+<p>Lý do: số theo từng sản phẩm hay lệch giữa các sàn — hỏi Shopee lại trả về hàng 1688. Chốt 22/09/2026.</p>
+</div></details>
+
+<details class="qa"><summary>Vì sao không gộp ba sàn thành một bảng xếp hạng?</summary><div class="a">
+<p>Hai thang đo khác nhau. <strong>Doanh số</strong>: VND, PHP, CNY không cộng được. <strong>Lượt bán</strong>: 1688 là sàn sỉ, số của nó lớn hơn Shopee hàng chục lần — một dòng khăn giấy 4,6 triệu cái so với quán quân Shopee VN 68 nghìn. Gộp vào thì 1688 chiếm sạch đầu bảng và câu hỏi của người bán lẻ Việt Nam không bao giờ được trả lời.</p>
+<p>Đã thử giữ suất tối thiểu cho mỗi sàn: không cứu được, vì bước cuối vẫn xếp lại cả bảng. Suất đó bảo đảm <em>có mặt</em> chứ không bảo đảm <em>được nhìn thấy</em>.</p>
+</div></details>
+
+<details class="qa"><summary>Làm sao chắc con số người dùng thấy là số thật?</summary><div class="a">
+<p>Vì giao diện <strong>không đọc số trong câu chữ của AI</strong>. Thẻ sản phẩm được vẽ từ <code>hubProducts</code> và <code>items[].signal</code> — cả hai do <code>scout</code> trả về thẳng từ kho. Mô hình gõ lại một con số là mô hình có thể gõ sai; đây là số kho trả về.</p>
+<p>Prompt cũng cấm bịa ở ba tầng: quy tắc chung, hướng dẫn theo ý định, và câu &ldquo;KHO KHÔNG CÓ DỮ LIỆU&rdquo; được gửi đi thay vì để khối dữ liệu rỗng.</p>
+</div></details>
+
+<details class="qa"><summary>Kho không có món người dùng hỏi thì trả lời thế nào?</summary><div class="a">
+<p>Phải nói <strong>&ldquo;kho chưa đo&rdquo;</strong>, tuyệt đối không nói &ldquo;sàn không bán&rdquo;. Kho chỉ cào TOP mỗi ngành nên hàng ngách vắng mặt là chuyện bình thường. Luật này được ép ở cả ba nơi: prompt (<code>HUONG_DAN["san_pham"]</code>), kiểu dữ liệu (<code>signal: null</code> có chú thích), và giao diện.</p>
+</div></details>
+
+<details class="qa"><summary>Một câu hỏi tốn mấy lượt gọi Gemini?</summary><div class="a">
+<p>Ba nhánh <code>CHUYEN_HUB</code>: <strong>0</strong>. Nhánh <code>y_tuong</code> khi mô hình quyết định dựng bảng: <strong>2</strong> (đề xuất + chấm lại). Mọi nhánh còn lại: <strong>1</strong>. Tìm web không tốn lượt Gemini nào — đó chính là lý do tự tìm thay vì bật grounding.</p>
+</div></details>
+
+<details class="qa"><summary>Vì sao thứ tự xét ý định lại quan trọng?</summary><div class="a">
+<p>Vì một câu tiếng Việt thường dính nhiều dấu hiệu cùng lúc. &ldquo;Mùa mưa nên bán gì cho chạy&rdquo; có chữ <em>chạy</em> (dấu hiệu toplist) nhưng là câu xin ý tưởng — nên <code>y_tuong</code> phải đứng trước <code>toplist</code>. &ldquo;Đang tăng tốc&rdquo; là tên một lăng kính nên phải thắng chữ &ldquo;bán chạy&rdquo; chung chung nằm cùng câu. Nguyên tắc: chữ càng đặc thù xét càng sớm.</p>
+</div></details>
+
+<details class="qa"><summary>Nếu Gemini chết thì sao? Nếu tìm web chết thì sao?</summary><div class="a">
+<p><code>map_demand</code> không bao giờ ném lỗi — mọi kết cục đều kèm <code>message</code>: thiếu khoá thì nói thiếu khoá, gọi hỏng thì &ldquo;Không trả lời được: &hellip;&rdquo;, và <code>_explain</code> dịch mã lỗi thô thành câu người đọc hiểu (401 &rarr; kiểm khoá, 429 &rarr; nghỉ một lát, 404 &rarr; kiểm tên model).</p>
+<p>Tìm web hỏng thì <code>results</code> rỗng và câu trả lời vẫn đi bằng phần còn lại. Ba nhánh <code>CHUYEN_HUB</code> vẫn chạy bình thường vì chúng không gọi gì cả.</p>
+</div></details>
+
+<details class="qa"><summary>Câu hỏi tiếng Việt làm sao chạm được ngành của Shopee PH?</summary><div class="a">
+<p>Không bắc cầu qua ID được — cây PH có <code>main_id</code>/<code>sub_id</code> khác hẳn VN. Cây PH lại đặt tên tiếng Anh nên câu tiếng Việt không tự khớp. Giải bằng <strong>bảng tay</strong> <code>PH_ALIAS</code>: khoá là <code>(main_id, sub_id)</code> lấy từ cây PH thật, giá trị là các cách gọi tiếng Việt (kể cả gọi không chuẩn).</p>
+<p>Không dịch máy vì dịch tên ngành hay sai (&ldquo;Sức Khỏe&rdquo; &harr; &ldquo;Health&rdquo;? &ldquo;Bách Hóa&rdquo; &harr; &ldquo;Groceries&rdquo;?) và mỗi lần dịch là một lượt gọi mạng. Bảng tay thì tất định và kiểm được bằng <code>MAU_NGANH_PH</code>. Tên ngành lấy từ cây thật chứ không chép cứng, nên ID chết thì bỏ qua chứ không dựng rác.</p>
+</div></details>
+
+<details class="qa"><summary>Điểm yếu lớn nhất của thiết kế hiện tại là gì?</summary><div class="a">
+<p>Bộ đọc ý định bằng từ điển có <strong>trần</strong>: nó chỉ hiểu những cách nói đã được liệt kê. Câu hỏi diễn đạt lạ sẽ rơi xuống <code>khong_ro</code>. Đổi lại thì sai ở đâu sửa được ở đó, và bảng tự kiểm bắt được hồi quy ngay.</p>
+<p>Điểm thứ hai: sau chốt 22/09, phần tra số trong ô chat gần như chỉ còn nhánh <code>meta</code>. Ba nhóm câu hỏi số liệu nặng nhất bị đẩy sang Trend Signal Hub. Nên hôm nay One-shot AI thực chất là <em>bộ phân loại tất định + cố vấn TMĐT có chặn bịa số + tìm web + gắn số kho cho nhánh ý tưởng</em>. Ba hàm <code>_lay_*</code> nằm đó ở dạng ngủ, bật lại được khi số theo từng sản phẩm đã đủ tin.</p>
+</div></details>
+</section>
+
+<footer class="end">
+  <p><strong>Tệp cần đọc theo thứ tự:</strong> <code>backend/hub/signal/truy_van.py</code> &rarr; <code>backend/hub/signal/ask.py</code> &rarr; <code>backend/lib/opportunity/demand_map.py</code> &rarr; <code>backend/hub/signal/web.py</code> &rarr; <code>backend/hub/signal/scout.py</code>.</p>
+  <p>Tài liệu cùng bộ: <a href="trend-scout-logic.html">Logic TREND·SCOUT</a> — đường cào, cơ chế chống bị nhận là bot, và công thức sáu lăng kính &middot; <a href="cham-diem-9-chi-so.html">Chấm điểm 9 chỉ số</a> — engine chấm cơ hội thời Etsy/Printway.</p>
+  <p>Đường cào: <code>backend/hub/scheduler.py</code> &rarr; <code>backend/hub/ingestion/market_snapshot.py</code> &rarr; <code>backend/lib/core/worker_relay.py</code> &rarr; <code>backend/hub/signal/store.py</code>.</p>
+</footer>
+
+</div>
+</body>
+</html>

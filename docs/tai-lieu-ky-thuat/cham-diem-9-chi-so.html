@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Chấm điểm 9 chỉ số</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@600;700&display=swap">
+<style>
+/* Cung he thong voi one-shot-ai-logic.html va trend-scout-logic.html. */
+:root{
+  --bg:#f3f5f6; --surface:#ffffff; --surface-2:#eaeef0;
+  --ink:#131e26; --muted:#5d6f7b; --line:#d6dee2; --line-2:#c2ced4;
+  --kho:#0d6a68;
+  --ai:#a9531b;
+  --stop:#a02b2b;
+  --ok:#2c7349;
+  --sans:"IBM Plex Sans",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --serif:"IBM Plex Serif",Georgia,serif;
+  --mono:"IBM Plex Mono","Cascadia Mono",Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e1418; --surface:#161f25; --surface-2:#1d282e;
+  --ink:#e4ecf0; --muted:#94a6b1; --line:#26333a; --line-2:#334450;
+  --kho:#4fc2b4; --ai:#e29558; --stop:#e07a72; --ok:#6cc78f;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0e1418; --surface:#161f25; --surface-2:#1d282e;
+  --ink:#e4ecf0; --muted:#94a6b1; --line:#26333a; --line-2:#334450;
+  --kho:#4fc2b4; --ai:#e29558; --stop:#e07a72; --ok:#6cc78f;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.65 var(--sans)}
+.wrap{max-width:980px;margin:0 auto;padding-inline:20px;padding-block:0 96px}
+
+header.top{padding-block:56px 36px;border-bottom:2px solid var(--ink)}
+header.top .kicker{font:600 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--kho)}
+header.top h1{font:700 clamp(32px,6vw,52px)/1.05 var(--serif);margin:14px 0 0;text-wrap:balance;letter-spacing:-.015em}
+header.top p.lede{margin:16px 0 0;max-width:62ch;color:var(--muted);font-size:17px}
+header.top .meta{margin-top:22px;font:500 12px/1.6 var(--mono);color:var(--muted)}
+
+nav.toc{margin-block:28px 8px;padding:18px 20px;background:var(--surface);border:1px solid var(--line);border-radius:4px}
+nav.toc h2{font:600 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 12px}
+nav.toc ol{margin:0;padding:0;list-style:none;display:grid;gap:6px 26px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+nav.toc a{color:var(--ink);text-decoration:none;font-size:14px;display:flex;gap:10px}
+nav.toc a:hover{color:var(--kho);text-decoration:underline}
+nav.toc .n{font:600 12px/1.6 var(--mono);color:var(--kho);min-width:22px}
+
+section{padding-block:44px 8px;border-top:1px solid var(--line);margin-top:36px}
+h2.sec{font:700 clamp(22px,3.4vw,30px)/1.2 var(--serif);margin:0 0 6px;text-wrap:balance;letter-spacing:-.01em}
+h2.sec .num{font:600 13px/1 var(--mono);color:var(--kho);display:block;margin-bottom:10px;letter-spacing:.1em}
+h3{font:600 18px/1.35 var(--sans);margin:34px 0 8px;text-wrap:balance}
+h4{font:600 14px/1.4 var(--mono);margin:24px 0 6px;color:var(--ink)}
+p{margin:10px 0;max-width:68ch}
+.sub{color:var(--muted);max-width:68ch;margin-top:0}
+ul,ol.body{margin:10px 0;padding-left:22px;max-width:68ch}
+li{margin:5px 0}
+code{font:500 .88em/1.4 var(--mono);background:var(--surface-2);padding:.1em .34em;border-radius:3px;overflow-wrap:anywhere}
+a{color:var(--kho)}
+strong{font-weight:600}
+
+.note{margin:16px 0;padding:14px 16px;border-left:3px solid var(--line-2);background:var(--surface);border-radius:0 4px 4px 0}
+.note.why{border-left-color:var(--kho)}
+.note.trap{border-left-color:var(--stop)}
+.note.ai{border-left-color:var(--ai)}
+.note p{margin:6px 0;max-width:64ch}
+.note p:first-child{margin-top:0}
+.note p:last-child{margin-bottom:0}
+.note ul{margin:6px 0}
+.note .tag{font:600 10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;display:block;margin-bottom:8px}
+.note.why .tag{color:var(--kho)} .note.trap .tag{color:var(--stop)} .note.ai .tag{color:var(--ai)}
+
+/* Khoi "noi the nay" — cau chu de doc thang cho nguoi phong van. */
+.say{margin:18px 0;padding:16px 18px 14px;background:var(--surface);border:1px dashed var(--ai);border-radius:4px}
+.say .tag{font:600 10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ai);display:block;margin-bottom:10px}
+.say p{margin:8px 0;max-width:64ch;font-size:15.5px;line-height:1.7}
+.say p:first-of-type{margin-top:0}
+.say p:last-child{margin-bottom:0}
+.say em{font-style:normal;background:rgba(169,83,27,.14);padding:.05em .25em;border-radius:2px}
+
+.tw{overflow-x:auto;margin:18px 0;border:1px solid var(--line);border-radius:4px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:13.5px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+thead th{background:var(--surface-2);font:600 11px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+td code{background:transparent;padding:0}
+.numc{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+pre{overflow-x:auto;margin:14px 0;padding:14px 16px;background:var(--surface);border:1px solid var(--line);border-radius:4px;font:400 12.5px/1.6 var(--mono);color:var(--ink)}
+pre .c{color:var(--muted)}
+
+figure{margin:24px 0}
+figure .fbox{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:18px 14px}
+figure svg{display:block;width:100%;height:auto;min-width:430px;max-width:100%}
+figcaption{margin-top:8px;font-size:12.5px;color:var(--muted);max-width:68ch}
+svg .bx{fill:var(--surface);stroke:var(--line-2);stroke-width:1.2}
+svg .bx2{fill:var(--surface-2);stroke:var(--line-2);stroke-width:1.2}
+svg .bx-kho{fill:rgba(13,106,104,.10);stroke:var(--kho);stroke-width:1.3}
+svg .bx-ai{fill:rgba(169,83,27,.11);stroke:var(--ai);stroke-width:1.3}
+svg .bx-stop{fill:rgba(160,43,43,.09);stroke:var(--stop);stroke-width:1.3}
+svg .bar-k{fill:var(--kho)} svg .bar-a{fill:var(--ai)} svg .bar-n{fill:var(--line-2)}
+svg .bar-off{fill:var(--surface-2);stroke:var(--line-2);stroke-width:1}
+svg .t{fill:var(--ink);font:500 12.5px var(--sans)}
+svg .tb{fill:var(--ink);font:600 12.5px var(--sans)}
+svg .tm{fill:var(--muted);font:400 11px var(--sans)}
+svg .tc{fill:var(--ink);font:500 11px var(--mono)}
+svg .tk{fill:var(--kho);font:600 11px var(--mono)}
+svg .ts{fill:var(--stop);font:600 11px var(--mono)}
+svg .ta{fill:var(--ai);font:600 11px var(--mono)}
+svg .ln{stroke:var(--line-2);stroke-width:1.4;fill:none}
+svg .ln-k{stroke:var(--kho);stroke-width:1.4;fill:none}
+svg .ar{fill:var(--line-2)} svg .ar-k{fill:var(--kho)}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+.chip{font:500 12px/1 var(--mono);padding:6px 10px;border:1px solid var(--line-2);border-radius:999px;color:var(--muted);background:var(--surface)}
+.chip.k{border-color:var(--kho);color:var(--kho)}
+.chip.a{border-color:var(--ai);color:var(--ai)}
+.chip.s{border-color:var(--stop);color:var(--stop)}
+
+details.qa{border:1px solid var(--line);border-radius:4px;background:var(--surface);margin:10px 0}
+details.qa>summary{cursor:pointer;padding:13px 16px;font-weight:600;font-size:14.5px;list-style:none;display:flex;gap:10px;align-items:flex-start}
+details.qa>summary::-webkit-details-marker{display:none}
+details.qa>summary::before{content:"?";font:600 13px/1.4 var(--mono);color:var(--kho);flex:0 0 auto}
+details.qa[open]>summary{border-bottom:1px solid var(--line)}
+details.qa .a{padding:12px 16px 14px}
+details.qa .a p{margin:8px 0}
+details.qa .a p:first-child{margin-top:0}
+details.qa summary:focus-visible{outline:2px solid var(--kho);outline-offset:-2px}
+
+footer.end{margin-top:56px;padding-top:24px;border-top:2px solid var(--ink);color:var(--muted);font-size:13px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="kicker">Research SPY &middot; Opportunity Scoring</div>
+  <h1>Chấm điểm 9 chỉ số</h1>
+  <p class="lede">Bộ máy trả lời câu &ldquo;mặt hàng này có đáng làm không&rdquo; bằng một con số 0–100, cộng ba lớp chặn nằm ngoài điểm số. Kèm lời thoại để nói lại cho người phỏng vấn.</p>
+  <div class="meta">Đọc thẳng từ mã nguồn nhánh Titus &middot; 29/09/2026</div>
+</header>
+
+<nav class="toc">
+  <h2>Nội dung</h2>
+  <ol>
+    <li><a href="#s0"><span class="n">00</span><span>Nói gọn trong một phút</span></a></li>
+    <li><a href="#s1"><span class="n">01</span><span>Ba nhóm, chín chỉ số</span></a></li>
+    <li><a href="#s2"><span class="n">02</span><span>Từng chỉ số tính thế nào</span></a></li>
+    <li><a href="#s3"><span class="n">03</span><span>Ba lớp chặn ngoài điểm số</span></a></li>
+    <li><a href="#s4"><span class="n">04</span><span>Thiếu nguồn thì không chấm</span></a></li>
+    <li><a href="#s5"><span class="n">05</span><span>Đừng nhầm với bộ 9 tiêu chí pass/fail</span></a></li>
+    <li><a href="#s6"><span class="n">06</span><span>Sự thật phải nói thẳng</span></a></li>
+    <li><a href="#s7"><span class="n">07</span><span>Kịch bản phỏng vấn</span></a></li>
+  </ol>
+</nav>
+
+<!-- ══════════════════ 00 ══════════════════ -->
+<section id="s0">
+<h2 class="sec"><span class="num">00</span>Nói gọn trong một phút</h2>
+
+<div class="say"><span class="tag">Nói thế này</span>
+<p>&ldquo;Bọn em có một <em>engine chấm điểm cơ hội</em>. Đầu vào là một từ khoá — ví dụ <em>personalized dog collar</em>. Đầu ra là một điểm 0–100 kèm một kết luận: <em>Nên làm / Cân nhắc / Không nên</em>.</p>
+<p>Điểm đó ghép từ <em>9 chỉ số chia 3 nhóm</em>: nhóm thị trường hỏi <em>người ta có mua không</em>, nhóm tài chính hỏi <em>bán có lãi không</em>, nhóm năng lực hỏi <em>xưởng mình làm được không</em>. Mỗi nhóm không ngang nhau — thị trường nặng nhất, 46% trọng số.</p>
+<p>Điểm chỉ là một nửa câu chuyện. Còn <em>ba lớp chặn</em> nằm ngoài điểm: nếu Google Trends đang đi xuống thì dù điểm đẹp cũng bị hạ trần; sản phẩm được xếp vào một trong <em>5 giai đoạn vòng đời</em>; và cuối cùng có một <em>cổng năng lực sản xuất</em> — điểm 80 mà xưởng không làm được thì vẫn chỉ là <em>Cân nhắc</em>, không phải <em>Nên làm</em>.&rdquo;</p>
+</div>
+
+<div class="chips">
+  <span class="chip k">9 chỉ số &middot; 3 nhóm</span>
+  <span class="chip">trọng số cộng lại = 1,00</span>
+  <span class="chip a">3 lớp chặn ngoài điểm</span>
+  <span class="chip s">thiếu nguồn = không chấm</span>
+</div>
+
+<h3>Ba câu hỏi, ba nhóm</h3>
+<div class="tw"><table>
+<thead><tr><th>Nhóm</th><th>Trả lời câu hỏi</th><th>Chỉ số</th><th class="numc">Tổng trọng số</th></tr></thead>
+<tbody>
+<tr><td><strong>III. Thị trường</strong></td><td>Người ta <em>có mua</em> không, và chỗ đó <em>còn trống</em> không?</td><td>Cầu &middot; Tăng trưởng &middot; Cạnh tranh</td><td class="numc">46%</td></tr>
+<tr><td><strong>II. Tài chính</strong></td><td>Bán ra thì <em>còn lại bao nhiêu</em>?</td><td>Doanh thu tiềm năng &middot; Biên lợi nhuận</td><td class="numc">22%</td></tr>
+<tr><td><strong>I. Năng lực sản xuất</strong></td><td>Xưởng <em>làm được</em> không, và <em>kịp mùa</em> không?</td><td>Khớp năng lực &middot; Mùa vụ &middot; Thời gian SX &middot; Cá nhân hoá</td><td class="numc">32%</td></tr>
+</tbody></table></div>
+
+<div class="note why"><span class="tag">Chỗ đáng khoe nhất khi nói</span>
+<p>Không phải bản thân 9 chỉ số — chấm điểm có trọng số thì ai cũng làm được. Chỗ đáng nói là <strong>ba thứ không nằm trong điểm</strong>: luật hạ trần khi tăng trưởng âm, phân loại vòng đời sản phẩm, và cổng năng lực sản xuất. Đó là chỗ một bảng điểm trở thành một <em>quyết định kinh doanh</em>.</p>
+<p>Thứ hai đáng nói: chỉ số nào <strong>không có nguồn dữ liệu thật thì không chấm</strong>, chứ không cho điểm mặc định — và tổng điểm được chia lại theo trọng số những chỉ số còn lại. Xem mục 04.</p></div>
+</section>
+
+<!-- ══════════════════ 01 ══════════════════ -->
+<section id="s1">
+<h2 class="sec"><span class="num">01</span>Ba nhóm, chín chỉ số</h2>
+<p class="sub">Trọng số nằm trong <code>WEIGHTS</code> ở <code>scoring.py</code> và <code>kwscore.py</code> — hai tệp giữ <strong>cùng một bộ số</strong>.</p>
+
+<figure>
+<div class="fbox">
+<svg viewBox="0 0 580 410" role="img" aria-label="Biểu đồ trọng số của chín chỉ số">
+  <text x="10" y="18" class="tb">Trọng số 9 chỉ số — cộng lại đúng 100%</text>
+
+  <rect x="10" y="32" width="12" height="12" rx="2" class="bar-k"/>
+  <text x="28" y="42" class="tm">Thị trường 46%</text>
+  <rect x="150" y="32" width="12" height="12" rx="2" class="bar-a"/>
+  <text x="168" y="42" class="tm">Tài chính 22%</text>
+  <rect x="280" y="32" width="12" height="12" rx="2" class="bar-n"/>
+  <text x="298" y="42" class="tm">Năng lực sản xuất 32%</text>
+
+  <text x="196" y="77" class="tm" text-anchor="end">Cầu thị trường &middot; Demand</text>
+  <rect x="206" y="64" width="300" height="18" rx="3" class="bar-k"/>
+  <text x="514" y="77" class="tc">16%</text>
+
+  <text x="196" y="111" class="tm" text-anchor="end">Tăng trưởng &middot; Growth</text>
+  <rect x="206" y="98" width="300" height="18" rx="3" class="bar-k"/>
+  <text x="514" y="111" class="tc">16%</text>
+
+  <text x="196" y="145" class="tm" text-anchor="end">Cạnh tranh &middot; Competition</text>
+  <rect x="206" y="132" width="262" height="18" rx="3" class="bar-k"/>
+  <text x="476" y="145" class="tc">14%</text>
+
+  <text x="196" y="179" class="tm" text-anchor="end">Doanh thu &middot; Revenue</text>
+  <rect x="206" y="166" width="225" height="18" rx="3" class="bar-a"/>
+  <text x="439" y="179" class="tc">12%</text>
+
+  <text x="196" y="213" class="tm" text-anchor="end">Khớp năng lực &middot; Production Fit</text>
+  <rect x="206" y="200" width="225" height="18" rx="3" class="bar-n"/>
+  <text x="439" y="213" class="tc">12%</text>
+
+  <text x="196" y="247" class="tm" text-anchor="end">Biên lợi nhuận &middot; Margin</text>
+  <rect x="206" y="234" width="188" height="18" rx="3" class="bar-a"/>
+  <text x="402" y="247" class="tc">10%</text>
+
+  <text x="196" y="281" class="tm" text-anchor="end">Mùa vụ &middot; Seasonality</text>
+  <rect x="206" y="268" width="150" height="18" rx="3" class="bar-n"/>
+  <text x="364" y="281" class="tc">8%</text>
+
+  <text x="196" y="315" class="tm" text-anchor="end">Thời gian SX &middot; Turnaround</text>
+  <rect x="206" y="302" width="112" height="18" rx="3" class="bar-n"/>
+  <text x="326" y="315" class="tc">6%</text>
+
+  <text x="196" y="349" class="tm" text-anchor="end">Cá nhân hoá &middot; Personalization</text>
+  <rect x="206" y="336" width="112" height="18" rx="3" class="bar-n"/>
+  <text x="326" y="349" class="tc">6%</text>
+
+  <rect x="10" y="368" width="560" height="34" rx="4" class="bx2"/>
+  <text x="26" y="389" class="tm">Ba chỉ số thị trường chiếm gần nửa trọng số — vì cầu và tăng trưởng là thứ ta KHÔNG đổi được.</text>
+</svg>
+</div>
+<figcaption>Mọi điểm thành phần đều trên thang 0–100. Tổng = <code>Σ (điểm × trọng số)</code>.</figcaption>
+</figure>
+
+<div class="say"><span class="tag">Nếu bị hỏi &ldquo;sao lại chọn trọng số đó?&rdquo;</span>
+<p>&ldquo;Nguyên tắc là: <em>thứ mình không đổi được thì cho nặng, thứ mình đổi được thì cho nhẹ</em>.</p>
+<p>Cầu và tăng trưởng của thị trường thì mình chịu, không tác động được — nên mỗi cái 16%. Còn thời gian sản xuất hay mức cá nhân hoá là thứ nội bộ, cải thiện được — nên chỉ 6%. Cạnh tranh nằm giữa: không đổi được, nhưng chen vào được nếu có điểm khác biệt — 14%.</p>
+<p>Bộ số này là của bên vận hành chốt, không phải em tự nghĩ; em chỉ giữ nó ở đúng một chỗ trong code để đổi là đổi được cả hệ.&rdquo;</p>
+</div>
+</section>
+
+<!-- ══════════════════ 02 ══════════════════ -->
+<section id="s2">
+<h2 class="sec"><span class="num">02</span>Từng chỉ số tính thế nào</h2>
+<p class="sub">Dưới đây là bản <code>kwscore.py</code> — bản chấm từ <strong>listing thật đã cào trong kho</strong>. Bản <code>scoring.py</code> cùng bộ trọng số nhưng ăn dữ liệu tổng hợp sẵn; chỗ nào khác nhau đáng kể sẽ được ghi rõ.</p>
+
+<h3>Nhóm III — Thị trường &amp; cạnh tranh (46%)</h3>
+
+<h4>Cầu thị trường &middot; Demand &middot; 16%</h4>
+<div class="tw"><table>
+<tbody>
+<tr><td style="width:24%"><strong>Hỏi gì</strong></td><td>Có bao nhiêu người đang <em>quan tâm</em> và <em>đã mua</em>?</td></tr>
+<tr><td><strong>Lấy từ đâu</strong></td><td>Etsy: lượt xem, lượt thích &middot; Amazon: số đơn ước tính</td></tr>
+<tr><td><strong>Công thức</strong></td><td><code>chỉ số cầu = lượt xem + 2×lượt thích + 5×số đơn</code>, rồi chuẩn hoá log trong khoảng [500 – 500.000] &rarr; 0–100</td></tr>
+<tr><td><strong>Đọc thế nào</strong></td><td>Cao = nhiều người quan tâm. Đơn hàng được nhân 5 vì nó là bằng chứng <strong>mua thật</strong>, mạnh hơn hẳn một lượt xem.</td></tr>
+</tbody></table></div>
+
+<div class="note why"><span class="tag">Vì sao chuẩn hoá LOG chứ không tuyến tính</span>
+<p>Chênh lệch giữa 500 và 5.000 lượt quan tâm là <em>một trời một vực</em>; chênh giữa 400.000 và 450.000 thì gần như không đổi gì cả. Thang tuyến tính sẽ nén tất cả những từ khoá nhỏ xuống sát 0 và không phân biệt được chúng với nhau — mà đó lại là vùng cần phân biệt nhất.</p>
+<p>Thang log cho mỗi lần <strong>nhân đôi</strong> một khoảng điểm như nhau. Đây cũng là lý do ba chỉ số Cầu, Doanh thu và Cạnh tranh đều dùng log.</p></div>
+
+<h4>Tăng trưởng &middot; Growth &middot; 16%</h4>
+<div class="tw"><table>
+<tbody>
+<tr><td style="width:24%"><strong>Hỏi gì</strong></td><td>Nhu cầu đang <em>lên hay xuống</em>?</td></tr>
+<tr><td><strong>Lấy từ đâu</strong></td><td>Chuỗi Google Trends của chính từ khoá đó</td></tr>
+<tr><td><strong>Công thức</strong></td><td><code>%tăng = (TB 3 tháng gần − TB 3 tháng trước) ÷ TB 3 tháng trước</code><br>Đổi ra điểm: <code>(%tăng + 15) ÷ 70 × 100</code>, kẹp trong 0–100</td></tr>
+<tr><td><strong>Đọc thế nào</strong></td><td>Đứng yên (0%) &rarr; 21 điểm. Tăng 25% &rarr; 57 điểm. Tăng 55% trở lên &rarr; kịch trần 100. Giảm 15% trở xuống &rarr; 0.</td></tr>
+</tbody></table></div>
+<p>Không có chuỗi Trends thì <code>kwscore</code> đánh dấu <strong>không chấm</strong>; bản <code>scoring.py</code> cũ thì cho 50 điểm trung tính — một khác biệt quan trọng, xem mục 04.</p>
+
+<h4>Cạnh tranh &middot; Competition &middot; 14%</h4>
+<div class="tw"><table>
+<tbody>
+<tr><td style="width:24%"><strong>Hỏi gì</strong></td><td>Chen chân vào <em>có dễ</em> không?</td></tr>
+<tr><td><strong>Lấy từ đâu</strong></td><td>Số <strong>shop</strong> có đơn, và <strong>tuổi</strong> của listing đang đứng đầu</td></tr>
+<tr><td><strong>Công thức</strong></td><td><code>phân mảnh = log(số shop) ÷ log(60) × 100</code><br><code>độ tươi = 100 − (tuổi trung vị ÷ 730 ngày) × 100</code><br><code>điểm = 0,55 × phân mảnh + 0,45 × độ tươi</code></td></tr>
+<tr><td><strong>Đọc thế nào</strong></td><td><strong>Điểm CAO = còn thoáng = dễ chen chân.</strong> Đây là chỉ số duy nhất bị đảo chiều.</td></tr>
+</tbody></table></div>
+
+<div class="note trap"><span class="tag">Hai chỗ rất dễ bị hỏi vặn</span>
+<p><strong>Vì sao đếm theo SHOP mà không đếm theo listing?</strong> Vì 500 listing của 3 shop và 500 listing của 200 shop là hai thị trường khác hẳn nhau. Cái đầu là sân của vài ông lớn — vào rất khó. Cái sau là chợ phân mảnh, ai cũng có chỗ. Đếm listing không phân biệt được hai tình huống đó.</p>
+<p><strong>Vì sao tuổi listing lại là dấu hiệu cạnh tranh?</strong> Một listing đứng top đã 2 năm nghĩa là nó đã tích đủ đánh giá và thứ hạng để không ai đẩy xuống được — rào cản thật. Còn nếu top toàn listing mới vài tháng thì thứ hạng ở đó <em>đang đổi chủ</em>, tức là còn cửa. Mốc 730 ngày: quá 2 năm thì phần &ldquo;độ tươi&rdquo; về 0.</p></div>
+
+<h3>Nhóm II — Tài chính (22%)</h3>
+
+<h4>Doanh thu tiềm năng &middot; Revenue &middot; 12%</h4>
+<div class="tw"><table>
+<tbody>
+<tr><td style="width:24%"><strong>Hỏi gì</strong></td><td>Cả ngách này <em>xoay bao nhiêu tiền</em> một tháng?</td></tr>
+<tr><td><strong>Công thức</strong></td><td><code>doanh thu = Σ (số đơn × giá)</code> của những listing <strong>có đơn</strong>, trong 30 ngày<br>Chuẩn hoá log trong [2.000 – 200.000] USD &rarr; 0–100</td></tr>
+<tr><td><strong>Đọc thế nào</strong></td><td>Chỉ tính listing <em>bán được</em>. Ghi chú kèm theo luôn nói rõ tỷ lệ, kiểu &ldquo;12/300 listing có đơn&rdquo; — con số đó tự nó đã là một tín hiệu.</td></tr>
+</tbody></table></div>
+
+<h4>Biên lợi nhuận &middot; Margin &middot; 10%</h4>
+<pre>biên = ( giá trung vị − giá vốn − phí ship − giá × 9,5% ) ÷ giá trung vị
+điểm = (biên − 20%) ÷ 45% × 100        <span class="c">→ biên 20% = 0đ, biên 65% = 100đ</span></pre>
+<ul>
+<li><strong>9,5%</strong> = phí sàn Etsy 6,5% + phí thanh toán 3%.</li>
+<li><strong>Phí ship theo bậc giá vốn</strong>: dưới $2 &rarr; $2,0 &middot; dưới $5 &rarr; $3,2 &middot; dưới $9 &rarr; $4,5 &middot; còn lại $6,0. Hàng nặng thì vốn cao, mà ship cũng cao — bậc thang bám theo quan hệ đó thay vì lấy một con số chung.</li>
+<li>Giá dùng là <strong>trung vị giá thị trường thật</strong> đã cào, giá vốn lấy từ catalog sản xuất. Thiếu một trong hai thì không chấm.</li>
+</ul>
+
+<h3>Nhóm I — Năng lực sản xuất (32%)</h3>
+
+<h4>Khớp năng lực &middot; Production Fit &middot; 12%</h4>
+<pre>điểm = 85 nếu sản xuất in-house, 55 nếu phải qua đối tác
+     − 5 × (độ khó − 1)           <span class="c">độ khó 1–5</span>
+     + 8 nếu biên cao ≥ 55%,  − 8 nếu biên cao &lt; 40%</pre>
+<p>Trước đó phải <strong>map</strong> được từ khoá về một <em>product type</em> trong catalog sản xuất — lấy title của listing <strong>bán chạy nhất</strong> để map, vì đó là thứ thị trường thật sự mua. Không map được thì không chấm.</p>
+<div class="note why"><span class="tag">Một phân biệt nhỏ mà chỉn chu</span>
+<p>Có <em>hai</em> kiểu &ldquo;không map được&rdquo;, và code tách bạch: (1) không tìm thấy trong catalog, và (2) <strong>có</strong> trong catalog nhưng chưa có số sản xuất (độ khó, giá vốn) — trường hợp này ghi <code>_econ == "unknown"</code> và cũng không chấm, thay vì suy độ khó mặc định là 3.</p>
+<p>Nói với người phỏng vấn: <em>&ldquo;bọn em không suy giá trị mặc định cho thứ mình chưa đo&rdquo;</em> — đó là câu chốt của cả hệ này.</p></div>
+
+<h4>Thời gian sản xuất &middot; Turnaround &middot; 6%</h4>
+<pre>thời gian của xưởng = {1:3, 2:5, 3:7, 4:10, 5:14}[độ khó] + 2 nếu qua đối tác
+điểm = 50 + (trung vị của ĐỐI THỦ − của xưởng mình) × 8</pre>
+<div class="note why"><span class="tag">Điểm hay nhất của chỉ số này</span>
+<p>Nó <strong>so với đối thủ</strong>, không so với một chuẩn cứng. Lead time thật của đối thủ đọc từ trường <code>processing_max</code> mà chính seller khai trên Etsy, rồi lấy trung vị.</p>
+<p>Vì sao quan trọng: 10 ngày sản xuất là <em>chậm</em> trong ngách áo thun, nhưng là <em>nhanh</em> trong ngách đồ khắc tên thủ công. Một chuẩn cứng sẽ chấm sai cả hai.</p>
+<p>Khi chưa có lead time đối thủ để so thì rơi về thang tuyệt đối <code>100 − (số ngày − 2) × 5</code> và <strong>ghi rõ trong chú thích</strong> là chưa có đối thủ để so.</p></div>
+
+<h4>Mùa vụ &middot; Seasonality &middot; 8%</h4>
+<div class="tw"><table>
+<thead><tr><th>Còn bao lâu tới đỉnh mùa</th><th class="numc">Điểm</th><th>Vì sao</th></tr></thead>
+<tbody>
+<tr><td><strong>40–100 ngày</strong></td><td class="numc">92</td><td><strong>Cửa sổ vàng</strong> — đủ thời gian làm hàng, dựng listing, tích đánh giá trước khi cầu bùng</td></tr>
+<tr><td>Hơn 100 ngày</td><td class="numc">58</td><td>Còn sớm; vốn nằm chờ quá lâu</td></tr>
+<tr><td>Dưới 40 ngày</td><td class="numc">38</td><td>Đã muộn để <em>mở mới</em> — listing chưa kịp có thứ hạng thì mùa đã qua</td></tr>
+<tr><td>Không gắn mùa nào</td><td class="numc">65</td><td>Bán được quanh năm — không phải điểm kém, chỉ là không có lợi thế thời điểm</td></tr>
+</tbody></table></div>
+<p>Mùa vụ nhận ra từ <strong>dịp</strong> trong title (Giáng sinh, Ngày của Mẹ, tựu trường&hellip;), rồi tra lịch đỉnh. Bản <code>scoring.py</code> tính theo <em>số tháng</em> tới đỉnh thay vì số ngày, cùng ý tưởng.</p>
+
+<h4>Cá nhân hoá &middot; Personalization &middot; 6%</h4>
+<pre>tỷ lệ = số listing cho cá nhân hoá ÷ tổng số listing     <span class="c">(seller TỰ KHAI)</span>
+điểm  = 30 + tỷ lệ × 70</pre>
+<div class="note why"><span class="tag">Vì sao chỉ số này tồn tại</span>
+<p>Hàng cá nhân hoá <strong>không so được giá</strong> với hàng đại trà — khách không đi tìm cái cốc in tên mình rẻ hơn 2 đô ở shop khác. Ngách nào cá nhân hoá được thì biên lợi nhuận giữ được lâu hơn.</p>
+<p>Chi tiết đáng nói: dùng cờ <code>is_personalizable</code> do <strong>seller tự khai</strong>, không đoán từ title. Chỉ khi hoàn toàn không có cờ mới rơi về đoán chữ trong title — và lúc đó chú thích ghi rõ nguồn là &ldquo;suy từ title&rdquo;.</p></div>
+
+<h3>Bảng tra nhanh</h3>
+<div class="tw"><table>
+<thead><tr><th>Chỉ số</th><th class="numc">Trọng số</th><th>Nguồn</th><th>Điểm cao nghĩa là</th></tr></thead>
+<tbody>
+<tr><td>Cầu thị trường</td><td class="numc">16%</td><td>Etsy + Amazon</td><td>Nhiều người quan tâm và đã mua</td></tr>
+<tr><td>Tăng trưởng</td><td class="numc">16%</td><td>Google Trends</td><td>Nhu cầu đang lên</td></tr>
+<tr><td>Cạnh tranh</td><td class="numc">14%</td><td>Etsy</td><td><strong>Còn thoáng, dễ chen</strong> (đảo chiều)</td></tr>
+<tr><td>Doanh thu tiềm năng</td><td class="numc">12%</td><td>Etsy + Amazon</td><td>Ngách xoay nhiều tiền</td></tr>
+<tr><td>Khớp năng lực</td><td class="numc">12%</td><td>Catalog sản xuất</td><td>Xưởng tự làm được, dễ làm</td></tr>
+<tr><td>Biên lợi nhuận</td><td class="numc">10%</td><td>Catalog + giá thật</td><td>Bán ra còn lại nhiều</td></tr>
+<tr><td>Mùa vụ</td><td class="numc">8%</td><td>Lịch mùa</td><td>Đang ở cửa sổ vàng để launch</td></tr>
+<tr><td>Thời gian sản xuất</td><td class="numc">6%</td><td>Catalog + Etsy</td><td>Giao nhanh hơn đối thủ</td></tr>
+<tr><td>Cá nhân hoá</td><td class="numc">6%</td><td>Etsy</td><td>Ngách cho cá nhân hoá được</td></tr>
+</tbody></table></div>
+</section>
+
+<!-- ══════════════════ 03 ══════════════════ -->
+<section id="s3">
+<h2 class="sec"><span class="num">03</span>Ba lớp chặn ngoài điểm số</h2>
+<p class="sub">Đây là phần đáng nói nhất. Một bảng điểm chỉ là bảng điểm; ba lớp này biến nó thành một quyết định.</p>
+
+<figure>
+<div class="fbox">
+<svg viewBox="0 0 580 442" role="img" aria-label="Ba lớp chặn sau khi tính tổng điểm">
+  <defs>
+    <marker id="c1" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0 0 L10 4 L0 8 z" class="ar"/></marker>
+  </defs>
+
+  <rect x="10" y="8" width="560" height="48" rx="5" class="bx2"/>
+  <text x="26" y="29" class="tb">TỔNG ĐIỂM = Σ (điểm chỉ số × trọng số)</text>
+  <text x="26" y="47" class="tm">9 chỉ số, mỗi chỉ số thang 0–100 &rarr; một con số 0–100</text>
+  <path d="M290 56 L290 76" class="ln" marker-end="url(#c1)"/>
+
+  <rect x="10" y="78" width="560" height="66" rx="5" class="bx-stop"/>
+  <text x="26" y="99" class="ts">LỚP 1 &middot; LUẬT BẮT BUỘC — đè thẳng lên tổng</text>
+  <text x="26" y="119" class="tm">Google Trends giảm ≥ 8%  →  tổng bị chặn trần ở 48 điểm</text>
+  <text x="26" y="136" class="tm">Google Trends giảm nhẹ (&lt; 0%)  →  chặn trần ở 58 điểm</text>
+  <path d="M290 144 L290 164" class="ln" marker-end="url(#c1)"/>
+
+  <rect x="10" y="166" width="560" height="104" rx="5" class="bx-ai"/>
+  <text x="26" y="187" class="ta">LỚP 2 &middot; VÒNG ĐỜI SẢN PHẨM — 5 giai đoạn</text>
+  <text x="26" y="207" class="tm">Decline — giảm ≥ 8%  →  không mở mới, xả hàng</text>
+  <text x="26" y="224" class="tm">Saturation — tăng &lt; 8%, cạnh tranh cao, cầu ≥ 55  →  chỉ vào nếu có EDGE riêng</text>
+  <text x="26" y="241" class="tm">Conception — tăng ≥ 25%, cạnh tranh còn thoáng, cầu &lt; 72  →  vào sớm, test 3–5 mẫu</text>
+  <text x="26" y="258" class="tm">Growth — tăng ≥ 12%  →  launch ngay, chuẩn bị năng lực scale</text>
+  <path d="M290 270 L290 290" class="ln" marker-end="url(#c1)"/>
+
+  <rect x="10" y="292" width="560" height="118" rx="5" class="bx-kho"/>
+  <text x="26" y="313" class="tk">LỚP 3 &middot; VERDICT — xét theo thứ tự, gặp cái nào khớp thì dừng</text>
+  <text x="26" y="333" class="tm">không map được product type, hoặc Decline  →  Not Recommend</text>
+  <text x="26" y="350" class="tm">Saturation  →  Consider (bão hoà) nếu ≥ 50, còn lại Not Recommend</text>
+  <text x="26" y="367" class="tm">≥ 66 VÀ qua cổng năng lực sản xuất  →  Recommend</text>
+  <text x="26" y="384" class="tm">≥ 66 nhưng ngoài năng lực in-house  →  Consider (ngoài năng lực)</text>
+  <text x="26" y="401" class="tm">≥ 50  →  Consider        dưới 50  →  Not Recommend</text>
+
+  <text x="10" y="432" class="tm">Điểm cao KHÔNG tự động thành &ldquo;nên làm&rdquo;. Ba lớp này có quyền phủ quyết.</text>
+</svg>
+</div>
+<figcaption>Thứ tự là bắt buộc: luật hạ trần chạy trước, rồi phân loại vòng đời, rồi mới ra kết luận.</figcaption>
+</figure>
+
+<h3>Lớp 1 — luật hạ trần khi tăng trưởng âm</h3>
+<div class="say"><span class="tag">Nói thế này</span>
+<p>&ldquo;Đây là một luật <em>cứng</em>, đặt ra vì một lý do rất thực tế: một ngách đang đi xuống vẫn có thể có điểm rất đẹp — cầu còn lớn, doanh thu còn cao, biên còn tốt — nhưng đó là <em>ảnh chụp của quá khứ</em>. Tới lúc mình làm xong hàng và lên listing thì sóng đã qua.</p>
+<p>Nên dù 8 chỉ số kia đẹp cỡ nào, tăng trưởng âm mạnh là bị chặn trần ở <em>48 điểm</em> — dưới ngưỡng <em>Cân nhắc</em>. Luật này <em>đè lên</em> tổng có trọng số, không phải cộng trừ vào nó.&rdquo;</p>
+</div>
+
+<h3>Lớp 2 — năm giai đoạn vòng đời</h3>
+<p>Cùng một điểm 70 nhưng ở hai giai đoạn khác nhau thì việc phải làm khác hẳn nhau. Mỗi giai đoạn kèm sẵn một <strong>hành động</strong>, không chỉ một cái nhãn:</p>
+<div class="tw"><table>
+<thead><tr><th>Giai đoạn</th><th>Nhận ra bằng</th><th>Hành động kèm theo</th></tr></thead>
+<tbody>
+<tr><td><strong>Conception</strong><br>Tín hiệu sớm</td><td>Tăng ≥ 25%, cạnh tranh còn thoáng, cầu <em>chưa</em> lớn (&lt; 72)</td><td>Vào sớm — test nhanh 3–5 mẫu, <strong>chưa</strong> scale</td></tr>
+<tr><td><strong>Growth</strong><br>Tăng trưởng</td><td>Tăng ≥ 12%</td><td>Launch ngay, chuẩn bị năng lực scale, siết giao hàng đúng hạn</td></tr>
+<tr><td><strong>Saturation</strong><br>Bão hoà</td><td>Tăng &lt; 8% nhưng cầu đã lớn và cạnh tranh cao</td><td>Chỉ vào nếu có <strong>EDGE</strong> — thiết kế, chất liệu, hoặc cá nhân hoá độc đáo</td></tr>
+<tr><td><strong>Decline</strong><br>Suy thoái</td><td>Giảm ≥ 8%</td><td>Không mở mới; đang bán thì xả hàng</td></tr>
+<tr><td><strong>Launch/Test</strong></td><td>Không rơi vào bốn nhóm trên</td><td>Tạo listing test, đo phản hồi thật trước khi scale</td></tr>
+</tbody></table></div>
+<div class="note why"><span class="tag">Chỗ tinh tế: Conception đòi cầu PHẢI NHỎ</span>
+<p>Điều kiện <code>cầu &lt; 72</code> nghe ngược đời — sao cầu thấp lại tốt? Vì đây là giai đoạn <em>tín hiệu sớm</em>: tăng nhanh mà cầu <strong>đã</strong> lớn thì tức là sóng đã nổ, mình vào là muộn. Tăng nhanh mà cầu còn nhỏ mới là thứ mình muốn bắt.</p></div>
+
+<h3>Lớp 3 — cổng năng lực sản xuất</h3>
+<p>Cổng này <strong>không</strong> cho điểm; nó chỉ trả lời có/không:</p>
+<pre>qua cổng = (sản xuất in-house)  VÀ  (biên cao ≥ 40%)</pre>
+<p>Không qua cổng thì trần cao nhất là <code>Consider (ngoài năng lực in-house)</code>, kể cả khi điểm 90.</p>
+<div class="say"><span class="tag">Nói thế này</span>
+<p>&ldquo;Chỗ này là <em>đặc thù của một xưởng sản xuất</em>, không phải của một công cụ nghiên cứu thị trường chung. Một ngách tuyệt vời mà mình phải đi thuê ngoài thì biên bị ăn mất, lead time dài thêm, và chất lượng không kiểm soát được.</p>
+<p>Nên cổng này tách hẳn khỏi điểm số: điểm nói <em>thị trường có tốt không</em>, cổng nói <em>mình có nên là người làm nó không</em>. Hai câu hỏi khác nhau, không trộn vào một con số.&rdquo;</p>
+</div>
+</section>
+
+<!-- ══════════════════ 04 ══════════════════ -->
+<section id="s4">
+<h2 class="sec"><span class="num">04</span>Thiếu nguồn thì không chấm</h2>
+<p class="sub">Nguyên tắc này là khác biệt lớn nhất giữa <code>kwscore.py</code> (bản mới) và <code>scoring.py</code> (bản gốc), và là thứ đáng đem đi phỏng vấn nhất trong cả tính năng.</p>
+
+<figure>
+<div class="fbox">
+<svg viewBox="0 0 580 244" role="img" aria-label="Cách chia lại trọng số khi thiếu nguồn dữ liệu">
+  <text x="10" y="18" class="tb">Ba chỉ số không có nguồn thật thì trọng số được chia lại cho sáu chỉ số còn lại</text>
+
+  <text x="20" y="46" class="tk">A &middot; đủ 9 nguồn — tổng trọng số = 100%</text>
+  <rect x="20"  y="54" width="83" height="22" rx="2" class="bar-k"/>
+  <rect x="103" y="54" width="83" height="22" rx="2" class="bar-k"/>
+  <rect x="186" y="54" width="73" height="22" rx="2" class="bar-k"/>
+  <rect x="259" y="54" width="62" height="22" rx="2" class="bar-a"/>
+  <rect x="321" y="54" width="62" height="22" rx="2" class="bar-n"/>
+  <rect x="383" y="54" width="52" height="22" rx="2" class="bar-a"/>
+  <rect x="435" y="54" width="42" height="22" rx="2" class="bar-n"/>
+  <rect x="477" y="54" width="31" height="22" rx="2" class="bar-n"/>
+  <rect x="508" y="54" width="31" height="22" rx="2" class="bar-n"/>
+
+  <text x="20" y="104" class="ts">B &middot; thiếu Trends, thiếu giá vốn, thiếu cờ cá nhân hoá — 3 ô KHÔNG chấm</text>
+  <rect x="20"  y="112" width="83" height="22" rx="2" class="bar-k"/>
+  <rect x="103" y="112" width="83" height="22" rx="2" class="bar-off"/>
+  <rect x="186" y="112" width="73" height="22" rx="2" class="bar-k"/>
+  <rect x="259" y="112" width="62" height="22" rx="2" class="bar-a"/>
+  <rect x="321" y="112" width="62" height="22" rx="2" class="bar-n"/>
+  <rect x="383" y="112" width="52" height="22" rx="2" class="bar-off"/>
+  <rect x="435" y="112" width="42" height="22" rx="2" class="bar-n"/>
+  <rect x="477" y="112" width="31" height="22" rx="2" class="bar-n"/>
+  <rect x="508" y="112" width="31" height="22" rx="2" class="bar-off"/>
+
+  <text x="20" y="162" class="tk">C &middot; sáu ô còn lại được kéo giãn cho đủ 100% — điểm vẫn trên thang 0–100</text>
+  <rect x="20"  y="170" width="122" height="22" rx="2" class="bar-k"/>
+  <rect x="142" y="170" width="107" height="22" rx="2" class="bar-k"/>
+  <rect x="249" y="170" width="92"  height="22" rx="2" class="bar-a"/>
+  <rect x="341" y="170" width="92"  height="22" rx="2" class="bar-n"/>
+  <rect x="433" y="170" width="61"  height="22" rx="2" class="bar-n"/>
+  <rect x="494" y="170" width="46"  height="22" rx="2" class="bar-n"/>
+
+  <rect x="10" y="204" width="560" height="34" rx="4" class="bx2"/>
+  <text x="26" y="225" class="tc">tổng = Σ(điểm × trọng số của ô có nguồn) ÷ Σ(trọng số của ô có nguồn)</text>
+</svg>
+</div>
+<figcaption>Kết quả luôn kèm một câu tự khai kiểu &ldquo;Tính trên 6/9 chỉ số có dữ liệu thật&rdquo;.</figcaption>
+</figure>
+
+<h3>Vì sao không cho điểm mặc định</h3>
+<div class="say"><span class="tag">Nói thế này</span>
+<p>&ldquo;Bản đầu, chỉ số nào thiếu nguồn thì bọn em cho <em>50 điểm trung tính</em>. Nghe hợp lý, nhưng nó sai một cách rất khó phát hiện: một từ khoá <em>không có dữ liệu gì cả</em> sẽ về đúng 50 điểm — <em>trông y hệt</em> một từ khoá đã đo kỹ và ra kết quả trung bình.</p>
+<p>Hai thứ đó phải khác nhau. Một cái là <em>&lsquo;chưa biết&rsquo;</em>, một cái là <em>&lsquo;biết rồi, bình thường&rsquo;</em> — và chúng dẫn tới hai hành động khác hẳn: một cái thì đi cào thêm dữ liệu, cái kia thì bỏ qua và tìm ngách khác.</p>
+<p>Nên bản sau đổi: thiếu nguồn thì <em>đánh dấu không chấm</em>, và chia lại trọng số cho những chỉ số còn lại. Kết quả trả về luôn kèm một câu kiểu <em>&lsquo;tính trên 6/9 chỉ số có dữ liệu thật&rsquo;</em>, để người đọc tự biết nên tin con số tới đâu.&rdquo;</p>
+</div>
+
+<h3>Mỗi chỉ số ghi rõ nguồn của nó</h3>
+<p>Mỗi ô kết quả mang theo một nhãn nguồn — <code>etsy</code>, <code>g-trends</code>, <code>catalog</code>, <code>catalog+giá thật</code>, <code>etsy+catalog</code>, <code>lịch mùa</code>, <code>suy luận</code> — và một câu chú thích viết bằng số thật, ví dụ:</p>
+<pre><span class="c">turnaround</span>  Xưởng ~7 ngày · đối thủ trung vị 10 ngày (nhanh hơn) · n=143
+<span class="c">revenue</span>     $84,200/30 ngày · 1,910 đơn · 12/300 listing có đơn
+<span class="c">competition</span> 47 shop có đơn · tuổi listing trung vị 19 tháng · điểm cao = còn thoáng</pre>
+<p>Nhãn <code>suy luận</code> là lời thú nhận có chủ ý: chỉ số đó <strong>không</strong> dựa trên số đo trực tiếp. Người đọc nhìn nhãn là biết ngay nên tin tới đâu, không phải đi đọc code.</p>
+</section>
+
+<!-- ══════════════════ 05 ══════════════════ -->
+<section id="s5">
+<h2 class="sec"><span class="num">05</span>Đừng nhầm với bộ 9 tiêu chí pass/fail</h2>
+<p class="sub">Trong kho có <strong>hai</strong> thứ mang số 9, và chúng hoàn toàn khác nhau. Nhầm hai cái này khi phỏng vấn là mất điểm ngay.</p>
+
+<div class="tw"><table>
+<thead><tr><th></th><th>Bộ 9 CHỈ SỐ</th><th>Bộ 9 TIÊU CHÍ</th></tr></thead>
+<tbody>
+<tr><td><strong>Tệp</strong></td><td><code>scoring.py</code> · <code>kwscore.py</code></td><td><code>hubmetrics.py</code> (&sect;12)</td></tr>
+<tr><td><strong>Của ai</strong></td><td>&ldquo;Tri thức Printway&rdquo; — bên vận hành xưởng</td><td>Data analyst (bản demo của Long)</td></tr>
+<tr><td><strong>Kiểu chấm</strong></td><td>Mỗi chỉ số một điểm 0–100, <strong>có trọng số</strong></td><td>Mỗi tiêu chí <strong>đạt / không đạt</strong>, đếm bao nhiêu cái đạt</td></tr>
+<tr><td><strong>Ra cái gì</strong></td><td>Tổng 0–100 + verdict <code>Recommend</code> / <code>Consider</code> / <code>Not Recommend</code></td><td>Điểm cơ hội riêng + <code>NÊN VÀO</code> / <code>CÂN NHẮC</code> / <code>CHƯA NÊN</code></td></tr>
+<tr><td><strong>Điểm cạnh tranh</strong></td><td>Đã <strong>đảo chiều</strong> — cao = còn thoáng</td><td><strong>Không</strong> đảo — cao = cạnh tranh gắt (đạt khi &le; 55)</td></tr>
+<tr><td><strong>Endpoint</strong></td><td><code>GET /api/hub/score/keyword/{kw}</code></td><td><code>GET /api/hub/hub/metrics/{kw}</code></td></tr>
+</tbody></table></div>
+
+<div class="note trap"><span class="tag">Cái bẫy cụ thể</span>
+<p>Cùng một từ &ldquo;cạnh tranh&rdquo;, hai hệ hiểu <strong>ngược nhau</strong>. Ở bộ 9 chỉ số, <code>competition = 100 − độ bão hoà</code> nên <em>điểm cao là tin vui</em>. Ở bộ 9 tiêu chí, <code>competition</code> là mức cạnh tranh thật nên <em>điểm cao là tin xấu</em>, và tiêu chí chỉ đạt khi nó &le; 55.</p>
+<p>Nếu ai đó hỏi &ldquo;điểm cạnh tranh 80 là tốt hay xấu?&rdquo; — câu trả lời đúng là <em>&ldquo;tuỳ bảng nào, hai bảng quy ước ngược nhau&rdquo;</em>.</p></div>
+
+<h3>Bộ 9 tiêu chí — các ngưỡng đạt</h3>
+<div class="tw"><table>
+<thead><tr><th>Tiêu chí</th><th>Đạt khi</th><th>Nguồn</th></tr></thead>
+<tbody>
+<tr><td>Cầu</td><td>&ge; 60</td><td>Proxy (lượt xem Etsy + đơn Amazon)</td></tr>
+<tr><td>Xu hướng</td><td>&ge; +15%</td><td>Thật (Google Trends)</td></tr>
+<tr><td>Khoảng trống</td><td>&ge; 55</td><td>Thật</td></tr>
+<tr><td>Cạnh tranh</td><td><strong>&le; 55</strong></td><td>Thật</td></tr>
+<tr><td>Giá phù hợp</td><td>có giá trung vị</td><td>Thật</td></tr>
+<tr><td>Cá nhân hoá</td><td>&ge; 40% listing</td><td>Thật (seller khai)</td></tr>
+<tr><td>Biên lợi nhuận</td><td>&ge; 55%</td><td>Catalog</td></tr>
+<tr><td>Khớp năng lực</td><td>&ge; 70</td><td>Catalog</td></tr>
+<tr><td>Thời gian SX</td><td>&le; 7 ngày</td><td>Catalog</td></tr>
+</tbody></table></div>
+<p>Mỗi tiêu chí còn mang một cờ <code>has</code> — <em>có đo được hay không</em> — tách bạch với <code>pass</code>. Không đo được thì không tính vào mẫu số, đúng tinh thần &ldquo;thiếu nguồn thì không chấm&rdquo; ở mục 04.</p>
+
+<h3>Ba khái niệm riêng của bộ này, đáng nhớ</h3>
+
+<h4>Khoảng trống &middot; whitespace</h4>
+<pre>khoảng trống = cầu − cạnh tranh + 0,3 × xu hướng</pre>
+<p>Một con số duy nhất trả lời &ldquo;<em>nhiều người muốn mua mà ít người bán</em> đến mức nào&rdquo;. Xu hướng được cộng vào với hệ số nhỏ vì một ngách đang lên thì khoảng trống sẽ <em>rộng ra</em> trong vài tháng tới, kể cả khi hôm nay nó chưa rộng.</p>
+
+<h4>Độ tin cậy &middot; confidence — và cách nó chiết khấu điểm</h4>
+<pre>confidence = 100 × ( 0,5 × số nguồn có/3  +  0,3 × (1 − tỷ lệ ô trống)  +  0,2 × độ tươi )
+điểm hiện ra = điểm cơ hội × confidence ÷ 100</pre>
+<div class="say"><span class="tag">Nói thế này</span>
+<p>&ldquo;Chỗ này em thích nhất trong bộ đó. Nó không chỉ tính điểm, nó còn tính <em>mình tin con số này tới đâu</em> — dựa trên có mấy nguồn, bao nhiêu ô dữ liệu bị trống, dữ liệu tươi hay cũ.</p>
+<p>Rồi nó <em>nhân điểm với độ tin cậy</em>. Một ngách chấm 80 nhưng chỉ có một nguồn và nửa số ô trống thì hiện ra chỉ còn khoảng 45 — tự nó rơi xuống <em>Chưa nên</em>. Tức là <em>thiếu dữ liệu bị phạt thẳng vào kết luận</em>, chứ không phải chỉ ghi một dòng cảnh báo nhỏ mà không ai đọc.&rdquo;</p>
+</div>
+
+<h4>Luật rủi ro — cảnh báo có điều kiện, điền số thật</h4>
+<div class="tw"><table>
+<thead><tr><th>Mức</th><th>Bật khi</th><th>Câu cảnh báo nói gì</th></tr></thead>
+<tbody>
+<tr><td><code>warn</code></td><td>Listing dưới 6 tháng chiếm &ge; 50%</td><td>Cung đang tăng nhanh, cạnh tranh sẽ dày lên trong 1–2 quý</td></tr>
+<tr><td><code>warn</code></td><td>Mỗi shop &ge; 4 listing</td><td>Chợ tập trung — cần điểm khác biệt để chen chân</td></tr>
+<tr><td><code>danger</code></td><td>confidence &lt; 50</td><td>Nguồn mỏng, điểm chỉ mang tính tham khảo</td></tr>
+<tr><td><code>info</code></td><td>Chỉ có một sàn</td><td>Đọc theo hướng, không theo con số tuyệt đối</td></tr>
+<tr><td><code>info</code></td><td>Trends xếp Breakout (&gt; 500%)</td><td><strong>Nền so sánh gần 0</strong> — là tín hiệu MỚI, chưa phải tăng trưởng đã kiểm chứng</td></tr>
+</tbody></table></div>
+<div class="note why"><span class="tag">Dòng cuối là dòng đáng nói nhất</span>
+<p>Google Trends gắn nhãn <em>Breakout</em> cho từ khoá tăng trên 500%. Nghe thì tuyệt, nhưng 500% thường có nghĩa là <strong>nền trước đó gần bằng 0</strong> — từ 2 lên 12 cũng là +500%. Hệ thống nói thẳng điều đó ra thay vì để con số tự khoe.</p></div>
+</section>
+
+<!-- ══════════════════ 06 ══════════════════ -->
+<section id="s6">
+<h2 class="sec"><span class="num">06</span>Sự thật phải nói thẳng</h2>
+<p class="sub">Nếu người phỏng vấn đào sâu, những điều dưới đây sẽ lộ ra. Nói trước thì là sự thành thật; để họ phát hiện thì thành ra giấu.</p>
+
+<h3>Nó chấm một TỪ KHOÁ, không chấm một sản phẩm</h3>
+<p>Đầu vào là một cụm như <em>personalized dog collar</em>, không phải một sản phẩm cụ thể trên sàn. Nó trả lời &ldquo;<strong>ngách này có đáng làm không</strong>&rdquo;, chứ không phải &ldquo;cái listing này tốt không&rdquo;.</p>
+
+<h3>Nguồn của nó là Etsy + Amazon + Google Trends, không phải Shopee</h3>
+<p>Bộ này ra đời ở giai đoạn dự án làm <strong>print-on-demand trên Etsy/Amazon</strong> cho xưởng Printway. Ba nguồn khai báo ngay trong code: <code>etsy_open_api</code>, <code>amazon_helium10_export</code>, <code>google_trends</code>, cộng catalog sản xuất của xưởng.</p>
+<div class="note trap"><span class="tag">Hệ quả</span>
+<p>Nó <strong>không</strong> đọc kho <code>listings_snapshot</code> của TREND·SCOUT, và <strong>không</strong> chạm tới Shopee VN / Shopee PH / 1688. Hai hệ hoàn toàn tách biệt, chỉ chung một cơ sở dữ liệu.</p></div>
+
+<h3>Hiện không có giao diện nào gọi nó</h3>
+<p>Còn hai endpoint sống ở backend — <code>/api/hub/score/keyword/{kw}</code> và <code>/api/hub/hub/metrics/{kw}</code> — nhưng frontend không tham chiếu tới cái nào. Trong nội bộ backend, <code>scoring.py</code> vẫn được gọi từ <code>analysis.py</code> (chấm cả bảng keyword) và <code>copilot.py</code> (chấm một title lẻ).</p>
+
+<div class="say"><span class="tag">Nói thế này khi bị hỏi &ldquo;cái này còn dùng không?&rdquo;</span>
+<p>&ldquo;Thành thật thì phần giao diện của nó đã gỡ khi dự án chuyển từ Etsy sang Shopee và 1688 — thị trường khác, nguồn dữ liệu khác, nên bộ chỉ số cũ không áp thẳng được. Engine vẫn còn, endpoint vẫn chạy, nhưng không còn màn hình nào gọi.</p>
+<p>Em vẫn kể nó vì <em>cách nghĩ</em> thì giữ nguyên và bọn em mang sang hệ mới: chia điểm theo trọng số, tách <em>&lsquo;chưa đo được&rsquo;</em> khỏi <em>&lsquo;đo rồi, kết quả trung bình&rsquo;</em>, và đặt các lớp chặn cứng nằm ngoài điểm số để một con số đẹp không tự động thành một quyết định.&rdquo;</p>
+</div>
+
+<h3>Vài chỗ trong code còn thô — biết thì nói luôn</h3>
+<ul>
+<li><code>fresh_share</code> trong công thức confidence bị <strong>gán cứng bằng 1,0</strong>, kèm chú thích &ldquo;ta chưa lưu FETCH_TIER nên coi dữ liệu vừa cào là tươi&rdquo;. Tức là 20% của confidence hiện <em>chưa đo thật</em>.</li>
+<li><code>price_fit</code> cũng gán cứng 100 khi có giá trung vị, vì <em>chưa có giá mục tiêu</em> để so.</li>
+<li><code>score_title</code> trong <code>copilot.py</code> đi tìm cơ hội <em>giống nhất</em> trong kho rồi mượn tín hiệu của nó — chấm gần đúng, không phải chấm từ dữ liệu của chính title đó.</li>
+</ul>
+<div class="note why"><span class="tag">Vì sao nên chủ động nói ra</span>
+<p>Đây đúng là loại chi tiết một người phỏng vấn giỏi sẽ tìm. Nói trước thì thành &ldquo;tôi biết giới hạn của thứ tôi làm&rdquo;; bị hỏi ra mới thừa nhận thì thành &ldquo;không nắm&rdquo;.</p></div>
+</section>
+
+<!-- ══════════════════ 07 ══════════════════ -->
+<section id="s7">
+<h2 class="sec"><span class="num">07</span>Kịch bản phỏng vấn</h2>
+<p class="sub">Bấm để mở câu trả lời gợi ý. Mỗi câu viết ở dạng nói, không phải dạng đọc slide.</p>
+
+<details class="qa"><summary>Kể về một tính năng em tự hào</summary><div class="a">
+<p>&ldquo;Em kể cái engine chấm điểm cơ hội. Bài toán là: bên vận hành mỗi tuần phải chọn vài ngách để làm, mà danh sách ứng viên thì hàng trăm — chọn bằng cảm tính thì không tranh luận được với nhau.</p>
+<p>Bọn em quy nó về một điểm 0–100 ghép từ <strong>9 chỉ số chia 3 nhóm</strong>: thị trường có mua không, bán có lãi không, xưởng làm được không. Trọng số đặt theo nguyên tắc <em>thứ mình không đổi được thì cho nặng</em> — cầu và tăng trưởng mỗi cái 16%, còn thời gian sản xuất chỉ 6% vì đó là thứ cải thiện được.</p>
+<p>Nhưng phần em thấy đáng nói hơn là <strong>ba thứ nằm ngoài điểm số</strong>: luật hạ trần khi Google Trends đi xuống, phân loại vòng đời sản phẩm để biết nên vào sớm hay đã muộn, và một cổng năng lực sản xuất có quyền phủ quyết. Điểm 90 mà xưởng không tự làm được thì vẫn chỉ là <em>Cân nhắc</em>.&rdquo;</p>
+</div></details>
+
+<details class="qa"><summary>Sao lại là 9 chỉ số? Lấy ở đâu ra?</summary><div class="a">
+<p>&ldquo;Không phải em nghĩ ra. Đó là bộ tiêu chí mà bên vận hành xưởng vốn đã dùng để quyết — chỉ có điều trước đó nó nằm trong đầu người và trong file Excel rời rạc. Việc của em là <strong>viết nó thành công thức chạy được</strong>, đặt mọi trọng số vào đúng một chỗ trong code để chỉnh là chỉnh cả hệ, và nối mỗi chỉ số với một nguồn dữ liệu thật.</p>
+<p>Giá trị không nằm ở con số 9, mà ở chỗ trước đây hai người cãi nhau về một ngách thì không có gì để chỉ vào; giờ thì chỉ vào được — <em>chỉ số nào đang kéo điểm xuống</em>.&rdquo;</p>
+</div></details>
+
+<details class="qa"><summary>Nếu một chỉ số không có dữ liệu thì sao?</summary><div class="a">
+<p>&ldquo;Bản đầu bọn em cho 50 điểm trung tính. Sai, và sai khó thấy: một từ khoá <em>không có dữ liệu gì</em> ra đúng 50 điểm, trông y hệt một từ khoá đã đo kỹ và ra kết quả trung bình. Hai thứ đó dẫn tới hai hành động khác nhau — một cái thì đi cào thêm, cái kia thì bỏ qua.</p>
+<p>Nên bản sau đổi thành: thiếu nguồn thì <strong>không chấm</strong>, đánh cờ <code>available = false</code>, và <strong>chia lại trọng số</strong> cho những chỉ số còn lại. Kết quả luôn kèm câu <em>&lsquo;tính trên 6/9 chỉ số có dữ liệu thật&rsquo;</em>.</p>
+<p>Một hệ khác trong dự án còn đi xa hơn: nó tính luôn một <em>hệ số tin cậy</em> rồi <strong>nhân thẳng vào điểm</strong> — thiếu dữ liệu thì bị phạt vào kết luận, chứ không chỉ là một dòng cảnh báo không ai đọc.&rdquo;</p>
+</div></details>
+
+<details class="qa"><summary>Làm sao biết chấm đúng? Có validate không?</summary><div class="a">
+<p>&ldquo;Thành thật: <strong>không có nhãn đúng/sai để đối chiếu</strong>. Không ai biết chắc một ngách <em>đáng lẽ</em> phải mấy điểm, nên không có tập kiểm chuẩn.</p>
+<p>Thứ bọn em làm được là ba việc. <strong>Một</strong>, mỗi chỉ số phải truy ngược được ra số thô — trong ghi chú luôn có kiểu <em>&lsquo;47 shop có đơn, tuổi listing trung vị 19 tháng&rsquo;</em>, nên người vận hành phản bác được bằng số chứ không bằng cảm giác. <strong>Hai</strong>, tách nguồn ra ba loại nhãn — thật, catalog, suy luận — để không lẫn số đo với số đoán. <strong>Ba</strong>, các ngưỡng đều nằm ở một chỗ và chỉnh được, nên khi bên vận hành thấy sai thì họ sửa được ngay thay vì chờ deploy.</p>
+<p>Nếu có thêm thời gian, thứ em muốn làm là ghi lại <em>quyết định thật</em> — ngách nào đã làm, kết quả ra sao — để sau vài tháng có cái mà hồi quy lại trọng số.&rdquo;</p>
+</div></details>
+
+<details class="qa"><summary>Vì sao dùng thang log?</summary><div class="a">
+<p>&ldquo;Vì chênh lệch giữa 500 và 5.000 lượt quan tâm là một trời một vực, còn chênh giữa 400.000 và 450.000 thì gần như không đổi gì. Thang tuyến tính nén hết những ngách nhỏ xuống sát 0 và không phân biệt được chúng với nhau — mà đó lại là vùng cần phân biệt nhất, vì ngách nhỏ mới là chỗ còn cửa.</p>
+<p>Thang log thì mỗi lần nhân đôi được một khoảng điểm như nhau. Ba chỗ dùng nó là cầu, doanh thu và cạnh tranh — đều là những đại lượng trải dài mấy bậc độ lớn.&rdquo;</p>
+</div></details>
+
+<details class="qa"><summary>Điểm cạnh tranh cao là tốt hay xấu?</summary><div class="a">
+<p>&ldquo;Ở bộ 9 chỉ số thì <strong>tốt</strong> — nó đã được đảo chiều, <code>điểm = 100 − độ bão hoà</code>, nên cao nghĩa là còn thoáng, dễ chen chân. Đảo như vậy để <em>mọi chỉ số cùng một hướng</em>: cao là tốt, không phải nhớ ngoại lệ khi đọc bảng.</p>
+<p>Nhưng trong kho còn một bộ chỉ số khác của bên data analyst, ở đó <code>competition</code> là mức cạnh tranh thật nên cao là <strong>xấu</strong>, và tiêu chí chỉ đạt khi nó dưới 55. Nên câu trả lời đầy đủ là <em>tuỳ bảng nào</em> — và đó cũng là một bài học: quy ước dấu phải thống nhất, nếu không thì ghi thẳng vào ngay cạnh con số.&rdquo;</p>
+</div></details>
+
+<details class="qa"><summary>Cạnh tranh sao không đếm số listing cho đơn giản?</summary><div class="a">
+<p>&ldquo;Vì 500 listing của 3 shop và 500 listing của 200 shop là hai thị trường khác hẳn. Cái đầu là sân của vài ông lớn, vào rất khó. Cái sau là chợ phân mảnh, ai cũng có chỗ. Đếm listing không phân biệt được.</p>
+<p>Nên bọn em đếm theo <strong>shop</strong>, cộng thêm một vế nữa là <strong>tuổi của listing đang đứng top</strong>: top mà toàn listing 2 năm tuổi thì thứ hạng đã đóng băng, còn top toàn listing mới vài tháng thì thứ hạng đang đổi chủ — tức là còn cửa. Hai vế ghép lại theo tỷ lệ 55/45.&rdquo;</p>
+</div></details>
+
+<details class="qa"><summary>Nếu làm lại, em sẽ đổi gì?</summary><div class="a">
+<p>&ldquo;Ba thứ.</p>
+<p><strong>Một</strong>, đóng vòng phản hồi: hiện hệ chỉ <em>dự đoán</em> mà không bao giờ biết mình đoán đúng không. Em sẽ ghi lại ngách nào đã làm và doanh số thật ra sao, để sau vài tháng hồi quy lại trọng số thay vì để bộ số cố định mãi.</p>
+<p><strong>Hai</strong>, có hai chỗ đang gán cứng — <code>fresh_share</code> và <code>price_fit</code> — vì chưa có dữ liệu để tính thật. Chúng vẫn chiếm trọng số trong công thức, nên đúng ra phải đánh dấu &lsquo;chưa đo&rsquo; như các chỉ số khác chứ không được tính đủ điểm.</p>
+<p><strong>Ba</strong>, thống nhất quy ước dấu giữa hai bộ chỉ số, hoặc gộp hẳn làm một. Để hai bảng hiểu chữ &lsquo;cạnh tranh&rsquo; ngược nhau trong cùng một sản phẩm là một món nợ kỹ thuật, sớm muộn cũng có người đọc nhầm.&rdquo;</p>
+</div></details>
+
+<h3>Ba câu nên tránh</h3>
+<div class="note trap"><span class="tag">Đừng nói</span>
+<ul>
+<li><strong>&ldquo;Nó chấm điểm sản phẩm trên Shopee&rdquo;</strong> — sai. Nó chấm một <em>từ khoá</em> trên Etsy/Amazon. Nói nhầm rồi bị hỏi tiếp về nguồn dữ liệu là lộ ngay.</li>
+<li><strong>&ldquo;AI chấm điểm&rdquo;</strong> — sai. Công thức xác định, không có mô hình nào. Chính chú thích đầu tệp ghi rõ: <em>&ldquo;số ra từ công thức xác định, LLM không bịa số, chỉ viết lời giải thích&rdquo;</em>. Nói đúng câu đó còn được điểm cộng.</li>
+<li><strong>&ldquo;Độ chính xác khoảng 80%&rdquo;</strong> — không có cơ sở nào để nói con số đó. Không có tập kiểm chuẩn thì đừng bịa ra một tỷ lệ.</li>
+</ul></div>
+</section>
+
+<footer class="end">
+  <p><strong>Tệp nguồn:</strong> <code>backend/hub/engines/scoring.py</code> (bản gốc, 9 chỉ số + vòng đời + verdict) &middot; <code>backend/hub/engines/kwscore.py</code> (bản chấm từ listing thật, có cờ available) &middot; <code>backend/hub/engines/hubmetrics.py</code> (bộ 9 tiêu chí pass/fail, confidence, luật rủi ro).</p>
+  <p>Tài liệu cùng bộ: <a href="trend-scout-logic.html">Logic TREND·SCOUT</a> &middot; <a href="one-shot-ai-logic.html">Logic One-shot AI</a>.</p>
+</footer>
+
+</div>
+</body>
+</html>
